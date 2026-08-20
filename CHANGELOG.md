@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- **Four-theme hero image and a proper social preview.** The README
+  hero is now a 2x2 quadrant shot - broadcast grid in Classic, the
+  session tree in Garnet, the command palette in Synthwave, and the
+  ssh-copy-id dialog in Ember - matching the CrossCanvas hero's four
+  themes. The social preview follows the family layout: mark, name,
+  tagline, and the app bleeding off the right edge. Both shot from the
+  live app against the fixture estate.
+
 ## 0.1.0 - 2026-08-20
 
 The initial public release.

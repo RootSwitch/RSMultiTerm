@@ -5,7 +5,7 @@ SSH, Telnet, and Serial in a dynamic N-pane grid, with context highlighting,
 multi-exec broadcast, an SFTP file browser, SSH key management with in-app
 ssh-copy-id, and session sync that keeps credentials out of shared files.
 
-![A four-pane broadcast grid against two fixture switches](docs/screenshot-grid.png)
+![Four themes, four features: a broadcast grid in Classic, the session tree in Garnet, the command palette in Synthwave, and in-app ssh-copy-id in Ember](docs/hero-quadrants.png)
 
 ## Why it exists
 
