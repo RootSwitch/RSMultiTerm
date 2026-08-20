@@ -1,0 +1,10 @@
+*.sh text eol=lf
+* text=auto
+# Vendored files must stay byte-identical to their npm source or
+# tools/vendor-check.js fails on a fresh checkout (checkout-time CRLF
+# conversion would change their hashes).
+public/vendor/** -text
+
+# Binary assets must not be touched by line-ending conversion.
+*.ico binary
+*.png binary

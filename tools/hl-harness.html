@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>highlight harness</title>
+<link rel="stylesheet" href="../public/vendor/xterm/xterm.css">
+<link rel="stylesheet" href="../public/style.css">
+<style>
+  body { padding: 10px; }
+  #box { width: 700px; height: 400px; background: #1b1e25; }
+</style>
+</head>
+<body>
+<div id="box"></div>
+<script src="../public/vendor/xterm/xterm.js"></script>
+<script>
+// Stub the preload bridge with one inline rule set so highlight.js runs
+// standalone under file:// for geometry debugging.
+window.rsterm = {
+    invoke: (ch) => {
+        if (ch === 'rs:highlights.get') return Promise.resolve([{
+            id: 'network-default', name: 'Network default',
+            rules: [
+                { pattern: 'err-disabled', isRegex: false, wholeWord: true, caseSensitive: false, fg: '#ffffff', bg: '#c62828', bold: true, blink: true, enabled: true },
+                { pattern: 'notconnect', isRegex: false, wholeWord: true, caseSensitive: false, fg: '#ffb74d', bg: null, bold: false, blink: false, enabled: true },
+                { pattern: '\\b(up|connected)\\b', isRegex: true, wholeWord: false, caseSensitive: false, fg: '#69f0ae', bg: null, bold: false, blink: false, enabled: true },
+                { pattern: '\\bdown\\b', isRegex: true, wholeWord: false, caseSensitive: false, fg: '#ff5252', bg: null, bold: true, blink: false, enabled: true },
+            ],
+        }]);
+        return Promise.resolve(null);
+    },
+    on: () => {},
+    send: () => {},
+};
+window.TermPanes = { panes: new Map() };
+</script>
+<script src="../public/highlight.js"></script>
+<script>
+const term = new Terminal({
+    cols: 90, rows: 24, allowProposedApi: true,
+    theme: { background: '#1b1e25' },
+});
+term.open(document.getElementById('box'));
+
+const LINES = [
+    'core-sw-01#show int status',
+    'Port      Name               Status       Vlan       Duplex  Speed Type',
+    'Gi1/0/1   uplink-core        connected    trunk        full    1000 1000BaseT',
+    'Gi1/0/2   ap-floor2          connected    120          full    1000 1000BaseT',
+    'Gi1/0/3                      notconnect   1            auto    auto 1000BaseT',
+    'Gi1/0/4   cam-lobby          err-disabled 130          auto    auto 1000BaseT',
+    'Gi1/0/5   printer-hr         disabled     110          auto    auto 1000BaseT',
+    'Te1/1/1   uplink-wan         down         1            full   10000 10GBaseLR',
+    'core-sw-01#',
+];
+term.write(LINES.join('\r\n'));
+
+const pane = { term, sessionId: 'test' };
+window.TermPanes.panes.set('test', pane);
+window.Highlight.loadSets().then(() => {
+    window.Highlight.attach(pane);
+});
+</script>
+</body>
+</html>

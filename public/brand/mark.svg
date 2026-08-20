@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <!-- RSMultiTerm mark, large sizes (48px and up).
+       Same composition as mark-small.svg - a prompt chevron and a block
+       cursor on a rounded screen - because an icon that changes what it
+       depicts between sizes reads as two different logos. The only
+       differences here are optical: a thinner border and a gentle gradient,
+       which small sizes cannot resolve anyway. -->
+  <defs>
+    <linearGradient id="screen" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#232833"/>
+      <stop offset="1" stop-color="#161a21"/>
+    </linearGradient>
+  </defs>
+
+  <rect x="3.5" y="7.5" width="57" height="49" rx="8" fill="url(#screen)"
+        stroke="#4c8bf5" stroke-width="3"/>
+
+  <path d="M16 21 L28.5 32 L16 43" fill="none" stroke="#69f0ae" stroke-width="6"
+        stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="33.5" y="27.5" width="12" height="9" rx="1.5" fill="#4c8bf5"/>
+</svg>

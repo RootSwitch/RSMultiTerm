@@ -1,0 +1,61 @@
+appId: dev.rootswitch.rsmultiterm
+productName: RSMultiTerm
+directories:
+  output: dist
+
+# Stamps the icon and version info into the packed exe; see the note on
+# signAndEditExecutable below for why that is not electron-builder's job here.
+afterPack: tools/after-pack.js
+
+files:
+  - main/**/*
+  - engine/**/*
+  - public/**/*
+  - package.json
+  # The window icon is set from this file at runtime. Without it packaged,
+  # the path did not resolve inside the asar and Electron fell back to its own
+  # logo in the title bar and Alt-Tab.
+  - build/icon.ico
+  - "!**/*.md"
+
+# serialport's N-API binding must load from disk, not from inside the asar.
+asarUnpack:
+  - "**/*.node"
+
+# electron-builder runs @electron/rebuild; serialport ships prebuilds so this
+# is usually a no-op, kept as the safety net for ABI drift.
+npmRebuild: true
+
+win:
+  # One .ico drives the exe icons, the taskbar, and Explorer. electron-builder
+  # would find build/icon.ico by convention; naming it is cheaper than
+  # remembering the convention.
+  icon: build/icon.ico
+  target:
+    - nsis
+    - portable
+  # Off because enabling it makes electron-builder fetch and unpack its
+  # winCodeSign bundle, whose macOS symlinks cannot be extracted without the
+  # symlink privilege Windows grants only in developer mode - the build fails
+  # outright. The catch is that this same switch also controls rcedit, which
+  # stamps the icon into RSMultiTerm.exe, so tools/after-pack.js does that
+  # step itself. Builds stay unsigned either way: there is no certificate.
+  signAndEditExecutable: false
+
+nsis:
+  oneClick: true
+  perMachine: false        # per-user install, no admin prompt
+  artifactName: RSMultiTerm-${version}-setup.${ext}
+  installerIcon: build/icon.ico
+  uninstallerIcon: build/icon.ico
+
+portable:
+  artifactName: RSMultiTerm-${version}-portable.${ext}
+  # The portable build is a self-extracting stub, so by default it wears an
+  # installer's face. This makes it wear the app's instead: it is the app as
+  # far as anyone double-clicking it is concerned.
+  splashImage: null
+  unpackDirName: false     # stable extraction dir, so the app is not re-extracted every run
+
+# No auto-updater on purpose: the team distributes from a share. A passive
+# newer-version toast can read a latest.txt on that share if wanted later.

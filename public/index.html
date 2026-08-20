@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<!-- The renderer never talks to any network: all traffic lives in the engine
+     process. connect-src 'none' makes that a browser-enforced guarantee. -->
+<meta http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'none'">
+<title>RSMultiTerm</title>
+<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="vendor/xterm/xterm.css">
+</head>
+<body>
+
+<div id="topbar">
+  <button id="sidebar-toggle" title="Show/hide the session tree">☰</button>
+  <!-- The same artwork the .ico is generated from, so the header and the
+       taskbar cannot drift apart. This used to be a separate hand-drawn
+       SVG and the two marks were visibly different. -->
+  <div class="brand">
+    <img src="brand/mark-small.svg" class="brand-mark" width="18" height="18" alt="">
+    RSMultiTerm
+  </div>
+  <span style="flex:1"></span>
+  <button id="diff-btn" title="Compare the last command output of two panes, or paste two captures to compare (Ctrl+Shift+D)">Diff</button>
+  <button id="highlights-btn" title="Edit context-highlighting rules">Highlights</button>
+  <button id="snippets-btn" title="Command snippets: reusable, parameterized command sequences (also in the palette, Ctrl+Shift+P)">Snippets</button>
+  <button id="tunnels-btn" title="Port forwards: local (-L), SOCKS proxy (-D) and remote (-R), running over your saved SSH sessions">Tunnels</button>
+  <button id="broadcast-btn" title="Send keystrokes to all panes in this tab (Ctrl+Shift+B). Paste to all: Ctrl+Shift+V">Broadcast: off</button>
+  <select id="theme-picker" title="Theme"></select>
+  <button id="settings-btn" title="App settings: mouse mode, font, logging, session sync">⚙</button>
+</div>
+
+<!-- Quick connect gets its own row. It shared the top bar until the tool
+     buttons outgrew it: its fields are the widest thing in the app, so the
+     controls at the far end - the theme picker especially - were the ones
+     pushed off screen when the window opened narrower than the bar. Two
+     rows of things that fit beats one row that scrolls past them. -->
+<div id="connectbar">
+  <select id="qc-transport" title="Transport">
+    <option value="ssh">SSH</option>
+    <option value="telnet">Telnet</option>
+    <option value="serial">Serial</option>
+  </select>
+  <span id="qc-net">
+    <!-- host gets the extra room a second row buys; the rest stay as they
+         were so the whole bar still fits at the 900px minimum window. -->
+    <input id="qc-host" placeholder="host" style="width:150px">
+    <input id="qc-port" placeholder="port" style="width:52px">
+    <input id="qc-user" placeholder="username" style="width:100px">
+    <input id="qc-pass" placeholder="password" type="password" style="width:100px">
+  </span>
+  <span id="qc-serial" hidden>
+    <select id="qc-com" title="Local serial ports"></select>
+    <select id="qc-baud" title="Baud rate"></select>
+  </span>
+  <button id="qc-go" class="primary" title="Open in a new tab">Connect</button>
+  <button id="qc-split" title="Connect and add as a pane in the current MultiTerm tab">Add to MultiTerm</button>
+  <span class="bar-sep"></span>
+  <button id="merge-btn" title="Merge every open tab into one multi-pane tab. Sessions keep running - only their tab changes.">Merge into MultiTerm</button>
+</div>
+
+<div id="main">
+  <!-- The sidebar holds both the session tree and the file browser. The file
+       browser used to be a right-hand panel, which ate terminal width at
+       small window sizes; here it opens over the session list instead and
+       the terminals never move. -->
+  <div id="sidebar">
+    <div id="side-tabs">
+      <button id="side-tab-sessions" class="side-tab active">Sessions</button>
+      <button id="side-tab-files" class="side-tab" title="Browse files on the focused session (SFTP, or SCP where that is all the device offers)">Files</button>
+    </div>
+
+    <div id="side-pane-sessions" class="side-pane">
+      <div id="tree-toolbar">
+        <button id="tree-new-session" title="New saved session">+ Session</button>
+        <button id="tree-new-folder" title="New folder">+ Folder</button>
+        <button id="tree-profiles" title="Credential profiles: your usernames and passwords, referenced by sessions by name only">Profiles</button>
+      </div>
+      <div id="tree-toolbar2">
+        <button id="tree-open-grid" title="Open the selected sessions together in one multi-pane tab">Start MultiTerm</button>
+        <button id="tree-add-grid" title="Add the selected sessions as panes in the tab already open. Selecting a session you are already connected to opens a second, independent session to it.">Add to MultiTerm</button>
+      </div>
+      <div id="tree-toolbar3">
+        <button id="tree-edit" title="Edit selection (multi-select for bulk edit)">Edit</button>
+        <button id="tree-delete" title="Delete selection">Delete</button>
+        <button id="tree-audit" title="Probe the selected folder for devices that no longer answer (TCP connect, gentle by design)">Audit</button>
+        <!-- Everything that moves sessions in or out of this machine:
+             importing from MobaXTerm/CSV/a session file, exporting, and -
+             once a sync file is configured in Settings - publishing and
+             checking it. There used to be a "Team" button in the top bar
+             for the last of those, which put importing your own sessions
+             behind a word that says it is for somebody else. -->
+        <button id="tree-import" title="Move sessions in or out: import from MobaXTerm, a spreadsheet or a session file, export, and sync with another machine">Import ▾</button>
+      </div>
+      <!-- Logging on by default is a feature; logging on SILENTLY is how a
+           feature reads as surveillance. This line says it plainly, in the
+           default view, and clicking it opens the folder. -->
+      <button id="log-status" title=""></button>
+      <div id="tree"></div>
+    </div>
+
+    <div id="side-pane-files" class="side-pane" hidden>
+      <div id="sftp-head"><span id="sftp-title">no session</span></div>
+      <div id="sftp-bar">
+        <button id="sftp-up" title="Parent directory">↑</button>
+        <input id="sftp-path">
+        <button id="sftp-refresh" title="Refresh">⟳</button>
+      </div>
+      <div id="sftp-bar2">
+        <button id="sftp-upload" title="Upload a file to this directory">Upload</button>
+        <button id="sftp-mkdir" title="New remote folder">New folder</button>
+      </div>
+      <div id="sftp-list"></div>
+      <div id="sftp-status"></div>
+    </div>
+  </div>
+
+  <!-- Drag to resize the sidebar; the width is remembered. -->
+  <div id="sidebar-resizer" title="Drag to resize"></div>
+
+  <div id="workspace">
+    <div id="tabstrip" hidden></div>
+    <div id="grid"></div>
+  </div>
+</div>
+
+<div id="statusbar"><span id="status-text">ready</span></div>
+
+<div id="session-pool"></div>
+
+<script src="vendor/xterm/xterm.js"></script>
+<script src="vendor/xterm/addon-fit.js"></script>
+<script src="vendor/xterm/addon-search.js"></script>
+<script src="vendor/xterm/addon-clipboard.js"></script>
+<script src="vendor/xterm/addon-serialize.js"></script>
+<script src="vendor/xterm/addon-webgl.js"></script>
+<script src="themes.js"></script>
+<script src="colors.js"></script>
+<script src="modals.js"></script>
+<script src="paste.js"></script>
+<script src="highlight.js"></script>
+<script src="highlight-rules-ui.js"></script>
+<script src="term-pane.js"></script>
+<script src="tabs.js"></script>
+<script src="multi-exec.js"></script>
+<script src="grid.js"></script>
+<script src="search-ui.js"></script>
+<script src="hints.js"></script>
+<script src="snippets-ui.js"></script>
+<script src="tunnels-ui.js"></script>
+<script src="shell-integration.js"></script>
+<script src="palette.js"></script>
+<script src="workspace-ui.js"></script>
+<script src="sftp-panel.js"></script>
+<script src="connect-forms.js"></script>
+<script src="bulk-edit.js"></script>
+<script src="session-tree.js"></script>
+<script src="team-ui.js"></script>
+<script src="csv-ui.js"></script>
+<script src="diff-engine.js"></script>
+<script src="diff-ui.js"></script>
+<script src="context-menu.js"></script>
+<script src="settings-ui.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

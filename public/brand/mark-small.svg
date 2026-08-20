@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <!-- RSMultiTerm app mark, small variant (32px and below).
+       The pane divider and output lines turn to mush under 32px, so the
+       small sizes get their own drawing rather than a downscale of the
+       detailed one: one fat chevron and a cursor, heavier strokes, more
+       margin. This is why the .ico carries several images instead of one. -->
+  <rect x="3" y="7" width="58" height="50" rx="8" fill="#161a21"
+        stroke="#4c8bf5" stroke-width="4"/>
+  <path d="M17 21 L29.5 32 L17 43" fill="none" stroke="#69f0ae" stroke-width="7"
+        stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="34" y="27.5" width="12" height="9" rx="1.5" fill="#4c8bf5"/>
+</svg>

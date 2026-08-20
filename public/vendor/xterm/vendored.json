@@ -1,0 +1,37 @@
+[
+  {
+    "pkg": "@xterm/xterm",
+    "version": "6.0.0",
+    "file": "xterm.js"
+  },
+  {
+    "pkg": "@xterm/xterm",
+    "version": "6.0.0",
+    "file": "xterm.css"
+  },
+  {
+    "pkg": "@xterm/addon-clipboard",
+    "version": "0.2.0",
+    "file": "addon-clipboard.js"
+  },
+  {
+    "pkg": "@xterm/addon-fit",
+    "version": "0.11.0",
+    "file": "addon-fit.js"
+  },
+  {
+    "pkg": "@xterm/addon-search",
+    "version": "0.16.0",
+    "file": "addon-search.js"
+  },
+  {
+    "pkg": "@xterm/addon-serialize",
+    "version": "0.14.0",
+    "file": "addon-serialize.js"
+  },
+  {
+    "pkg": "@xterm/addon-webgl",
+    "version": "0.19.0",
+    "file": "addon-webgl.js"
+  }
+]
