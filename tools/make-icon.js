@@ -23,6 +23,9 @@ const { app, BrowserWindow, nativeImage } = require('electron');
 const ROOT = path.join(__dirname, '..');
 const OUT_ICO = path.join(ROOT, 'build', 'icon.ico');
 const OUT_PNG = path.join(ROOT, 'docs', 'icon.png');
+// The Linux/macOS app icon. electron-builder wants at least 256x256 for a
+// linux target; 512 is what AppImage and the GNOME dash actually display.
+const OUT_APP_PNG = path.join(ROOT, 'build', 'icon.png');
 
 const SIZES = [16, 24, 32, 48, 64, 128, 256];
 const SMALL_AT_OR_BELOW = 32;
@@ -160,6 +163,10 @@ app.whenReady().then(async () => {
         fs.mkdirSync(path.dirname(OUT_PNG), { recursive: true });
         fs.writeFileSync(OUT_PNG, (await render(detailed, 256)).toPNG());
         console.log(`wrote ${path.relative(ROOT, OUT_PNG)}`);
+
+        fs.mkdirSync(path.dirname(OUT_APP_PNG), { recursive: true });
+        fs.writeFileSync(OUT_APP_PNG, (await render(detailed, 512)).toPNG());
+        console.log(`wrote ${path.relative(ROOT, OUT_APP_PNG)}`);
 
         app.exit(0);
     } catch (err) {

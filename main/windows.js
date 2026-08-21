@@ -14,12 +14,20 @@ const { app, BrowserWindow, screen } = require('electron');
 // Alt-Tab. The file is packaged now, and this checks before using it, so a
 // missing icon can never override a good one on the exe.
 function windowIcon() {
-    const file = path.join(__dirname, '..', 'build', 'icon.ico');
-    try {
-        return fs.existsSync(file) ? file : null;
-    } catch (_) {
-        return null;
+    // Windows takes the .ico (several sizes in one file, which is what the
+    // taskbar and Alt-Tab want); Linux and macOS want a PNG - an .ico set
+    // here on Linux is ignored and the window wears Electron's own logo.
+    const dir = path.join(__dirname, '..', 'build');
+    const names = process.platform === 'win32'
+        ? ['icon.ico', 'icon.png']
+        : ['icon.png', 'icon.ico'];
+    for (const name of names) {
+        const file = path.join(dir, name);
+        try {
+            if (fs.existsSync(file)) return file;
+        } catch (_) { /* try the next one */ }
     }
+    return null;
 }
 
 // A comfortable default for a multi-pane grid, clamped to the display so a

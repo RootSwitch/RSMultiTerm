@@ -2,6 +2,25 @@
 
 ## Unreleased
 
+- **Linux port preparation.** The app was Windows-only by assumption
+  rather than by design, so the assumptions are now branches. Secret
+  storage is the one that mattered: on Linux with no keyring, Chromium
+  falls back to a backend that "encrypts" with a hardcoded key while
+  still reporting that encryption is available - so the app would have
+  offered to remember a password, stored it reversible-by-anyone, and
+  said it was encrypted. The backend is now inspected, that fallback
+  counts as no storage at all, and the UI names whatever is actually
+  protecting the secret (Windows sign-in, macOS Keychain, a named Linux
+  keyring) instead of hardcoding "Windows DPAPI" - or explains why the
+  option is missing. Also: AppImage and .deb targets with a 512px PNG
+  app icon (Linux ignores the .ico), a platform-appropriate default
+  terminal font with a font stack that lands somewhere on every OS, a
+  font-suggestion list per platform since Chromium's font enumeration
+  is Windows/macOS only, and a serial-port permission error that names
+  the `dialout` group instead of just saying "denied". Verified by
+  running the engine and logic tests on Ubuntu unchanged - all of
+  SSH, key install, hop pool, SCP and the auth guard included.
+
 - **Four-theme hero image and a proper social preview.** The README
   hero is now a 2x2 quadrant shot - broadcast grid in Classic, the
   session tree in Garnet, the command palette in Synthwave, and the

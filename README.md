@@ -100,6 +100,21 @@ npm run release
 runs the test chain, then produces the NSIS per-user installer and the
 portable exe under `dist/`, with `SHA256SUMS.txt` beside them.
 
+Linux (AppImage and `.deb`) is configured and the code paths are
+platform-aware - window icon, default font, SSH agent, serial device
+permissions, and secret storage all branch correctly - but no Linux build
+is published yet, and the packaging has not been run on a desktop Linux
+machine:
+
+```
+npx electron-builder --linux
+```
+
+One Linux note worth knowing before that lands: saved passwords need a
+system keyring (gnome-keyring or KWallet). Without one, Chromium's
+fallback "encrypts" with a hardcoded key, so the app withholds the save
+option entirely and uses memory-only prompt mode rather than pretending.
+
 ## Dependencies
 
 Runtime: `ssh2`, `serialport`. That is the entire tree - everything else is

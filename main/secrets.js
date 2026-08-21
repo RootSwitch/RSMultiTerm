@@ -17,8 +17,10 @@
 //
 // Two storage modes for the secret a password or an encrypted key needs:
 //
-//   dpapi  - password encrypted with Electron safeStorage (Windows DPAPI,
-//            tied to the OS login). Home-lab mode.
+//   dpapi  - password encrypted with Electron safeStorage. The name is
+//            historical (and is the value on disk, so it stays): what
+//            actually protects the secret depends on the OS - Windows
+//            DPAPI, the macOS Keychain, or a Linux keyring. Home-lab mode.
 //   prompt - nothing persisted. First connect prompts; the plaintext lives in
 //            an in-memory map until the app closes or an auth failure clears
 //            it. Work mode for daily-rotating AD passwords.
@@ -55,8 +57,60 @@ function persist() {
     for (const fn of listeners) fn();
 }
 
-function dpapiAvailable() {
-    try { return !!safeStorage && safeStorage.isEncryptionAvailable(); } catch (_) { return false; }
+// What safeStorage would actually do here, and whether that is good enough
+// to store a password in.
+//
+// This exists because of one Linux behaviour that is quietly dangerous:
+// when no keyring (gnome-keyring/libsecret, KWallet) is available, Chromium
+// falls back to a `basic_text` backend that "encrypts" with a HARDCODED
+// key - and isEncryptionAvailable() still answers true. Trusting that
+// answer on Linux means the app cheerfully offers to remember a password,
+// stores it as reversible-by-anyone, and says it is encrypted. So the
+// backend is inspected, basic_text is treated as no storage at all, and the
+// app falls back to prompt mode - which is memory-only and honest.
+//
+// Split out as a pure function so every combination is testable without an
+// OS keyring to poke at; storageInfo() below supplies the real values.
+function classifyBackend(platform, available, backend) {
+    if (!available) {
+        return { available: false, secure: false, backend: backend || null,
+            label: 'OS encryption',
+            why: 'the OS reports no encryption service' };
+    }
+    if (platform === 'win32') {
+        return { available: true, secure: true, backend: 'dpapi',
+            label: 'your Windows sign-in', why: null };
+    }
+    if (platform === 'darwin') {
+        return { available: true, secure: true, backend: 'keychain',
+            label: 'your macOS Keychain', why: null };
+    }
+    // Linux and anything else: the backend decides.
+    if (backend === 'basic_text' || backend === 'unknown' || !backend) {
+        return { available: false, secure: false, backend: backend || null,
+            label: 'a system keyring',
+            why: 'no keyring is available (gnome-keyring or KWallet), and the ' +
+                 'fallback would store secrets with a hardcoded key' };
+    }
+    const named = backend.startsWith('kwallet') ? 'KWallet' : 'your login keyring';
+    return { available: true, secure: true, backend, label: named, why: null };
+}
+
+function storageInfo() {
+    let available = false;
+    try { available = !!safeStorage && safeStorage.isEncryptionAvailable(); } catch (_) { /* no electron */ }
+    let backend = null;
+    if (available && process.platform !== 'win32' && process.platform !== 'darwin') {
+        // Linux only; the call does not exist elsewhere.
+        try { backend = safeStorage.getSelectedStorageBackend(); } catch (_) { backend = 'unknown'; }
+    }
+    return classifyBackend(process.platform, available, backend);
+}
+
+// The single gate every store/read path asks. False means "keep it in
+// memory instead", which is a supported mode rather than a failure.
+function secretStorageAvailable() {
+    return storageInfo().available;
 }
 
 function byName(name) {
@@ -106,14 +160,14 @@ function upsert(input) {
             // clearing needs its own flag, never a magic empty string.
             p.secretDpapi = null;
         } else if (input.password) {
-            if (!dpapiAvailable()) throw new Error('OS encryption unavailable - use prompt mode');
+            if (!secretStorageAvailable()) throw new Error(storageInfo().why + ' - use prompt mode instead');
             p.secretDpapi = safeStorage.encryptString(input.password).toString('base64');
         }
     } else {
         p.secretDpapi = null;   // switching to prompt mode forgets the stored secret
     }
     if (input.keyPassphrase) {
-        if (!dpapiAvailable()) throw new Error('OS encryption unavailable - use prompt mode');
+        if (!secretStorageAvailable()) throw new Error(storageInfo().why + ' - use prompt mode instead');
         p.keyPassphraseDpapi = safeStorage.encryptString(input.keyPassphrase).toString('base64');
     }
     persist();
@@ -145,7 +199,7 @@ function getAuth(name) {
     // profiles.json files.
     if (p.authMethod === 'key' || p.authMethod === 'keyfile') {
         auth.keyPath = p.keyPath;
-        if (p.keyPassphraseDpapi && dpapiAvailable()) {
+        if (p.keyPassphraseDpapi && secretStorageAvailable()) {
             auth.keyPassphrase = safeStorage.decryptString(Buffer.from(p.keyPassphraseDpapi, 'base64'));
             return auth;
         }
@@ -161,7 +215,7 @@ function getAuth(name) {
         return auth;
     }
     if (p.storage === 'dpapi' && p.secretDpapi) {
-        if (!dpapiAvailable()) return null;
+        if (!secretStorageAvailable()) return null;
         auth.password = safeStorage.decryptString(Buffer.from(p.secretDpapi, 'base64'));
         return auth;
     }
@@ -177,7 +231,7 @@ function getAuth(name) {
 // against a device as one.
 function promptResult(name, password, remember) {
     const p = byName(name);
-    if (remember && dpapiAvailable()) pendingSave.add(name);
+    if (remember && secretStorageAvailable()) pendingSave.add(name);
     if (p && (p.authMethod === 'key' || p.authMethod === 'keyfile')) {
         passphraseCache.set(name, password);
         return;
@@ -193,7 +247,7 @@ function commitSaved(name) {
     if (!pendingSave.has(name)) return;
     pendingSave.delete(name);
     const p = byName(name);
-    if (!p || !dpapiAvailable()) return;
+    if (!p || !secretStorageAvailable()) return;
     if (p.authMethod === 'key' || p.authMethod === 'keyfile') {
         const pass = passphraseCache.get(name);
         if (pass) p.keyPassphraseDpapi = safeStorage.encryptString(pass).toString('base64');
@@ -244,7 +298,7 @@ function passphraseForKey(keyPath) {
     if (!keyPath) return null;
     for (const p of profiles) {
         if (p.keyPath !== keyPath) continue;
-        if (p.keyPassphraseDpapi && dpapiAvailable()) {
+        if (p.keyPassphraseDpapi && secretStorageAvailable()) {
             return safeStorage.decryptString(Buffer.from(p.keyPassphraseDpapi, 'base64'));
         }
         if (passphraseCache.has(p.name)) return passphraseCache.get(p.name);
@@ -254,5 +308,6 @@ function passphraseForKey(keyPath) {
 
 module.exports = {
     init, onChange, list, upsert, removeProfile, passphraseForKey,
-    getAuth, promptResult, promptKind, commitSaved, setUsername, clearCached, dpapiAvailable, byName,
+    storageInfo, classifyBackend,
+    getAuth, promptResult, promptKind, commitSaved, setUsername, clearCached, secretStorageAvailable, byName,
 };

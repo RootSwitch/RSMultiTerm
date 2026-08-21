@@ -52,9 +52,17 @@ class SerialTransport extends Transport {
 
             port.open((err) => {
                 if (err) {
-                    this._status('error', err.message);
-                    this._emitClose(1, err.message);
-                    return reject(err);
+                    // On Linux the serial devices belong to the `dialout`
+                    // group, so a fresh install fails here with a bare
+                    // "Permission denied" that says nothing about the fix.
+                    const denied = /permission denied|EACCES/i.test(err.message);
+                    const msg = (denied && process.platform === 'linux')
+                        ? `${err.message} - on Linux, serial ports need group access: ` +
+                          `sudo usermod -aG dialout $USER (then log out and back in)`
+                        : err.message;
+                    this._status('error', msg);
+                    this._emitClose(1, msg);
+                    return reject(new Error(msg));
                 }
                 if (this._aborted) {
                     // The pane closed while the port was opening. close()

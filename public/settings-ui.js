@@ -57,7 +57,7 @@
         // fixed-pitch ones, since a proportional face in a terminal is a
         // mistake nobody makes on purpose. A datalist rather than a select:
         // typing still works when enumeration is unavailable.
-        const fFontFamily = input(s.font.family, 'Cascadia Mono');
+        const fFontFamily = input(s.font.family, 'monospace');
         fFontFamily.setAttribute('list', 'rsmt-font-families');
         ensureFontList();
         const fFontSize = input(s.font.size, '13', 'number');
@@ -149,7 +149,9 @@
                             mode: fTermMode.value,
                             background: fTermMode.value === 'custom' ? fTermBg.value : null,
                         },
-                        font: { family: fFontFamily.value.trim() || 'Cascadia Mono', size: Number(fFontSize.value) || 13 },
+                        // Blank means "whatever this machine's default is";
+                        // main owns that choice, so it is sent as null.
+                        font: { family: fFontFamily.value.trim() || null, size: Number(fFontSize.value) || 13 },
                         scrollbackLines: Number(fScrollback.value) || 10000,
                         defaultLogFolder: fLogFolder.value.trim() || null,
                         logTimestamps: fTimestamps.value === 'yes',
@@ -183,10 +185,21 @@
             }
         } catch (_) { /* denied or unavailable: fall back below */ }
         if (!families.length) {
-            // Enumeration unavailable: the usual suspects, still just
-            // suggestions - the field takes anything.
-            families = ['Cascadia Mono', 'Cascadia Code', 'Consolas', 'Courier New',
-                'Lucida Console', 'JetBrains Mono', 'Fira Code', 'Source Code Pro'];
+            // Enumeration unavailable - which includes every Linux build,
+            // since Chromium's Local Font Access API is Windows/macOS only.
+            // The usual suspects for the platform, still just suggestions:
+            // the field takes anything.
+            const ua = navigator.userAgent;
+            const common = ['JetBrains Mono', 'Fira Code', 'Source Code Pro', 'Hack'];
+            if (/Windows/.test(ua)) {
+                families = ['Cascadia Mono', 'Cascadia Code', 'Consolas', 'Courier New',
+                    'Lucida Console', ...common];
+            } else if (/Mac OS X|Macintosh/.test(ua)) {
+                families = ['Menlo', 'Monaco', 'SF Mono', 'Courier New', ...common];
+            } else {
+                families = ['DejaVu Sans Mono', 'Ubuntu Mono', 'Liberation Mono',
+                    'Noto Sans Mono', 'Monospace', ...common];
+            }
         }
         dl.replaceChildren();
         for (const fam of families.sort((a, b) => a.localeCompare(b))) {

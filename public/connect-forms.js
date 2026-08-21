@@ -212,6 +212,13 @@
         // What this machine can offer decides the default: a lab box with
         // a key in ~/.ssh should not be asked to invent a password.
         const env = await rsterm.invoke('rs:keys.discover');
+        // Where a secret would actually go on this machine (Windows
+        // sign-in, macOS Keychain, a Linux keyring) - and whether that is
+        // trustworthy at all. On Linux with no keyring the fallback
+        // "encrypts" with a hardcoded key, so the save options are withheld
+        // rather than offered as a lie. Read once, above both the
+        // key-passphrase and password sections that label themselves from it.
+        const secretStore = await rsterm.invoke('rs:secrets.storageInfo');
         const defaultMethod = isNew
             ? (env.agent.available ? 'agent' : (env.keys.length ? 'key' : 'password'))
             : null;
@@ -254,10 +261,12 @@
         // The passphrase field only exists for a key that actually has one.
         const fKeyPass = input('', prof.hasKeyPassphrase ? '(unchanged)' : 'passphrase', 'password');
         const keyPassRow = row('Passphrase', fKeyPass);
-        const fKeyStore = select([
-            { value: 'prompt', label: 'Ask when I connect (memory only)' },
-            { value: 'dpapi', label: 'Save encrypted (Windows DPAPI)' },
-        ], prof.hasKeyPassphrase ? 'dpapi' : 'prompt');
+        const keyStoreOpts = [{ value: 'prompt', label: 'Ask when I connect (memory only)' }];
+        if (secretStore.available) {
+            keyStoreOpts.push({ value: 'dpapi', label: `Save encrypted (${secretStore.label})` });
+        }
+        const fKeyStore = select(keyStoreOpts,
+            (prof.hasKeyPassphrase && secretStore.available) ? 'dpapi' : 'prompt');
         const keyStoreRow = row('Passphrase storage', fKeyStore);
 
         let keyInfo = null;
@@ -292,10 +301,19 @@
         });
 
         // --- password ------------------------------------------------------
-        const fStorage = select([
-            { value: 'prompt', label: 'Prompt at connect (memory only) - rotating AD passwords' },
-            { value: 'dpapi', label: 'Save encrypted (Windows DPAPI) - lab use' },
-        ], prof.storage || 'prompt');
+        const storeOpts = [
+            { value: 'prompt', label: 'Prompt at connect (memory only) - rotating passwords' },
+        ];
+        if (secretStore.available) {
+            storeOpts.push({ value: 'dpapi', label: `Save encrypted (${secretStore.label}) - lab use` });
+        }
+        const fStorage = select(storeOpts,
+            (prof.storage === 'dpapi' && secretStore.available) ? 'dpapi' : 'prompt');
+        const storeNote = document.createElement('p');
+        storeNote.style.cssText = 'margin:2px 0 8px;color:var(--se-txt-dim);font-size:11px;';
+        storeNote.textContent = secretStore.available ? ''
+            : `Saving passwords is unavailable: ${secretStore.why}. Prompt mode keeps them in ` +
+              'memory for this run instead.';
         const fPass = input('', prof.storage === 'dpapi' && prof.hasSecret
             ? '(unchanged)' : 'password to save', 'password');
         const passRow = row('Password', fPass);
@@ -320,6 +338,7 @@
             if (wantsPass) keyStoreRow.style.display = '';
             agentNote.style.display = m === 'agent' ? '' : 'none';
             storageRow.style.display = m === 'password' ? '' : 'none';
+            storeNote.style.display = m === 'password' && storeNote.textContent ? '' : 'none';
             passRow.style.display = m === 'password' && fStorage.value === 'dpapi' ? '' : 'none';
         }
         fMethod.addEventListener('change', syncRows);
@@ -330,7 +349,7 @@
             row('Authenticate with', fMethod),
             keyRow, keyNote, keyPassRow, keyStoreRow,
             agentNote,
-            storageRow, passRow);
+            storageRow, storeNote, passRow);
         await describeKey();
         syncRows();
 
@@ -530,7 +549,8 @@
         // on - this is the home-lab convenience path - and plainly labeled.
         let fKeepPass = null;
         const keepRow = document.createElement('label');
-        if (d.hasPassword) {
+        // Only offered when there is somewhere trustworthy to put it.
+        if (d.hasPassword && d.storage && d.storage.available) {
             keepRow.style.cssText = 'display:flex;gap:6px;align-items:center;font-size:12px;' +
                 'color:var(--se-txt-dim);margin-top:8px;';
             fKeepPass = document.createElement('input');
@@ -538,7 +558,7 @@
             fKeepPass.checked = true;
             const span = document.createElement('span');
             span.textContent = 'Save the password from this connection with the profile ' +
-                '(encrypted with your Windows sign-in)';
+                `(encrypted with ${(d.storage && d.storage.label) || 'OS encryption'})`;
             keepRow.append(fKeepPass, span);
             body.appendChild(keepRow);
         }
@@ -580,7 +600,7 @@
     // One dialog per profile; every session parked behind it is released by
     // the single answer.
     const openPrompts = new Set();
-    rsterm.on('rs:evt.needs-password', ({ profile, username, needUsername, host, kind, keyPath, canRemember }) => {
+    rsterm.on('rs:evt.needs-password', ({ profile, username, needUsername, host, kind, keyPath, canRemember, rememberLabel }) => {
         if (openPrompts.has(profile)) return;
         openPrompts.add(profile);
         // A key passphrase is not a password: it unlocks a file on THIS
@@ -623,7 +643,7 @@
             fRemember.type = 'checkbox';
             const span = document.createElement('span');
             span.textContent = `Remember this ${isPassphrase ? 'passphrase' : 'password'} on this PC ` +
-                '(encrypted with your Windows sign-in, saved only if it works)';
+                `(encrypted with ${rememberLabel || 'OS encryption'}, saved only if it works)`;
             lbl.append(fRemember, span);
             body.appendChild(lbl);
         }

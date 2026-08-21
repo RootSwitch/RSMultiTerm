@@ -16,6 +16,8 @@ files:
   # the path did not resolve inside the asar and Electron fell back to its own
   # logo in the title bar and Alt-Tab.
   - build/icon.ico
+  # Linux and macOS window icons come from the PNG; see main/windows.js.
+  - build/icon.png
   - "!**/*.md"
 
 # serialport's N-API binding must load from disk, not from inside the asar.
@@ -41,6 +43,21 @@ win:
   # stamps the icon into RSMultiTerm.exe, so tools/after-pack.js does that
   # step itself. Builds stay unsigned either way: there is no certificate.
   signAndEditExecutable: false
+
+linux:
+  icon: build/icon.png
+  # package.json's author has no email, and .deb refuses to build without a
+  # maintainer in "Name <email>" form. The GitHub noreply address is the one
+  # already in every commit.
+  maintainer: RootSwitch <302347386+RootSwitch@users.noreply.github.com>
+  category: Network
+  synopsis: Multi-session terminal for network and Linux administration
+  target:
+    - AppImage
+    - deb
+  desktop:
+    Keywords: ssh;telnet;serial;terminal;console;network;
+    StartupWMClass: RSMultiTerm
 
 nsis:
   oneClick: true

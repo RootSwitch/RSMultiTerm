@@ -5,6 +5,16 @@
 
 const store = require('./store');
 
+// The default terminal font has to exist on the machine or the first launch
+// shows a font name nobody has. Cascadia ships with Windows Terminal and
+// recent Windows; DejaVu Sans Mono is on essentially every desktop Linux;
+// Menlo is macOS. The CSS stack behind these catches the rest.
+function defaultFontFamily() {
+    if (process.platform === 'win32') return 'Cascadia Mono';
+    if (process.platform === 'darwin') return 'Menlo';
+    return 'DejaVu Sans Mono';
+}
+
 const DEFAULTS = {
     schema: 1,
     theme: null,
@@ -16,7 +26,7 @@ const DEFAULTS = {
     // Open the file browser by itself when a device turns out to support it,
     // the way MobaXTerm does. Only ever for the focused pane.
     autoOpenFileBrowser: true,
-    font: { family: 'Cascadia Mono', size: 13 },
+    font: { family: defaultFontFamily(), size: 13 },
     // Terminal palette: 'theme' follows the app theme (so Parchment does not
     // frame a near-black terminal), 'dark' pins the original dark surface,
     // 'custom' uses `background` verbatim.
@@ -77,6 +87,11 @@ function sanitize(patch) {
 }
 
 function update(patch) {
+    // A cleared font field means "use this machine's default" rather than
+    // "use no font at all".
+    if (patch && patch.font && !patch.font.family) {
+        patch = { ...patch, font: { ...patch.font, family: defaultFontFamily() } };
+    }
     for (const [k, v] of Object.entries(sanitize(patch))) {
         if (v !== null && typeof v === 'object' && !Array.isArray(v) &&
             data[k] && typeof data[k] === 'object') {

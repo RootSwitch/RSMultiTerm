@@ -43,6 +43,7 @@ const INVOKE_ALLOW = new Set([
     'rs:tunnels.open',
     'rs:tunnels.close',
     'rs:profiles.list',
+    'rs:secrets.storageInfo',
     'rs:logs.info',
     'rs:logs.reveal',
     'rs:profiles.upsert',

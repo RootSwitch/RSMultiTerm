@@ -401,6 +401,10 @@ function wireIpc(engineRef, getWindow, bootConfig) {
         return { dir };
     });
 
+    // What protects a stored secret on THIS machine, so the UI can say it
+    // rather than assuming Windows.
+    ipcMain.handle('rs:secrets.storageInfo', () => secrets.storageInfo());
+
     ipcMain.handle('rs:profiles.list', () => secrets.list());
     ipcMain.handle('rs:profiles.upsert', (_e, input) => secrets.upsert(input));
 
@@ -655,8 +659,10 @@ function wireIpc(engineRef, getWindow, bootConfig) {
         return {
             savable: true,
             // Whether a password EXISTS, never the password: the renderer
-            // only needs to know whether to offer keeping it.
+            // only needs to know whether to offer keeping it - and where it
+            // would go if kept.
             hasPassword: !!a.password,
+            storage: secrets.storageInfo(),
             args: {
                 transport: a.transport || 'ssh',
                 host: a.host || null,
@@ -683,7 +689,7 @@ function wireIpc(engineRef, getWindow, bootConfig) {
             // The profile carries the username (not a secret). The password
             // is kept only when asked to - and it qualifies for storing
             // because it already opened the device this pane is showing.
-            const keep = savePassword && a.password && secrets.dpapiAvailable();
+            const keep = savePassword && a.password && secrets.secretStorageAvailable();
             secrets.upsert({
                 name: createProfileFor,
                 username: a.username || '',

@@ -36,7 +36,11 @@
     --se-logo-a: #4c8bf5;
     --se-logo-b: #2e9b57;
     /* terminal-only additions */
-    --mt-mono: 'Cascadia Mono', Consolas, 'Courier New', monospace;
+    /* Windows, Linux, macOS, then the generic - so a machine without the
+       configured face still gets a fixed-pitch one rather than a
+       proportional fallback. */
+    --mt-mono: 'Cascadia Mono', Consolas, 'DejaVu Sans Mono', 'Ubuntu Mono',
+               Menlo, 'Courier New', monospace;
 }
 
 html, body {

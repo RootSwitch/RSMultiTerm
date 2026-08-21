@@ -148,7 +148,8 @@ function requestConnect(sessionId, descriptor, launch, skipCanary = false) {
                 host: descriptor.host || null,
                 kind: asks.kind,
                 keyPath: asks.keyPath,
-                canRemember: secrets.dpapiAvailable(),
+                canRemember: secrets.secretStorageAvailable(),
+                rememberLabel: secrets.storageInfo().label,
             });
         }
         return;

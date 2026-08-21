@@ -10,7 +10,9 @@
     const panes = new Map();   // sessionId -> pane record
 
     // Cached app settings for new terminals; live panes keep their options.
-    let appSettings = { font: { family: 'Cascadia Mono', size: 13 }, scrollbackLines: 10000 };
+    // Placeholder until main answers with the real settings (which carry a
+    // platform-appropriate default); the CSS stack covers the gap.
+    let appSettings = { font: { family: '' }, scrollbackLines: 10000 };
     if (window.rsterm) {
         rsterm.invoke('rs:settings.get').then((s) => { if (s) { appSettings = s; refreshTheme(); } });
         rsterm.on('rs:evt.settings-changed', (s) => { appSettings = s; refreshTheme(); });
@@ -145,7 +147,10 @@
 
         const term = new Terminal({
             scrollback: appSettings.scrollbackLines || 10000,
-            fontFamily: `'${(appSettings.font || {}).family || 'Cascadia Mono'}', Consolas, monospace`,
+            // The configured face first, then a per-platform ladder: a
+            // Linux box has no Cascadia and a Windows box has no DejaVu.
+            fontFamily: `'${(appSettings.font || {}).family || 'monospace'}', Consolas, ` +
+                `'DejaVu Sans Mono', 'Ubuntu Mono', Menlo, monospace`,
             fontSize: effectiveFontSize(),
             theme: terminalTheme(),
             allowProposedApi: true,
