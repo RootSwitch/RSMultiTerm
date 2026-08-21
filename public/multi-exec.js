@@ -160,7 +160,16 @@
         backdrop.appendChild(modal);
         document.body.appendChild(backdrop);
 
-        const closeModal = () => backdrop.remove();
+        // Whichever way the dialog closes, the keyboard goes back to the
+        // terminal it was taken from. The muscle memory this serves: paste
+        // a block of commands, hit Send, hit Enter to run the last line -
+        // and the Enter must reach the device, not a dialog-less void.
+        const closeModal = () => {
+            backdrop.remove();
+            const tab = window.Tabs.active();
+            const pane = tab && window.TermPanes.panes.get(tab.focusedSessionId);
+            if (pane) pane.term.focus();
+        };
         cancel.addEventListener('click', closeModal);
         backdrop.addEventListener('click', (e) => { if (e.target === backdrop) closeModal(); });
         ok.addEventListener('click', () => {

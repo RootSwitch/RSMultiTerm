@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- **Focus returns to the terminal after the multi-line paste dialog.**
+  Paste a block of commands, hit Send, hit Enter to run the last line:
+  the Enter now reaches the device, instead of needing a click back
+  into the pane first. Cancel returns focus too.
+- **A single hero image.** The four-theme quadrant grid was too busy to
+  read at README scale, so it is one Classic-theme MultiTerm tab: four
+  distinct fixture devices and a file browser that looks like a real
+  flash: directory.
+
 - **The profile list updates the moment a profile is saved.** It used
   to sit unchanged until closed and reopened, leaving you to wonder
   whether the save took or the wrong button got clicked - the New
