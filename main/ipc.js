@@ -11,6 +11,7 @@ const path = require('path');
 const sessionStore = require('./session-store');
 const secrets = require('./secrets');
 const sshKeys = require('./ssh-keys');
+const { logDirCandidates } = require('./log-dirs');
 const connectFlow = require('./connect-flow');
 const hostkeys = require('./hostkeys');
 const highlights = require('./highlights');
@@ -29,31 +30,20 @@ const tunnelStore = require('./tunnel-store');
 let cachedLogDir = null;
 function defaultLogDir() {
     if (cachedLogDir) return cachedLogDir;
-    const candidates = [];
-    if (process.env.RSMT_LOGDIR) candidates.push(process.env.RSMT_LOGDIR);
-    if (app.isPackaged) {
-        // "Beside the app" - EXCEPT when beside the app IS the Desktop.
-        // A portable exe parked on the desktop was quietly growing a
-        // logs/<date>/ tree next to the wallpaper; that surprise beats the
-        // self-containment nicety, so a desktop-resident exe logs to
-        // Documents instead.
-        const desktop = (() => {
-            try { return path.resolve(app.getPath('desktop')).toLowerCase(); }
-            catch (_) { return null; }
-        })();
-        const besideApp = (dir) =>
-            desktop && path.resolve(dir).toLowerCase() === desktop ? null : path.join(dir, 'logs');
-        const portable = process.env.PORTABLE_EXECUTABLE_DIR;
-        if (portable) {
-            const c = besideApp(portable);
-            if (c) candidates.push(c);
-        }
-        const c2 = besideApp(path.dirname(app.getPath('exe')));
-        if (c2) candidates.push(c2);
-    } else {
-        candidates.push(path.join(__dirname, '..', 'logs'));
-    }
-    candidates.push(path.join(app.getPath('documents'), 'RSMultiTerm', 'logs'));
+    // Candidate selection lives in log-dirs.js, pure and tested - it owns
+    // the two exclusions (never the Desktop, never anything under %TEMP%,
+    // which for a portable build includes the exe's own extraction dir).
+    const get = (name) => { try { return app.getPath(name); } catch (_) { return null; } };
+    const candidates = logDirCandidates({
+        envOverride: process.env.RSMT_LOGDIR || null,
+        isPackaged: app.isPackaged,
+        portableDir: process.env.PORTABLE_EXECUTABLE_DIR || null,
+        exeDir: path.dirname(app.getPath('exe')),
+        devDir: path.join(__dirname, '..'),
+        desktop: get('desktop'),
+        tmpdir: get('temp'),
+        documents: get('documents'),
+    });
     for (const dir of candidates) {
         try {
             fs.mkdirSync(dir, { recursive: true });

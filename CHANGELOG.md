@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+- **A desktop-parked portable no longer logs into %TEMP%.** The 0.1.0
+  fix that kept logs/ off the Desktop skipped the desktop candidate,
+  then fell through to "beside the exe" - which for a portable build
+  is the EXTRACTED COPY running from a temp folder that changes
+  between logon sessions. Logs looked like they vanished between runs;
+  they were actually stranded across old temp folders (they are still
+  there, under %LOCALAPPDATA%\Temp, until Windows cleans up, if you
+  want to rescue any). Candidate selection now lives in a pure,
+  tested module with two hard rules - never the Desktop, never
+  anything under the temp directory - so a desktop portable goes
+  straight to Documents\RSMultiTerm\logs. An explicitly configured
+  Log folder was always honored and still is; RSMT_LOGDIR stays
+  verbatim. Verified by running the packaged portable from a real
+  Desktop: no logs/ beside it, Documents used, and the sidebar line
+  says so.
+
 - **Linux port preparation.** The app was Windows-only by assumption
   rather than by design, so the assumptions are now branches. Secret
   storage is the one that mattered: on Linux with no keyring, Chromium
