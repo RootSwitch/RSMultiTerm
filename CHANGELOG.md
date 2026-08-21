@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.1.1 - 2026-08-21
+
 - **A desktop-parked portable no longer logs into %TEMP%.** The 0.1.0
   fix that kept logs/ off the Desktop skipped the desktop candidate,
   then fell through to "beside the exe" - which for a portable build
