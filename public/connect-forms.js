@@ -36,6 +36,7 @@
         const profileOpts = [{ value: '', label: inheritLabel('credentialProfile', 'none') }]
             .concat(profiles.map((p) => ({ value: p.name, label: p.name })));
         const fProfile = select(profileOpts, node.credentialProfile || '');
+        offerNewProfile(fProfile);
         const sessionOpts = [{ value: '', label: inheritLabel('jumpHost', 'none') },
             { value: '-', label: 'none (override inherit)' }]
             .concat(Object.values(nodes)
@@ -124,6 +125,7 @@
         const fName = input(node.name, 'Core - HQ');
         const fProfile = select([{ value: '', label: 'no default' }]
             .concat(profiles.map((p) => ({ value: p.name, label: p.name }))), d.credentialProfile || '');
+        offerNewProfile(fProfile);
         const fPort = input(d.port, 'no default', 'number');
         const fLogging = select([
             { value: '', label: 'inherit' },
@@ -155,6 +157,35 @@
             },
         ]);
         fName.focus();
+    }
+
+    // "Create a new profile..." as the last entry of a credentials dropdown.
+    // Choosing it opens the profile editor on top of the current dialog; on
+    // save the new profile is added to the list and selected, on cancel the
+    // dropdown is back where it was. The select never rests on the sentinel
+    // itself, so a form saved mid-flow cannot store '__new__' as a profile.
+    const NEW_PROFILE = '__new__';
+    function offerNewProfile(sel) {
+        const o = document.createElement('option');
+        o.value = NEW_PROFILE;
+        o.textContent = 'Create a new profile...';
+        sel.appendChild(o);
+        let previous = sel.value;
+        sel.addEventListener('change', () => {
+            if (sel.value !== NEW_PROFILE) { previous = sel.value; return; }
+            sel.value = previous;
+            editProfile(null, (created) => {
+                if (!created || !created.name) return;
+                if (![...sel.options].some((x) => x.value === created.name)) {
+                    const added = document.createElement('option');
+                    added.value = created.name;
+                    added.textContent = created.name;
+                    sel.insertBefore(added, o);
+                }
+                sel.value = created.name;
+                previous = created.name;
+            });
+        });
     }
 
     // --- credential profile manager --------------------------------------
@@ -202,7 +233,9 @@
         await refresh();
 
         open('Credential profiles', body, [
-            { label: 'New profile', onClick: () => { editProfile(null, () => {}); return false; } },
+            // `refresh`, not a no-op: the list sat unchanged after a save, and
+            // a user staring at it could not tell whether the profile took.
+            { label: 'New profile', onClick: () => { editProfile(null, refresh); return false; } },
             { label: 'Close', primary: true },
         ]);
     }

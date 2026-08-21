@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+- **The profile list updates the moment a profile is saved.** It used
+  to sit unchanged until closed and reopened, leaving you to wonder
+  whether the save took or the wrong button got clicked - the New
+  profile button was wired to a no-op instead of the refresh that Edit
+  already used.
+- **"Create a new profile..." in the Credentials dropdown.** Both the
+  session editor and the folder editor's default-credentials list end
+  with it; choosing it opens the profile editor on top, and on save the
+  new profile is added to the list and selected. Cancel puts the
+  dropdown back where it was.
+
 ## 0.1.1 - 2026-08-21
 
 - **A desktop-parked portable no longer logs into %TEMP%.** The 0.1.0
