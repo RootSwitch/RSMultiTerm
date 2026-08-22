@@ -499,6 +499,58 @@
         },
     };
 
+    // Fire: the demo-scene heat buffer. Each cell cools from the one below
+    // it with a little random drift, the bottom row is the fuel, and heat
+    // picks both the glyph and the color - the theme's own colors, so Ember
+    // burns orange, Phosphor green, and Classic is a blue flame.
+    STYLES.fire = {
+        label: 'Fire', screen: false,
+        init(env) {
+            const cw = 10, ch = 16;
+            const cols = Math.ceil(env.w / cw), rows = Math.ceil(env.h / ch);
+            return { cw, ch, cols, rows, heat: new Float32Array(cols * rows), acc: 0, t: 0 };
+        },
+        frame(ctx, env, s, dt) {
+            const c = env.colors;
+            const { cols, rows, heat } = s;
+            s.t += dt;
+            s.acc += dt;
+            // Simulate at a fixed 20 Hz regardless of draw rate, so the flame
+            // speed does not depend on the machine.
+            while (s.acc >= 0.05) {
+                s.acc -= 0.05;
+                // Fuel: the bottom row flickers near full heat.
+                for (let x = 0; x < cols; x++) {
+                    heat[(rows - 1) * cols + x] = 0.85 + Math.random() * 0.15;
+                }
+                for (let y = rows - 2; y >= 0; y--) {
+                    for (let x = 0; x < cols; x++) {
+                        const drift = Math.floor(Math.random() * 3) - 1;
+                        const sx = Math.max(0, Math.min(cols - 1, x + drift));
+                        const below = heat[(y + 1) * cols + sx];
+                        heat[y * cols + x] = Math.max(0, below - Math.random() * 0.09 - 0.015);
+                    }
+                }
+            }
+            ctx.fillStyle = c.bg;
+            ctx.fillRect(0, 0, env.w, env.h);
+            ctx.font = `${s.ch - 2}px ${c.mono}`;
+            ctx.textBaseline = 'top';
+            const ramp = ' .:-=+*#%@';
+            let tier = -1;
+            for (let y = 0; y < rows; y++) {
+                for (let x = 0; x < cols; x++) {
+                    const h = heat[y * cols + x];
+                    if (h < 0.08) continue;
+                    const g = ramp[Math.min(ramp.length - 1, Math.floor(h * ramp.length))];
+                    const t = h > 0.75 ? 2 : h > 0.4 ? 1 : 0;
+                    if (t !== tier) { ctx.fillStyle = t === 2 ? c.txt : t === 1 ? c.accent : c.dim; tier = t; }
+                    ctx.fillText(g, x * s.cw, y * s.ch);
+                }
+            }
+        },
+    };
+
     window.Idle = {
         start, stop,
         isRunning: () => !!running,

@@ -19,7 +19,10 @@
   command line. Mouse movement wakes it with no side effect; a dialog
   the app raises takes it down; it pauses while the window is hidden;
   prefers-reduced-motion disables auto-start. "Idle animation: play
-  now" in the palette starts it on demand.
+  now" in the palette starts it on demand. Fire joined the set after
+  the first round: the demo-scene heat buffer, simulated at a fixed
+  20 Hz so flame speed does not depend on the machine, colored by the
+  theme - Ember burns orange, Phosphor green, Classic is a blue flame.
 
 - **Focus returns to the terminal after the multi-line paste dialog.**
   Paste a block of commands, hit Send, hit Enter to run the last line:
