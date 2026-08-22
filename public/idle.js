@@ -528,7 +528,10 @@
                         const drift = Math.floor(Math.random() * 3) - 1;
                         const sx = Math.max(0, Math.min(cols - 1, x + drift));
                         const below = heat[(y + 1) * cols + sx];
-                        heat[y * cols + x] = Math.max(0, below - Math.random() * 0.09 - 0.015);
+                        // Cooling per row sets the flame height: this
+                        // averages ~1/35 per row, so the fire reaches about
+                        // 60% of the window instead of licking the bottom.
+                        heat[y * cols + x] = Math.max(0, below - Math.random() * 0.045 - 0.006);
                     }
                 }
             }
