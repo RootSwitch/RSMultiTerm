@@ -157,6 +157,20 @@ assert.ok(resolveBody.includes('defaultLogFolder'),
 assert.ok(resolveBody.includes('logTimestamps'),
     'resolveLogging must consult settings logTimestamps - the Settings field is decorative without it');
 
+// 13. The idle animation is an OVERLAY. It may never write into a terminal
+// or talk to a session port - a screensaver that paints frames into the
+// buffer would corrupt scrollback, pollute session logs, and interleave
+// with device output. And the keystroke that wakes it must be swallowed
+// before a terminal sees it.
+const idle = fs.readFileSync(path.join(PUBLIC, 'idle.js'), 'utf8');
+assert.ok(!/term\.write\(/.test(idle) && !/postMessage\(/.test(idle),
+    'idle.js must never call term.write or post to a session port - overlay only');
+const wake = idle.slice(idle.indexOf('function onWakeKey'), idle.indexOf('function onWakeMouse'));
+assert.ok(/preventDefault\(\)/.test(wake) && /stopImmediatePropagation\(\)/.test(wake),
+    'the waking keystroke must be prevented and stopped, or an Enter reaches a device');
+assert.ok(/addEventListener\('keydown', onWakeKey, \{ capture: true \}\)/.test(idle),
+    'the wake listener must run in the capture phase, ahead of xterm');
+
 console.log(`ok - ui invariants (hidden rule, outside-click menus, clipboard perms, ` +
-    `no default menu, wheel zoom, remote-name sanitizing, gated dev hooks, ` +
+    `no default menu, wheel zoom, remote-name sanitizing, gated dev hooks, idle overlay-only, ` +
     `${scripts.length} scripts, ${wired.size} wired ids)`);

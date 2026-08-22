@@ -44,6 +44,8 @@ const DEFAULTS = {
     // exfiltration path (a password just copied) and is NEVER honored,
     // which is a code guarantee, not a setting.
     osc52: { allowWrite: true },
+    // Idle animation: off unless asked for. 'random' picks a style each time.
+    idle: { style: 'off', minutes: 5 },
 };
 
 let data = null;

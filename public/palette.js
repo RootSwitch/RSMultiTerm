@@ -44,6 +44,12 @@
         // merge-before-publish path behaves identically wherever it is
         // started from.
         {
+            // Start the idle animation now rather than waiting out the
+            // timer - for showing it off, and for checking a style.
+            title: 'Idle animation: play now',
+            run: () => window.Idle && window.Idle.start('random'),
+        },
+        {
             title: 'Install SSH key on this device (ssh-copy-id)',
             run: () => {
                 const tab = window.Tabs.active();

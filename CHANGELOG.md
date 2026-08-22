@@ -2,6 +2,25 @@
 
 ## Unreleased
 
+- **Idle animations - something amusing to find when you come back to
+  your desk.** Off by default; Settings > Idle animation picks a style
+  and how many idle minutes before it starts (or "Surprise me"). Five
+  styles, two of them yours: Rain lets the glyphs from your own
+  terminals fall in the theme's accent (Phosphor makes it green, Ember
+  orange); Bricks turns every word on screen into a brick, in place,
+  and plays an automatic paddle against your show run; Life seeds
+  Conway's Game of Life from the screen's cells; Starfield is the warp;
+  Snow drifts and piles up along the bottom. Two rules keep it safe in
+  a tool that talks to switches: it is an overlay, never the terminal
+  (sessions keep running, logging and acking underneath, and nothing
+  here can write into a buffer - a test pins that), and the keystroke
+  that wakes it is swallowed before any terminal sees it, so the Enter
+  you press to come back never runs whatever was sitting on a device's
+  command line. Mouse movement wakes it with no side effect; a dialog
+  the app raises takes it down; it pauses while the window is hidden;
+  prefers-reduced-motion disables auto-start. "Idle animation: play
+  now" in the palette starts it on demand.
+
 - **Focus returns to the terminal after the multi-line paste dialog.**
   Paste a block of commands, hit Send, hit Enter to run the last line:
   the Enter now reaches the device, instead of needing a click back

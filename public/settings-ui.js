@@ -107,6 +107,21 @@
             'by name, so usernames and passwords are never written to it. Publish and check ' +
             'from the session tree\'s Import menu.';
 
+        // Idle animation: a screensaver that lives in the app. Off unless
+        // chosen; the style list comes from idle.js so a new style needs no
+        // change here.
+        const idle = s.idle || { style: 'off', minutes: 5 };
+        const styleOpts = [{ value: 'off', label: 'Off' }]
+            .concat((window.Idle ? window.Idle.styles() : []).map((x) => ({ value: x.id, label: x.label })))
+            .concat([{ value: 'random', label: 'Surprise me' }]);
+        const fIdleStyle = select(styleOpts, idle.style || 'off');
+        const fIdleMin = input(idle.minutes || 5, '5', 'number');
+        const idleHint = document.createElement('p');
+        idleHint.style.cssText = 'margin:2px 0 10px;color:var(--se-txt-dim);font-size:11px;';
+        idleHint.textContent = 'Plays over the window after that many minutes without keyboard or ' +
+            'mouse. Sessions keep running underneath; any key or mouse movement brings them ' +
+            'back, and the waking keystroke is never sent to a device.';
+
         const fPoll = input((s.teamSync || {}).pollSeconds || 60, '60', 'number');
 
         const fOsc52 = select([
@@ -128,7 +143,8 @@
             row('Font', fFontFamily), row('Font size', fFontSize),
             row('Scrollback lines', fScrollback),
             logRow, row('Log timestamps', fTimestamps),
-            syncRow, syncHint, row('Check sync every (s)', fPoll));
+            syncRow, syncHint, row('Check sync every (s)', fPoll),
+            row('Idle animation', fIdleStyle), row('Start after (min)', fIdleMin), idleHint);
 
         const note = document.createElement('p');
         note.style.cssText = 'margin-top:10px;color:var(--se-txt-dim);font-size:11px;';
@@ -144,6 +160,7 @@
                         mouseMode: Number(fMouse.value),
                         middleClickPaste: fMiddle.value === 'yes',
                         confirmations: { pasteMultiline: fPasteConfirm.value === 'yes' },
+                        idle: { style: fIdleStyle.value, minutes: Number(fIdleMin.value) || 5 },
                         autoOpenFileBrowser: fAutoFiles.value === 'yes',
                         terminalColors: {
                             mode: fTermMode.value,
