@@ -2,6 +2,33 @@
 
 ## Unreleased
 
+- **Idle animations start on Windows Server and over RDP.** They never
+  did: Server editions ship with "Show animations in Windows" off and
+  RDP sessions turn it off too, Chromium reports both as
+  prefers-reduced-motion, and the first version treated that as a
+  veto - the setting looked broken on exactly those machines. The
+  setting is off by default, so turning it on is the consent; Settings
+  now shows a note when the OS asks for reduced motion, and plays
+  anyway. Reproduced and verified with Chromium forced to report
+  reduced motion and a real one-minute wait.
+- **"Terminal panes only" for idle animations.** Settings > Play over:
+  the whole window, or just the terminal panes with the sidebar, tabs
+  and title bar showing through - so the rain falls in your terminal
+  rather than over the app. Works with every style; the screen-aware
+  ones keep their word positions.
+- **Preview button** beside the idle style, like a Windows screensaver:
+  saves the dialog, closes it, and plays the chosen style now.
+- **Snow, Starfield and Fire get a dark ground on light themes.** White
+  flakes on Sakura's paper was a flashbang; the ground is now a
+  near-black tint of the theme's accent (Sakura: dark pink night with
+  pink blossoms, Glacier: dark blue). Rain, Bricks, Life and Aliens
+  keep the real terminal background, since they draw over its words.
+- **Fire runs at half speed.**
+- **Enter submits dialogs.** Enter (or Numpad Enter) in any dialog's
+  text field presses its primary button - Connect in the one-off
+  credentials dialog, Save in editors - instead of needing a click.
+  Dialogs with their own Enter handling are unaffected.
+
 - **Idle animations - something amusing to find when you come back to
   your desk.** Off by default; Settings > Idle animation picks a style
   and how many idle minutes before it starts (or "Surprise me"). Five

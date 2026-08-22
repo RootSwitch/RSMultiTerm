@@ -45,7 +45,7 @@ const DEFAULTS = {
     // which is a code guarantee, not a setting.
     osc52: { allowWrite: true },
     // Idle animation: off unless asked for. 'random' picks a style each time.
-    idle: { style: 'off', minutes: 5 },
+    idle: { style: 'off', minutes: 5, area: 'window' },
 };
 
 let data = null;

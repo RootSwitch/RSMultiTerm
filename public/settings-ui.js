@@ -115,12 +115,33 @@
             .concat((window.Idle ? window.Idle.styles() : []).map((x) => ({ value: x.id, label: x.label })))
             .concat([{ value: 'random', label: 'Surprise me' }]);
         const fIdleStyle = select(styleOpts, idle.style || 'off');
+        fIdleStyle.style.flex = '1';
+        // Preview, as on a Windows screensaver: saves what is in this
+        // dialog, closes it, and plays the chosen style right now. Mostly
+        // for troubleshooting "why has it not started" - and for showing
+        // it off without a five-minute wait.
+        const preview = document.createElement('button');
+        preview.textContent = 'Preview';
+        preview.title = 'Save these settings, close this dialog, and play the chosen style now';
+        const styleRow = document.createElement('div');
+        styleRow.className = 'field-row';
+        const styleLabel = document.createElement('label');
+        styleLabel.textContent = 'Idle animation';
+        styleRow.append(styleLabel, fIdleStyle, preview);
         const fIdleMin = input(idle.minutes || 5, '5', 'number');
+        const fIdleArea = select([
+            { value: 'window', label: 'The whole window' },
+            { value: 'panes', label: 'Terminal panes only - sidebar and tabs stay visible' },
+        ], idle.area === 'panes' ? 'panes' : 'window');
         const idleHint = document.createElement('p');
         idleHint.style.cssText = 'margin:2px 0 10px;color:var(--se-txt-dim);font-size:11px;';
-        idleHint.textContent = 'Plays over the window after that many minutes without keyboard or ' +
-            'mouse. Sessions keep running underneath; any key or mouse movement brings them ' +
-            'back, and the waking keystroke is never sent to a device.';
+        idleHint.textContent = 'Starts after that many minutes without keyboard or mouse. ' +
+            'Sessions keep running underneath; any key or mouse movement brings them back, ' +
+            'and the waking keystroke is never sent to a device.' +
+            (window.Idle && window.Idle.reducedMotion()
+                ? ' Note: this machine asks apps for reduced motion (Windows Server and RDP ' +
+                  'sessions do by default); the animation plays anyway because you turned it on.'
+                : '');
 
         const fPoll = input((s.teamSync || {}).pollSeconds || 60, '60', 'number');
 
@@ -144,43 +165,49 @@
             row('Scrollback lines', fScrollback),
             logRow, row('Log timestamps', fTimestamps),
             syncRow, syncHint, row('Check sync every (s)', fPoll),
-            row('Idle animation', fIdleStyle), row('Start after (min)', fIdleMin), idleHint);
+            styleRow, row('Start after (min)', fIdleMin), row('Play over', fIdleArea), idleHint);
 
         const note = document.createElement('p');
         note.style.cssText = 'margin-top:10px;color:var(--se-txt-dim);font-size:11px;';
         note.textContent = 'Font and scrollback apply to new sessions.';
         body.appendChild(note);
 
-        open('Settings', body, [
+        const collect = () => ({
+            mouseMode: Number(fMouse.value),
+            middleClickPaste: fMiddle.value === 'yes',
+            confirmations: { pasteMultiline: fPasteConfirm.value === 'yes' },
+            idle: { style: fIdleStyle.value, minutes: Number(fIdleMin.value) || 5,
+                area: fIdleArea.value },
+            autoOpenFileBrowser: fAutoFiles.value === 'yes',
+            terminalColors: {
+                mode: fTermMode.value,
+                background: fTermMode.value === 'custom' ? fTermBg.value : null,
+            },
+            // Blank means "whatever this machine's default is";
+            // main owns that choice, so it is sent as null.
+            font: { family: fFontFamily.value.trim() || null, size: Number(fFontSize.value) || 13 },
+            scrollbackLines: Number(fScrollback.value) || 10000,
+            defaultLogFolder: fLogFolder.value.trim() || null,
+            logTimestamps: fTimestamps.value === 'yes',
+            osc52: { allowWrite: fOsc52.value === 'yes' },
+            teamSync: {
+                filePath: fSyncPath.value.trim() || null,
+                pollSeconds: Number(fPoll.value) || 60,
+            },
+        });
+        const dlg = open('Settings', body, [
             { label: 'Cancel' },
             {
                 label: 'Save', primary: true,
-                onClick: () => {
-                    rsterm.invoke('rs:settings.update', {
-                        mouseMode: Number(fMouse.value),
-                        middleClickPaste: fMiddle.value === 'yes',
-                        confirmations: { pasteMultiline: fPasteConfirm.value === 'yes' },
-                        idle: { style: fIdleStyle.value, minutes: Number(fIdleMin.value) || 5 },
-                        autoOpenFileBrowser: fAutoFiles.value === 'yes',
-                        terminalColors: {
-                            mode: fTermMode.value,
-                            background: fTermMode.value === 'custom' ? fTermBg.value : null,
-                        },
-                        // Blank means "whatever this machine's default is";
-                        // main owns that choice, so it is sent as null.
-                        font: { family: fFontFamily.value.trim() || null, size: Number(fFontSize.value) || 13 },
-                        scrollbackLines: Number(fScrollback.value) || 10000,
-                        defaultLogFolder: fLogFolder.value.trim() || null,
-                        logTimestamps: fTimestamps.value === 'yes',
-                        osc52: { allowWrite: fOsc52.value === 'yes' },
-                        teamSync: {
-                            filePath: fSyncPath.value.trim() || null,
-                            pollSeconds: Number(fPoll.value) || 60,
-                        },
-                    });
-                },
+                onClick: () => { rsterm.invoke('rs:settings.update', collect()); },
             },
         ]);
+        preview.addEventListener('click', async () => {
+            await rsterm.invoke('rs:settings.update', collect());
+            dlg.close();
+            const style = fIdleStyle.value === 'off' ? 'random' : fIdleStyle.value;
+            window.Idle.start(style, { area: fIdleArea.value });
+        });
     }
 
     // Build (once) the datalist of installed monospace families.

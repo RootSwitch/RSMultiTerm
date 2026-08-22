@@ -54,6 +54,20 @@
             bar.appendChild(btn);
         }
 
+        // Enter in a text field presses the primary button - the muscle
+        // memory of every login box. Dialogs that handle Enter themselves
+        // (promptText, the password prompts) call preventDefault and are
+        // left alone; selects and textareas keep their own Enter.
+        modal.addEventListener('keydown', (e) => {
+            if (e.key !== 'Enter' || e.defaultPrevented) return;
+            const t = e.target;
+            if (!t || t.tagName !== 'INPUT' || t.type === 'checkbox' || t.type === 'radio') return;
+            const primary = bar.querySelector('button.primary');
+            if (!primary || primary.disabled) return;
+            e.preventDefault();
+            primary.click();
+        });
+
         modal.append(h, body, bar);
         backdrop.appendChild(modal);
         backdrop.addEventListener('click', (e) => {

@@ -19,10 +19,16 @@
 //
 // Also: a dialog appearing while the overlay is up (a password prompt, a
 // host-key question) dismisses it, so nothing the app asks can be hidden
-// behind an animation; the loop pauses while the window is hidden (the app
-// runs with background throttling OFF so terminals keep parsing, which
-// means an animation would otherwise spin at full rate while minimized);
-// and prefers-reduced-motion disables auto-start.
+// behind an animation; and the loop pauses while the window is hidden (the
+// app runs with background throttling OFF so terminals keep parsing, which
+// means an animation would otherwise spin at full rate while minimized).
+//
+// prefers-reduced-motion is NOT a veto. Windows Server editions ship with
+// "Show animations in Windows" off, and RDP sessions turn it off too;
+// Chromium reports both as reduce, and the first version silently refused
+// to ever start on those machines - the setting looked broken. The setting
+// is off by default, so turning it on IS the consent; Settings shows a note
+// when the OS is asking for reduced motion, and that is all.
 //
 // Styles come in two kinds. Screen-aware ones read what the terminals are
 // showing and play with it - words become bricks, glyphs rain, text seeds
@@ -33,7 +39,7 @@
     const FPS_CAP = 30;
     const CHECK_EVERY_MS = 5000;
 
-    let settings = { style: 'off', minutes: 5 };
+    let settings = { style: 'off', minutes: 5, area: 'window' };
     let lastActivity = Date.now();
     let running = null;       // {canvas, ctx, style, state, raf, lastFrame, env}
     let reducedMotion = false;
@@ -47,6 +53,7 @@
         settings = {
             style: i.style || 'off',
             minutes: Math.max(1, Math.min(240, Number(i.minutes) || 5)),
+            area: i.area === 'panes' ? 'panes' : 'window',
         };
     };
     rsterm.invoke('rs:settings.get').then(applySettings);
@@ -70,7 +77,7 @@
     }, { capture: true, passive: true });
 
     setInterval(() => {
-        if (running || settings.style === 'off' || reducedMotion) return;
+        if (running || settings.style === 'off') return;
         if (document.hidden) return;
         if (document.querySelector('.modal-backdrop')) return;
         if (Date.now() - lastActivity >= settings.minutes * 60 * 1000) start(settings.style);
@@ -80,7 +87,7 @@
     function themeColors() {
         const cs = getComputedStyle(document.documentElement);
         const v = (name, fallback) => (cs.getPropertyValue(name) || '').trim() || fallback;
-        return {
+        const c = {
             bg: (window.TermPanes && window.TermPanes.currentBackground()) || '#101318',
             accent: v('--se-accent', '#4aa3e0'),
             up: v('--se-up', '#5eb95e'),
@@ -90,6 +97,26 @@
             dim: v('--se-txt-dim', '#8a95a5'),
             mono: v('--mt-mono', 'monospace'),
         };
+        // Takeover styles (stars, snow, fire) want night. On a light theme
+        // the terminal background is paper, and white flakes on paper is a
+        // flashbang - so the ground becomes a near-black tint of the theme's
+        // accent (Sakura gets a dark pink night, Glacier a dark blue one),
+        // and the ink is the accent itself rather than the theme's dark text.
+        // Screen-aware styles keep the real background: they are drawing
+        // over the terminal's own words and should look like it.
+        const light = window.Colors && window.Colors.isLight(c.bg);
+        if (light) {
+            const a = window.Colors.hexToRgb(c.accent) || { r: 60, g: 80, b: 120 };
+            c.ground = window.Colors.rgbToHex({
+                r: Math.round(a.r * 0.14), g: Math.round(a.g * 0.14), b: Math.round(a.b * 0.14) });
+            c.ink = '#f2f2f2';
+            c.inkDim = c.accent;
+        } else {
+            c.ground = c.bg;
+            c.ink = c.txt;
+            c.inkDim = c.dim;
+        }
+        return c;
     }
 
     // What the visible terminals are showing, with pixel geometry so a style
@@ -134,7 +161,30 @@
     }
 
     // --- the loop -------------------------------------------------------------
-    function start(styleId) {
+    // The union of the visible terminal hosts: a clip path plus its
+    // bounding box. Null when there are no panes (then it is the window).
+    function paneRegion() {
+        if (!window.Tabs || !window.TermPanes) return null;
+        const tab = window.Tabs.active();
+        if (!tab) return null;
+        const rects = [];
+        for (const sid of tab.sessionIds) {
+            const pane = window.TermPanes.panes.get(sid);
+            if (!pane || !pane.host || !pane.host.isConnected) continue;
+            const r = pane.host.getBoundingClientRect();
+            if (r.width > 10 && r.height > 10) rects.push(r);
+        }
+        if (!rects.length) return null;
+        const x = Math.min(...rects.map((r) => r.left)), y = Math.min(...rects.map((r) => r.top));
+        const right = Math.max(...rects.map((r) => r.right)), bottom = Math.max(...rects.map((r) => r.bottom));
+        return { x, y, w: right - x, h: bottom - y, rects };
+    }
+    function shiftScreen(screen, dx, dy) {
+        for (const l of screen.lines) { l.x += dx; l.y += dy; }
+        for (const w of screen.words) { w.x += dx; w.y += dy; }
+    }
+
+    function start(styleId, opts) {
         if (running) return;
         const ids = Object.keys(STYLES);
         const id = styleId === 'random' || !STYLES[styleId]
@@ -147,13 +197,21 @@
         canvas.height = window.innerHeight;
         document.body.appendChild(canvas);
         const ctx = canvas.getContext('2d');
+
+        // "Terminal panes only": the animation is clipped to the terminal
+        // hosts and its world is their bounding box, so the rain falls in
+        // your terminal while the sidebar, tabs and title stay visible.
+        const region = (opts && opts.area || settings.area) === 'panes' ? paneRegion() : null;
+        if (region) canvas.classList.add('keyed');
+        const screen = style.screen ? sampleScreen() : null;
+        if (region && screen) shiftScreen(screen, -region.x, -region.y);
         const env = {
-            w: canvas.width, h: canvas.height,
+            w: region ? region.w : canvas.width, h: region ? region.h : canvas.height,
             colors: themeColors(),
-            screen: style.screen ? sampleScreen() : null,
+            screen,
             rnd: Math.random,
         };
-        running = { canvas, ctx, style, env, state: style.init(env), raf: 0, lastFrame: 0, id };
+        running = { canvas, ctx, style, env, region, state: style.init(env), raf: 0, lastFrame: 0, id };
         lastMouse = null;
 
         // The waking keystroke never reaches a terminal: capture phase,
@@ -198,8 +256,11 @@
     }
     function onResize() {
         if (!running) return;
-        running.canvas.width = running.env.w = window.innerWidth;
-        running.canvas.height = running.env.h = window.innerHeight;
+        running.canvas.width = window.innerWidth;
+        running.canvas.height = window.innerHeight;
+        if (running.region) running.region = paneRegion();
+        running.env.w = running.region ? running.region.w : window.innerWidth;
+        running.env.h = running.region ? running.region.h : window.innerHeight;
         running.state = running.style.init(running.env);
     }
 
@@ -212,7 +273,26 @@
         if (running.lastFrame && now - running.lastFrame < 1000 / FPS_CAP) return;
         const dt = running.lastFrame ? Math.min(0.1, (now - running.lastFrame) / 1000) : 1 / FPS_CAP;
         running.lastFrame = now;
-        running.style.frame(running.ctx, running.env, running.state, dt);
+        const { ctx, region } = running;
+        if (region) {
+            // Clip to the panes, then move the origin to their box: every
+            // style draws as if the box were the whole canvas. Outside the
+            // clip nothing is ever painted, so the chrome shows through.
+            ctx.save();
+            ctx.beginPath();
+            for (const r of region.rects) ctx.rect(r.left, r.top, r.width, r.height);
+            ctx.clip();
+            ctx.translate(region.x, region.y);
+        }
+        running.style.frame(ctx, running.env, running.state, dt);
+        if (region) ctx.restore();
+    }
+
+    // A fresh screen sample in the running style's coordinate space.
+    function resample() {
+        const screen = sampleScreen();
+        if (running && running.region) shiftScreen(screen, -running.region.x, -running.region.y);
+        return screen;
     }
 
     function setStatus(text) {
@@ -341,7 +421,7 @@
                 ctx.fillText(br.text, br.x, br.y + 2);
             }
             if (alive === 0) {
-                const fresh = STYLES.bricks.init({ ...env, screen: sampleScreen() });
+                const fresh = STYLES.bricks.init({ ...env, screen: resample() });
                 if (fresh.bricks.length) Object.assign(s, fresh);
             }
 
@@ -411,7 +491,7 @@
                 s.history.push(pop);
                 if (s.history.length > 24) s.history.shift();
                 if (s.history.length === 24 && new Set(s.history).size <= 2) {
-                    Object.assign(s, STYLES.life.init({ ...env, screen: sampleScreen() }));
+                    Object.assign(s, STYLES.life.init({ ...env, screen: resample() }));
                 }
             }
             ctx.fillStyle = c.bg;
@@ -438,7 +518,7 @@
         },
         frame(ctx, env, s, dt) {
             const c = env.colors;
-            ctx.fillStyle = c.bg;
+            ctx.fillStyle = c.ground;
             ctx.fillRect(0, 0, env.w, env.h);
             ctx.textBaseline = 'middle';
             ctx.textAlign = 'center';
@@ -452,7 +532,7 @@
                 if (x < 0 || x > env.w || y < 0 || y > env.h) { Object.assign(st, s.mk()); st.z = 1; continue; }
                 const tier = Math.min(4, Math.floor((1 - st.z) * 5));
                 ctx.font = `${8 + tier * 3}px ${c.mono}`;
-                ctx.fillStyle = tier >= 3 ? c.txt : tier === 2 ? c.accent : c.dim;
+                ctx.fillStyle = tier >= 3 ? c.ink : tier === 2 ? c.accent : c.inkDim;
                 ctx.fillText(glyphs[tier], x, y);
             }
             ctx.textAlign = 'start';
@@ -474,7 +554,7 @@
         frame(ctx, env, s, dt) {
             const c = env.colors;
             s.t += dt;
-            ctx.fillStyle = c.bg;
+            ctx.fillStyle = c.ground;
             ctx.fillRect(0, 0, env.w, env.h);
             ctx.textBaseline = 'middle';
             const glyph = ['.', '*', '*'];
@@ -489,10 +569,10 @@
                     continue;
                 }
                 ctx.font = `${10 + f.size * 4}px ${c.mono}`;
-                ctx.fillStyle = f.size === 2 ? c.txt : c.dim;
+                ctx.fillStyle = f.size === 2 ? c.ink : c.inkDim;
                 ctx.fillText(glyph[f.size], f.x, f.y);
             }
-            ctx.fillStyle = c.txt;
+            ctx.fillStyle = c.ink;
             for (let i = 0; i < s.drift.length; i++) {
                 if (s.drift[i] > 0) ctx.fillRect(i * 6, env.h - s.drift[i], 6, s.drift[i]);
             }
@@ -515,10 +595,10 @@
             const { cols, rows, heat } = s;
             s.t += dt;
             s.acc += dt;
-            // Simulate at a fixed 20 Hz regardless of draw rate, so the flame
-            // speed does not depend on the machine.
-            while (s.acc >= 0.05) {
-                s.acc -= 0.05;
+            // Simulate at a fixed 10 Hz regardless of draw rate, so the flame
+            // speed does not depend on the machine. (20 Hz read as frantic.)
+            while (s.acc >= 0.1) {
+                s.acc -= 0.1;
                 // Fuel: the bottom row flickers near full heat.
                 for (let x = 0; x < cols; x++) {
                     heat[(rows - 1) * cols + x] = 0.85 + Math.random() * 0.15;
@@ -535,7 +615,7 @@
                     }
                 }
             }
-            ctx.fillStyle = c.bg;
+            ctx.fillStyle = c.ground;
             ctx.fillRect(0, 0, env.w, env.h);
             ctx.font = `${s.ch - 2}px ${c.mono}`;
             ctx.textBaseline = 'top';
@@ -547,7 +627,7 @@
                     if (h < 0.08) continue;
                     const g = ramp[Math.min(ramp.length - 1, Math.floor(h * ramp.length))];
                     const t = h > 0.75 ? 2 : h > 0.4 ? 1 : 0;
-                    if (t !== tier) { ctx.fillStyle = t === 2 ? c.txt : t === 1 ? c.accent : c.dim; tier = t; }
+                    if (t !== tier) { ctx.fillStyle = t === 2 ? c.ink : t === 1 ? c.accent : c.inkDim; tier = t; }
                     ctx.fillText(g, x * s.cw, y * s.ch);
                 }
             }
@@ -748,7 +828,7 @@
             // Wave over - cleared, or the block reached the ship - so read
             // the screen again and fly the next one in.
             if (alive === 0 || (s.settled && lowest >= shipY - 20)) {
-                STYLES.aliens.wave({ ...env, screen: sampleScreen() }, s);
+                STYLES.aliens.wave({ ...env, screen: resample() }, s);
             }
 
             // --- draw ------------------------------------------------------
@@ -789,6 +869,9 @@
         // The running style's state, for probes that want to assert on
         // behavior (a wave thinned, a diver launched) rather than pixels.
         debugState: () => (running ? running.state : null),
+        // Whether the OS is asking for reduced motion - shown in Settings,
+        // never used to refuse an explicit opt-in.
+        reducedMotion: () => reducedMotion,
         styles: () => Object.entries(STYLES).map(([id, s]) => ({ id, label: s.label })),
     };
 })();
