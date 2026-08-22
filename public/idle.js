@@ -554,11 +554,241 @@
         },
     };
 
+    // Aliens: the three lineages in one. The words on screen FLY IN along
+    // curves and reassemble where they were (the Galaga arrival), then march
+    // as a block - left, edge, drop a row, right - speeding up as they thin
+    // out (the Invaders heartbeat), while singles peel off to dive and drop
+    // glyph bombs (the Galaxian swoop). An auto-piloted ship at the bottom
+    // shoots back, dodges most bombs, and mistimes the occasional one, since
+    // a flawless bot is boring to watch. Lives are infinite; this is a
+    // screensaver, not a game.
+    STYLES.aliens = {
+        label: 'Aliens', screen: true,
+        init(env) {
+            return STYLES.aliens.wave(env, { waves: 0, ship: null, bombs: [], lasers: [], bursts: [] });
+        },
+        // Start a wave from whatever is on screen; a blank screen gets a
+        // classic 5x11 block of glyphs so there is still something to shoot.
+        wave(env, s) {
+            let words = (env.screen ? env.screen.words : []).filter((w) => w.text.length > 0);
+            if (words.length < 6) {
+                words = [];
+                const cw = 11, ch = 20;
+                for (let r = 0; r < 5; r++) {
+                    for (let c = 0; c < 11; c++) {
+                        words.push({ text: ['<o>', '{o}', '[o]', '(o)', '-o-'][r], w: 3 * cw, h: ch,
+                            x: env.w * 0.2 + c * cw * 5, y: env.h * 0.12 + r * ch * 1.6 });
+                    }
+                }
+            }
+            const aliens = words.map((w, i) => {
+                // Entry curve: from a random edge, through an off-axis control
+                // point, to the word's own screen position.
+                const side = Math.random() < 0.5 ? -1 : 1;
+                const from = Math.random() < 0.5
+                    ? { x: env.w / 2 + side * (env.w / 2 + 80), y: Math.random() * env.h * 0.5 }
+                    : { x: Math.random() * env.w, y: -60 };
+                return {
+                    text: w.text, w: w.w, h: w.h, homeX: w.x, homeY: w.y,
+                    x: from.x, y: from.y, tone: i % 3, state: 'arriving',
+                    arrive: { t: -i * 0.02 - Math.random() * 0.15, from,
+                        ctrl: { x: (from.x + w.x) / 2 + side * 220, y: Math.min(from.y, w.y) - 140 } },
+                    dive: null,
+                };
+            });
+            const minX = Math.min(...aliens.map((a) => a.homeX));
+            const maxX = Math.max(...aliens.map((a) => a.homeX + a.w));
+            return Object.assign(s, {
+                aliens, total: aliens.length, minX, maxX,
+                ox: 0, oy: 0, dir: 1, settled: false, diveClock: 2 + Math.random() * 2,
+                ship: s.ship || { x: env.w / 2, dead: 0, cool: 0, think: 0, target: env.w / 2 },
+                bombs: [], lasers: [], waves: (s.waves || 0) + 1,
+            });
+        },
+        frame(ctx, env, s, dt) {
+            const c = env.colors;
+            const shipY = env.h - 34;
+            const shipW = 36;
+            const quad = (p0, p1, p2, t) => ({
+                x: (1 - t) * (1 - t) * p0.x + 2 * (1 - t) * t * p1.x + t * t * p2.x,
+                y: (1 - t) * (1 - t) * p0.y + 2 * (1 - t) * t * p1.y + t * t * p2.y,
+            });
+
+            // --- aliens --------------------------------------------------
+            let alive = 0, inFormation = 0, lowest = 0;
+            for (const a of s.aliens) {
+                if (a.state === 'dead') continue;
+                alive++;
+                if (a.state === 'arriving') {
+                    a.arrive.t += dt * 0.55;
+                    if (a.arrive.t >= 1) { a.state = 'formation'; }
+                    else if (a.arrive.t > 0) {
+                        const p = quad(a.arrive.from, a.arrive.ctrl,
+                            { x: a.homeX + s.ox, y: a.homeY + s.oy }, a.arrive.t);
+                        a.x = p.x; a.y = p.y;
+                    }
+                }
+                if (a.state === 'formation') {
+                    inFormation++;
+                    a.x = a.homeX + s.ox;
+                    a.y = a.homeY + s.oy;
+                }
+                if (a.state === 'diving') {
+                    const d = a.dive;
+                    d.t += dt / d.dur;
+                    const p = quad(d.from, d.ctrl, d.to, Math.min(1, d.t));
+                    a.x = p.x; a.y = p.y;
+                    d.bomb -= dt;
+                    if (d.bomb <= 0 && a.y < shipY - 80) {
+                        d.bomb = 0.7;
+                        s.bombs.push({ x: a.x + a.w / 2, y: a.y + a.h, vy: 220 });
+                    }
+                    if (d.t >= 1) {
+                        // Back in from the top to the slot.
+                        a.state = 'arriving';
+                        a.arrive = { t: 0, from: { x: a.homeX + s.ox, y: -50 },
+                            ctrl: { x: a.homeX + s.ox + 60, y: (a.homeY + s.oy) / 2 } };
+                    }
+                }
+                // Only the block counts toward "reached the ship": a diver
+                // swooping past the bottom is the point of diving, not an
+                // invasion - measuring it restarted the wave every dive.
+                if (a.state === 'formation') lowest = Math.max(lowest, a.y + a.h);
+            }
+            s.settled = inFormation > 0 && s.aliens.every((a) => a.state !== 'arriving' || a.arrive.t >= 1);
+
+            // March: the whole block, faster as it thins. Edges flip the
+            // direction and drop one row.
+            if (inFormation) {
+                const speed = 22 * (1 + 4 * (1 - alive / s.total));
+                s.ox += s.dir * speed * dt;
+                if (s.dir > 0 && s.maxX + s.ox > env.w - 12) { s.dir = -1; s.oy += 16; }
+                if (s.dir < 0 && s.minX + s.ox < 12) { s.dir = 1; s.oy += 16; }
+            }
+            // Pick a diver now and then, once the formation has settled.
+            if (s.settled) {
+                s.diveClock -= dt;
+                if (s.diveClock <= 0) {
+                    s.diveClock = 1.5 + Math.random() * 2.5;
+                    const pool = s.aliens.filter((a) => a.state === 'formation');
+                    if (pool.length) {
+                        const a = pool[Math.floor(Math.random() * pool.length)];
+                        const side = Math.random() < 0.5 ? -1 : 1;
+                        a.state = 'diving';
+                        a.dive = {
+                            t: 0, dur: 2.2 + Math.random(), bomb: 0.3,
+                            from: { x: a.x, y: a.y },
+                            ctrl: { x: a.x + side * 320, y: a.y + (shipY - a.y) * 0.6 },
+                            to: { x: s.ship.x - side * 120, y: env.h + 40 },
+                        };
+                    }
+                }
+            }
+
+            // --- the ship ------------------------------------------------
+            const ship = s.ship;
+            if (ship.dead > 0) {
+                ship.dead -= dt;
+            } else {
+                ship.think -= dt;
+                if (ship.think <= 0) {
+                    // Re-aim every quarter second, not every frame: the lag is
+                    // what makes it occasionally late.
+                    ship.think = 0.25;
+                    const threat = s.bombs.find((b) => b.y > shipY - 140 && Math.abs(b.x - ship.x) < 34);
+                    if (threat) {
+                        ship.target = ship.x + (threat.x > ship.x ? -110 : 110);
+                    } else {
+                        let best = null;
+                        for (const a of s.aliens) {
+                            if (a.state === 'dead' || a.state === 'arriving') continue;
+                            if (!best || a.y > best.y) best = a;
+                        }
+                        ship.target = best ? best.x + best.w / 2 : env.w / 2;
+                    }
+                }
+                const step = 330 * dt;
+                ship.x += Math.max(-step, Math.min(step, ship.target - ship.x));
+                ship.x = Math.max(shipW, Math.min(env.w - shipW, ship.x));
+                ship.cool -= dt;
+                if (ship.cool <= 0) {
+                    ship.cool = 0.42;
+                    s.lasers.push({ x: ship.x, y: shipY - 6, vy: -540 });
+                }
+            }
+
+            // --- projectiles -----------------------------------------------
+            for (const b of s.bombs) b.y += b.vy * dt;
+            for (const l of s.lasers) l.y += l.vy * dt;
+            if (ship.dead <= 0) {
+                const hit = s.bombs.find((b) => Math.abs(b.x - ship.x) < shipW / 2 && b.y >= shipY - 8 && b.y <= shipY + 12);
+                if (hit) {
+                    hit.y = env.h + 99;
+                    ship.dead = 1.4;
+                    s.bursts.push({ x: ship.x, y: shipY, t: 0.6, big: true });
+                }
+            }
+            for (const l of s.lasers) {
+                if (l.y < -10) continue;
+                for (const a of s.aliens) {
+                    if (a.state === 'dead' || a.state === 'arriving') continue;
+                    if (l.x >= a.x && l.x <= a.x + a.w && l.y >= a.y && l.y <= a.y + a.h) {
+                        a.state = 'dead';
+                        l.y = -99;
+                        s.bursts.push({ x: a.x + a.w / 2, y: a.y + a.h / 2, t: 0.35, big: false });
+                        break;
+                    }
+                }
+            }
+            s.bombs = s.bombs.filter((b) => b.y < env.h + 20);
+            s.lasers = s.lasers.filter((l) => l.y > -20);
+            for (const k of s.bursts) k.t -= dt;
+            s.bursts = s.bursts.filter((k) => k.t > 0);
+
+            // Wave over - cleared, or the block reached the ship - so read
+            // the screen again and fly the next one in.
+            if (alive === 0 || (s.settled && lowest >= shipY - 20)) {
+                STYLES.aliens.wave({ ...env, screen: sampleScreen() }, s);
+            }
+
+            // --- draw ------------------------------------------------------
+            ctx.fillStyle = c.bg;
+            ctx.fillRect(0, 0, env.w, env.h);
+            ctx.textBaseline = 'top';
+            const fontPx = Math.max(10, Math.round(((s.aliens[0] || { h: 16 }).h) * 0.75));
+            ctx.font = `${fontPx}px ${c.mono}`;
+            for (const a of s.aliens) {
+                if (a.state === 'dead') continue;
+                if (a.state === 'arriving' && a.arrive.t <= 0) continue;
+                ctx.fillStyle = a.state === 'diving' ? c.txt
+                    : a.tone === 0 ? c.accent : a.tone === 1 ? c.up : c.warn;
+                ctx.fillText(a.text, a.x, a.y + 2);
+            }
+            ctx.fillStyle = c.warn;
+            for (const b of s.bombs) ctx.fillText(':', b.x - 3, b.y);
+            ctx.fillStyle = c.txt;
+            for (const l of s.lasers) ctx.fillText('|', l.x - 3, l.y);
+            for (const k of s.bursts) {
+                ctx.fillStyle = k.big ? c.down : c.warn;
+                ctx.font = `${k.big ? fontPx * 2 : fontPx}px ${c.mono}`;
+                ctx.fillText(k.big ? '* * *' : '*', k.x - (k.big ? fontPx * 1.5 : fontPx / 3), k.y - fontPx / 2);
+            }
+            if (ship.dead <= 0) {
+                ctx.font = `${fontPx + 4}px ${c.mono}`;
+                ctx.fillStyle = c.txt;
+                ctx.fillText('<^>', ship.x - (fontPx + 4) * 0.9, shipY);
+            }
+        },
+    };
+
     window.Idle = {
         start, stop,
         isRunning: () => !!running,
         // Frames drawn since load - the honest way to measure the loop.
         frameCount: () => frames,
+        // The running style's state, for probes that want to assert on
+        // behavior (a wave thinned, a diver launched) rather than pixels.
+        debugState: () => (running ? running.state : null),
         styles: () => Object.entries(STYLES).map(([id, s]) => ({ id, label: s.label })),
     };
 })();

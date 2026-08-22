@@ -23,6 +23,13 @@
   the first round: the demo-scene heat buffer, simulated at a fixed
   20 Hz so flame speed does not depend on the machine, colored by the
   theme - Ember burns orange, Phosphor green, Classic is a blue flame.
+  And Aliens, the three arcade lineages in one: the words on screen
+  fly in along curves and reassemble where they were, march as a block
+  that speeds up as it thins, and peel off one at a time to dive and
+  drop glyph bombs, while an auto-piloted ship at the bottom shoots
+  back and dodges most of them. With a MultiTerm grid open, every
+  pane's text joins the formation. Idle is global - one overlay over
+  the window, triggered by keyboard and mouse silence, not per session.
 
 - **Focus returns to the terminal after the multi-line paste dialog.**
   Paste a block of commands, hit Send, hit Enter to run the last line:
