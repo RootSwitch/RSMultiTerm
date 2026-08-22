@@ -69,6 +69,7 @@
     let lastMouse = null;
     window.addEventListener('mousemove', (e) => {
         if (!running) { touch(); return; }
+        if (running.play) { touch(); return; }   // a nudged mouse must not end a game
         if (lastMouse && Math.hypot(e.clientX - lastMouse.x, e.clientY - lastMouse.y) > 12) {
             touch();
             stop();
@@ -211,18 +212,27 @@
             screen,
             rnd: Math.random,
         };
-        running = { canvas, ctx, style, env, region, state: style.init(env), raf: 0, lastFrame: 0, id };
+        // Play mode: the keyboard drives the style instead of waking it.
+        // Every key is still swallowed (nothing reaches a terminal); Escape
+        // or a click ends the game. Arrows or A/D move, Space fires or
+        // serves - the three keys everybody guesses first.
+        const play = !!(opts && opts.play);
+        env.play = play ? { left: false, right: false, fire: false, fired: false, score: 0 } : null;
+        running = { canvas, ctx, style, env, region, state: style.init(env), raf: 0, lastFrame: 0, id, play };
         lastMouse = null;
 
         // The waking keystroke never reaches a terminal: capture phase,
         // default prevented, propagation stopped, THEN the overlay goes.
         document.addEventListener('keydown', onWakeKey, { capture: true });
+        document.addEventListener('keyup', onWakeKey, { capture: true });
         document.addEventListener('mousedown', onWakeMouse, { capture: true });
         document.addEventListener('wheel', onWakeMouse, { capture: true, passive: true });
         document.addEventListener('visibilitychange', onVisibility);
         window.addEventListener('resize', onResize);
         running.raf = requestAnimationFrame(frame);
-        setStatus(`idle: ${style.label} - any key or mouse movement to return`);
+        setStatus(play
+            ? `${style.label}: arrows or A/D move, Space fires, Esc or a click quits`
+            : `idle: ${style.label} - any key or mouse movement to return`);
     }
 
     function stop() {
@@ -230,6 +240,7 @@
         cancelAnimationFrame(running.raf);
         running.canvas.remove();
         document.removeEventListener('keydown', onWakeKey, { capture: true });
+        document.removeEventListener('keyup', onWakeKey, { capture: true });
         document.removeEventListener('mousedown', onWakeMouse, { capture: true });
         document.removeEventListener('wheel', onWakeMouse, { capture: true });
         document.removeEventListener('visibilitychange', onVisibility);
@@ -246,7 +257,16 @@
     function onWakeKey(e) {
         e.preventDefault();
         e.stopImmediatePropagation();
-        stop();
+        if (!running || !running.play) { stop(); return; }
+        if (e.key === 'Escape') { stop(); return; }
+        const input = running.env.play;
+        const k = (e.code === 'ArrowLeft' || e.code === 'KeyA') ? 'left'
+            : (e.code === 'ArrowRight' || e.code === 'KeyD') ? 'right'
+                : (e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'KeyW') ? 'fire' : null;
+        if (!k) return;
+        const down = e.type === 'keydown';
+        if (k === 'fire' && down && !input.fire) input.fired = true;   // an edge, consumed by the style
+        input[k] = down;
     }
     function onWakeMouse() { stop(); }
     function onVisibility() {
@@ -294,6 +314,43 @@
         if (running && running.region) shiftScreen(screen, -running.region.x, -running.region.y);
         return screen;
     }
+
+    // Score and controls, drawn by the playable styles.
+    function drawHud(ctx, env) {
+        const c = env.colors;
+        const p = env.play;
+        if (!p) return;
+        ctx.font = `13px ${c.mono}`;
+        ctx.textBaseline = 'top';
+        ctx.textAlign = 'right';
+        ctx.fillStyle = c.txt;
+        ctx.fillText(`score ${p.score}`, env.w - 12, 10);
+        ctx.textAlign = 'left';
+        ctx.fillStyle = c.dim;
+        ctx.fillText('arrows / A D move   space fires   esc quits', 12, env.h - 20);
+    }
+
+    // The Extras menu: every effect on demand, and the two games to play.
+    // Sits on the quick-connect row under the theme picker, where the
+    // decorative controls live.
+    function extrasMenu(anchor) {
+        const r = anchor.getBoundingClientRect();
+        const items = [
+            { label: 'Play Bricks', onClick: () => start('bricks', { play: true, area: settings.area }) },
+            { label: 'Play Aliens', onClick: () => start('aliens', { play: true, area: settings.area }) },
+            null,
+        ];
+        for (const [id, st] of Object.entries(STYLES)) {
+            items.push({ label: `Effect: ${st.label}`, onClick: () => start(id, { area: settings.area }) });
+        }
+        items.push(null, {
+            label: 'Idle animation settings...',
+            onClick: () => window.SettingsUI && window.SettingsUI.openSettings(),
+        });
+        window.Modals.menu(r.left, r.bottom + 2, items);
+    }
+    const extrasBtn = document.getElementById('extras-btn');
+    if (extrasBtn) extrasBtn.addEventListener('click', () => extrasMenu(extrasBtn));
 
     function setStatus(text) {
         const el = document.getElementById('status-text');
@@ -364,6 +421,8 @@
                 paddleX: env.w / 2 - paddleW / 2,
                 ball: { x: env.w / 2, y: env.h * 0.7, vx: 180, vy: -260, r: 5 },
                 speed: 320,
+                // In play mode the ball waits on the paddle until Space.
+                held: !!env.play,
             };
         },
         frame(ctx, env, s, dt) {
@@ -371,19 +430,38 @@
             ctx.fillStyle = c.bg;
             ctx.fillRect(0, 0, env.w, env.h);
 
-            // Move the ball.
+            // Move the ball - unless it is sitting on the paddle waiting
+            // for the serve.
             const b = s.ball;
-            b.x += b.vx * dt;
-            b.y += b.vy * dt;
+            const paddleTop = env.h - 24;
+            if (s.held) {
+                b.x = s.paddleX + s.paddleW / 2;
+                b.y = paddleTop - b.r - 1;
+                if (env.play && env.play.fired) {
+                    env.play.fired = false;
+                    s.held = false;
+                    b.vx = (Math.random() - 0.5) * 200;
+                    b.vy = -s.speed;
+                }
+            } else {
+                b.x += b.vx * dt;
+                b.y += b.vy * dt;
+            }
             if (b.x < b.r) { b.x = b.r; b.vx = Math.abs(b.vx); }
             if (b.x > env.w - b.r) { b.x = env.w - b.r; b.vx = -Math.abs(b.vx); }
             if (b.y < b.r) { b.y = b.r; b.vy = Math.abs(b.vy); }
 
-            // The paddle chases the ball, with just enough lag to miss now
-            // and then - a perfect paddle is boring to watch.
+            // The paddle: yours in play mode; otherwise it chases the ball
+            // with just enough lag to miss now and then - a perfect paddle
+            // is boring to watch.
             const paddleY = env.h - 24;
-            const target = b.x - s.paddleW / 2 + Math.sin(b.y / 40) * 30;
-            s.paddleX += Math.max(-420 * dt, Math.min(420 * dt, target - s.paddleX));
+            if (env.play) {
+                const dir = (env.play.right ? 1 : 0) - (env.play.left ? 1 : 0);
+                s.paddleX += dir * 560 * dt;
+            } else {
+                const target = b.x - s.paddleW / 2 + Math.sin(b.y / 40) * 30;
+                s.paddleX += Math.max(-420 * dt, Math.min(420 * dt, target - s.paddleX));
+            }
             s.paddleX = Math.max(0, Math.min(env.w - s.paddleW, s.paddleX));
             if (b.vy > 0 && b.y + b.r >= paddleY && b.y - b.r <= paddleY + 8 &&
                 b.x >= s.paddleX - b.r && b.x <= s.paddleX + s.paddleW + b.r) {
@@ -394,8 +472,12 @@
                 b.vy = -Math.cos(ang) * s.speed;
             }
             if (b.y > env.h + 40) {
-                // Missed: serve again from the middle.
-                b.x = env.w / 2; b.y = env.h * 0.7; b.vx = (Math.random() - 0.5) * 300; b.vy = -280;
+                if (env.play) {
+                    s.held = true;   // missed: back on the paddle, your serve
+                } else {
+                    // Missed: serve again from the middle.
+                    b.x = env.w / 2; b.y = env.h * 0.7; b.vx = (Math.random() - 0.5) * 300; b.vy = -280;
+                }
             }
 
             // Bricks.
@@ -408,6 +490,7 @@
                 if (b.x + b.r > br.x && b.x - b.r < br.x + br.w &&
                     b.y + b.r > br.y && b.y - b.r < br.y + br.h) {
                     br.alive = false;
+                    if (env.play) env.play.score += 10;
                     // Reflect on the axis of least penetration.
                     const dx = Math.min(b.x + b.r - br.x, br.x + br.w - (b.x - b.r));
                     const dy = Math.min(b.y + b.r - br.y, br.y + br.h - (b.y - b.r));
@@ -431,6 +514,7 @@
             ctx.beginPath();
             ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2);
             ctx.fill();
+            drawHud(ctx, env);
         },
     };
 
@@ -769,6 +853,18 @@
             const ship = s.ship;
             if (ship.dead > 0) {
                 ship.dead -= dt;
+            } else if (env.play) {
+                const dir = (env.play.right ? 1 : 0) - (env.play.left ? 1 : 0);
+                ship.x += dir * 400 * dt;
+                ship.x = Math.max(shipW, Math.min(env.w - shipW, ship.x));
+                ship.cool -= dt;
+                if (env.play.fired) {
+                    env.play.fired = false;
+                    if (ship.cool <= 0) {
+                        ship.cool = 0.22;
+                        s.lasers.push({ x: ship.x, y: shipY - 6, vy: -540 });
+                    }
+                }
             } else {
                 ship.think -= dt;
                 if (ship.think <= 0) {
@@ -814,6 +910,7 @@
                     if (a.state === 'dead' || a.state === 'arriving') continue;
                     if (l.x >= a.x && l.x <= a.x + a.w && l.y >= a.y && l.y <= a.y + a.h) {
                         a.state = 'dead';
+                        if (env.play) env.play.score += 10;
                         l.y = -99;
                         s.bursts.push({ x: a.x + a.w / 2, y: a.y + a.h / 2, t: 0.35, big: false });
                         break;
@@ -858,11 +955,13 @@
                 ctx.fillStyle = c.txt;
                 ctx.fillText('<^>', ship.x - (fontPx + 4) * 0.9, shipY);
             }
+            drawHud(ctx, env);
         },
     };
 
     window.Idle = {
         start, stop,
+        isPlaying: () => !!(running && running.play),
         isRunning: () => !!running,
         // Frames drawn since load - the honest way to measure the loop.
         frameCount: () => frames,

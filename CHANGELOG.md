@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- **Bricks and Aliens are playable, from a new Extras menu.** The
+  button sits at the right end of the quick-connect row, under the
+  theme picker: Play Bricks, Play Aliens, every idle effect on demand,
+  and a shortcut to the idle settings. Arrows or A/D move, Space
+  serves the ball or fires, Esc or a click quits; a score sits top
+  right and the controls bottom left. The same rule as the idle modes
+  applies - every key is swallowed, nothing reaches a terminal - and a
+  nudged mouse does not end a game. Troubleshooting a stubborn tunnel?
+  Blow the failed SAs away.
+
 - **Idle animations start on Windows Server and over RDP.** They never
   did: Server editions ship with "Show animations in Windows" off and
   RDP sessions turn it off too, Chromium reports both as

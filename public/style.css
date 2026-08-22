@@ -233,6 +233,9 @@ label { color: var(--se-txt-dim); }
 }
 #log-status:hover { color: var(--se-txt); }
 
+/* Pushes whatever follows to the right end of a toolbar row. */
+.bar-fill { flex: 1; }
+
 /* The idle-animation canvas: over everything, and the cursor hides with
    it so a still mouse does not sit on top of the picture. */
 #idle-overlay {
