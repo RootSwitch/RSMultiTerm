@@ -346,6 +346,13 @@
         items.push(null, {
             label: 'Idle animation settings...',
             onClick: () => window.SettingsUI && window.SettingsUI.openSettings(),
+        }, {
+            // The same knob as Settings > Play over, surfaced here so people
+            // learn that "just the terminal panes" exists at all. Writes the
+            // setting; the Settings dialog reads it back on open.
+            label: 'Full screen',
+            checked: settings.area !== 'panes',
+            onClick: (on) => rsterm.invoke('rs:settings.update', { idle: { area: on ? 'window' : 'panes' } }),
         });
         window.Modals.menu(r.left, r.bottom + 2, items);
     }

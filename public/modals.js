@@ -153,6 +153,22 @@
                 el.appendChild(sep);
                 continue;
             }
+            // A checkbox item: {label, checked, onClick(nowChecked)}. It stays
+            // open when toggled - the state IS the information, and a menu
+            // that closes on the click hides what just changed.
+            if (typeof item.checked === 'boolean') {
+                const lbl = document.createElement('label');
+                lbl.className = 'rs-menu-check';
+                const box = document.createElement('input');
+                box.type = 'checkbox';
+                box.checked = item.checked;
+                box.addEventListener('change', () => item.onClick(box.checked));
+                const text = document.createElement('span');
+                text.textContent = item.label;
+                lbl.append(box, text);
+                el.appendChild(lbl);
+                continue;
+            }
             const b = document.createElement('button');
             b.textContent = item.label;
             b.disabled = !!item.disabled;

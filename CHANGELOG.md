@@ -10,7 +10,9 @@
   right and the controls bottom left. The same rule as the idle modes
   applies - every key is swallowed, nothing reaches a terminal - and a
   nudged mouse does not end a game. Troubleshooting a stubborn tunnel?
-  Blow the failed SAs away.
+  Blow the failed SAs away. A "Full screen" checkbox at the bottom of
+  the menu is the same knob as Settings > Play over, put where people
+  will see that "just the terminal panes" is an option at all.
 
 - **Idle animations start on Windows Server and over RDP.** They never
   did: Server editions ship with "Show animations in Windows" off and

@@ -759,6 +759,18 @@ label { color: var(--se-txt-dim); }
     margin: 3px 0;
     background: var(--se-border);
 }
+/* Checkbox rows line up with the buttons and take the same hover. */
+.rs-menu-check {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 12px;
+    font-size: 12px;
+    cursor: pointer;
+    user-select: none;
+}
+.rs-menu-check:hover { background: var(--se-panel-2); }
+.rs-menu-check input { margin: 0; }
 
 /* ===== Diff view ===== */
 
