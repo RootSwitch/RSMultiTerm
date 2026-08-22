@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.1.2 - 2026-08-22
+
 - **Bricks and Aliens are playable, from a new Extras menu.** The
   button sits at the right end of the quick-connect row, under the
   theme picker: Play Bricks, Play Aliens, every idle effect on demand,
