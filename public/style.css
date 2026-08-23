@@ -426,12 +426,25 @@ label { color: var(--se-txt-dim); }
 .pane-header .close, .pane-header .bc-toggle, .pane-header .pane-btn {
     border: none;
     background: none;
-    padding: 0 2px;
-    font-size: 13px;
+    /* Was 0 2px with a 13px glyph: a ~9px target that people hunted for.
+       This is a real button - same row height, wide enough to hit. */
+    padding: 2px 6px;
+    font-size: 14px;
     line-height: 1;
+    border-radius: 3px;
     color: var(--se-txt-dim);
 }
-.pane-header .close:hover { color: var(--se-down); }
+.pane-header .close { font-size: 15px; }
+.pane-header .pane-btn:hover, .pane-header .bc-toggle:hover {
+    background: var(--se-panel-2);
+    color: var(--se-txt);
+}
+/* The one that closes a session says so on hover, in the colour that
+   means "this ends something". */
+.pane-header .close:hover {
+    background: var(--se-down);
+    color: #fff;
+}
 
 #search-bar {
     position: absolute;

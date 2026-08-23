@@ -54,6 +54,8 @@
             style: i.style || 'off',
             minutes: Math.max(1, Math.min(240, Number(i.minutes) || 5)),
             area: i.area === 'panes' ? 'panes' : 'window',
+            // Which styles "Surprise me" may pick. Empty means all of them.
+            picks: Array.isArray(i.picks) ? i.picks : [],
         };
     };
     rsterm.invoke('rs:settings.get').then(applySettings);
@@ -81,7 +83,14 @@
         if (running || settings.style === 'off') return;
         if (document.hidden) return;
         if (document.querySelector('.modal-backdrop')) return;
-        if (Date.now() - lastActivity >= settings.minutes * 60 * 1000) start(settings.style);
+        if (Date.now() - lastActivity < settings.minutes * 60 * 1000) return;
+        // Re-read settings at the moment of starting rather than trusting
+        // the cached copy: a change saved during this run must apply now,
+        // not after a restart.
+        rsterm.invoke('rs:settings.get').then((s) => {
+            applySettings(s);
+            if (!running && settings.style !== 'off') start(settings.style);
+        });
     }, CHECK_EVERY_MS);
 
     // --- theme + screen sampling -------------------------------------------
@@ -187,9 +196,11 @@
 
     function start(styleId, opts) {
         if (running) return;
-        const ids = Object.keys(STYLES);
+        const all = Object.keys(STYLES);
+        const chosen = settings.picks.filter((p) => STYLES[p]);
+        const pool = chosen.length ? chosen : all;
         const id = styleId === 'random' || !STYLES[styleId]
-            ? ids[Math.floor(Math.random() * ids.length)] : styleId;
+            ? pool[Math.floor(Math.random() * pool.length)] : styleId;
         const style = STYLES[id];
 
         const canvas = document.createElement('canvas');
@@ -350,7 +361,7 @@
             // The same knob as Settings > Play over, surfaced here so people
             // learn that "just the terminal panes" exists at all. Writes the
             // setting; the Settings dialog reads it back on open.
-            label: 'Full screen',
+            label: 'Full screen animation',
             checked: settings.area !== 'panes',
             onClick: (on) => rsterm.invoke('rs:settings.update', { idle: { area: on ? 'window' : 'panes' } }),
         });

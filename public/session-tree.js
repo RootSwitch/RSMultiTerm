@@ -365,6 +365,8 @@
         const pick = window.Modals.select(
             profiles.map((pr) => ({ value: pr.name, label: pr.username ? `${pr.name} (${pr.username})` : pr.name })),
             profiles[0].name);
+        // Same affordance as the session editor's Credentials dropdown.
+        window.Forms.offerNewProfile(pick);
         body.append(info, window.Modals.row('Profile', pick));
         window.Modals.open('Set credential profile', body, [
             { label: 'Cancel' },
@@ -537,18 +539,39 @@
             window.Forms.showBanner('warn', 'Nothing to audit - no SSH or telnet devices in scope.');
             return;
         }
-        window.Forms.showBanner('warn',
-            `Probing ${started.started} device${started.started === 1 ? '' : 's'} in ${scope}. ` +
-            'This is a gentle sweep: 8 at a time, with a retry before anything is flagged.',
-            [{ label: 'Stop', onClick: () => rsterm.invoke('rs:health.stop') }]);
+        auditProgress = { done: 0, total: started.started, scope };
+        showAuditProgress();
     }
 
+    // One keyed banner for the whole sweep: the count updates in place and
+    // the finished message replaces it, rather than stacking a second
+    // banner over a "probing..." one that never went away.
+    let auditProgress = null;
+    function showAuditProgress() {
+        if (!auditProgress) return;
+        const { done, total, scope } = auditProgress;
+        window.Forms.showBanner('warn',
+            `Probing ${scope}: ${done} of ${total} device${total === 1 ? '' : 's'} checked. ` +
+            'A gentle sweep - 8 at a time, with a retry before anything is flagged.',
+            [{ label: 'Stop', onClick: () => rsterm.invoke('rs:health.stop') }],
+            { key: 'audit' });
+    }
+    rsterm.on('rs:evt.health-result', () => {
+        if (!auditProgress) return;
+        auditProgress.done = Math.min(auditProgress.total, auditProgress.done + 1);
+        showAuditProgress();
+    });
+
     rsterm.on('rs:evt.health-done', async () => {
+        auditProgress = null;
         await refresh();
         const stale = await rsterm.invoke('rs:health.stale', { days: 14 });
         const present = stale.filter((id) => nodes[id]);
         if (!present.length) {
-            window.Forms.showBanner('warn', 'Audit finished - everything answered.');
+            // Replaces the progress banner, and clears itself: a finished
+            // job whose banner never goes away reads as a stuck job.
+            window.Forms.showBanner('warn', 'Audit finished - everything answered.',
+                [], { key: 'audit' });
             return;
         }
         window.Forms.showBanner('warn',

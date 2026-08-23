@@ -396,7 +396,21 @@ function wireIpc(engineRef, getWindow, bootConfig) {
     ipcMain.handle('rs:secrets.storageInfo', () => secrets.storageInfo());
 
     ipcMain.handle('rs:profiles.list', () => secrets.list());
-    ipcMain.handle('rs:profiles.upsert', (_e, input) => secrets.upsert(input));
+    ipcMain.handle('rs:profiles.upsert', (_e, input) => {
+        const out = secrets.upsert(input);
+        // New credentials are the user saying "this is fixed". Lift the
+        // lockout guard and take the failure banner down - otherwise they
+        // change the password and the profile stays halted until they find
+        // the banner's retry button, which is the opposite of obvious.
+        const changed = input && (input.password !== undefined || input.clearPassword ||
+            input.keyPath !== undefined || input.authMethod !== undefined ||
+            input.keyPassphrase !== undefined);
+        if (changed && input.name) {
+            connectFlow.reset(input.name);
+            forward('rs:evt.auth-cleared', { profile: input.name });
+        }
+        return out;
+    });
 
     // --- SSH keys ---------------------------------------------------------
     // Discovery is what makes key auth the default path rather than a thing
@@ -908,9 +922,13 @@ function wireIpc(engineRef, getWindow, bootConfig) {
                     // opened a device; this is that moment.
                     const desc = liveDescriptors.get(m.sessionId);
                     if (desc) {
-                        if (desc.credentialProfile) secrets.commitSaved(desc.credentialProfile);
-                        for (const hop of desc.jumpChain || []) {
-                            if (hop.credentialProfile) secrets.commitSaved(hop.credentialProfile);
+                        const used = [desc.credentialProfile,
+                            ...(desc.jumpChain || []).map((h) => h.credentialProfile)].filter(Boolean);
+                        for (const p of used) {
+                            secrets.commitSaved(p);
+                            // It works: retire any "authentication failed"
+                            // banner for it, however the user fixed it.
+                            forward('rs:evt.auth-cleared', { profile: p });
                         }
                     }
                 }

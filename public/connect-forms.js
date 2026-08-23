@@ -770,8 +770,13 @@
                 onClick: async () => {
                     await rsterm.invoke('rs:auth.reset', { profile });
                 },
-            }]);
+            }], { key: `auth:${profile}` });
     });
+
+    // The profile works now - because a session using it connected, or
+    // because its credentials were edited. Either way the warning is
+    // history, whichever route the user took to fix it.
+    rsterm.on('rs:evt.auth-cleared', ({ profile }) => clearBanner(`auth:${profile}`));
 
     rsterm.on('rs:evt.profile-missing', ({ profile }) => {
         showBanner('warn',
@@ -900,10 +905,23 @@
     });
 
     // --- tiny banner helper -----------------------------------------------
-    function showBanner(kind, text, actions = []) {
+    // opts.key: a banner with the same key REPLACES the previous one
+    // instead of stacking - "probing 9 devices" becomes "audit finished"
+    // in place, rather than leaving both on screen.
+    // opts.sticky: keep until dismissed. The default is to fade after a
+    // while, because a finished job that never clears reads as a stuck
+    // job. Errors and anything with a decision to make are sticky.
+    const bannersByKey = new Map();
+    function showBanner(kind, text, actions = [], opts = {}) {
         const workspace = document.getElementById('workspace');
+        const previous = opts.key && bannersByKey.get(opts.key);
+        if (previous) previous.remove();
         const banner = document.createElement('div');
         banner.className = `banner ${kind}`;
+        if (opts.key) {
+            banner.dataset.key = opts.key;
+            bannersByKey.set(opts.key, banner);
+        }
         const span = document.createElement('span');
         span.style.flex = '1';
         span.textContent = text;
@@ -919,8 +937,21 @@
         x.addEventListener('click', () => banner.remove());
         banner.appendChild(x);
         workspace.prepend(banner);
+
+        const sticky = opts.sticky !== undefined
+            ? opts.sticky
+            : (kind === 'error' || actions.length > 0);
+        if (!sticky) setTimeout(() => banner.remove(), opts.timeout || 12000);
+        return banner;
     }
 
-    window.Forms = { editSession, editFolder, manageProfiles, showBanner, askCredentials,
-        saveSessionDialog, installKeyDialog };
+    // Take a keyed banner down: the job it was reporting is over.
+    function clearBanner(key) {
+        const b = bannersByKey.get(key);
+        if (b) { b.remove(); bannersByKey.delete(key); }
+        for (const el of document.querySelectorAll(`.banner[data-key="${key}"]`)) el.remove();
+    }
+
+    window.Forms = { editSession, editFolder, manageProfiles, showBanner, clearBanner,
+        askCredentials, saveSessionDialog, installKeyDialog, offerNewProfile };
 })();

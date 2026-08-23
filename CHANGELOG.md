@@ -2,6 +2,31 @@
 
 ## Unreleased
 
+- **The authentication-failed banner clears when you fix the profile.**
+  Editing a profile's credentials now also lifts its lockout guard -
+  previously you could change the password and the profile stayed
+  halted until you found the banner's retry button, which is the
+  opposite of obvious - and any banner for a profile disappears the
+  moment a session using it connects, however you fixed it.
+- **Banners stop piling up.** They can now replace each other in place
+  and clear themselves: the audit shows one banner that counts "3 of 9
+  devices checked" as it goes and then becomes the result, instead of
+  leaving a stale "probing..." line above it. Anything with a decision
+  to make, and every error, still waits for you.
+- **"Set credential profile..." can create one**, like the Credentials
+  dropdown in the session editor.
+- **Choose which styles "Surprise me" uses.** Settings lists all seven
+  with checkboxes - some are calm and some are chaotic, and which is
+  which is a matter of taste.
+- **The idle "Play over" setting applies immediately** instead of after
+  a restart: settings are re-read at the moment an animation starts
+  rather than trusted from a cache.
+- **The pane close button is a real target.** Closing one session of a
+  MultiTerm grid meant hunting a 9-pixel glyph; it is now a proper
+  button that turns red on hover, alongside its neighbors.
+- **Extras: "Full screen" is now "Full screen animation"**, so it does
+  not read as a window control.
+
 ## 0.1.2 - 2026-08-22
 
 - **Bricks and Aliens are playable, from a new Extras menu.** The

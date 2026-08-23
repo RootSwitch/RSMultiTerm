@@ -98,6 +98,7 @@ const EVENT_ALLOW = new Set([
     'rs:evt.needs-password',
     'rs:evt.needs-profile',
     'rs:evt.auth-blocked',
+    'rs:evt.auth-cleared',
     'rs:evt.profile-missing',
     'rs:evt.hostkey-prompt',
     'rs:evt.hostkey-mismatch',

@@ -133,6 +133,36 @@
             { value: 'window', label: 'The whole window' },
             { value: 'panes', label: 'Terminal panes only - sidebar and tabs stay visible' },
         ], idle.area === 'panes' ? 'panes' : 'window');
+        // Which styles "Surprise me" may pick. Some are calm and some are
+        // chaotic, and which is which is a matter of taste - so the choice
+        // is a list rather than a "calm/energetic" guess.
+        const picks = new Set(Array.isArray(idle.picks) ? idle.picks : []);
+        const picksWrap = document.createElement('div');
+        picksWrap.className = 'field-row';
+        const picksLabel = document.createElement('label');
+        picksLabel.textContent = 'Surprise me uses';
+        const picksBox = document.createElement('div');
+        picksBox.style.cssText = 'flex:1;display:flex;flex-wrap:wrap;gap:4px 14px;';
+        for (const st of (window.Idle ? window.Idle.styles() : [])) {
+            const lab = document.createElement('label');
+            lab.style.cssText = 'display:flex;align-items:center;gap:5px;font-size:12px;';
+            const cb = document.createElement('input');
+            cb.type = 'checkbox';
+            cb.value = st.id;
+            cb.checked = picks.size === 0 || picks.has(st.id);
+            const sp = document.createElement('span');
+            sp.textContent = st.label;
+            lab.append(cb, sp);
+            picksBox.appendChild(lab);
+        }
+        picksWrap.append(picksLabel, picksBox);
+        const readPicks = () => {
+            const on = [...picksBox.querySelectorAll('input')].filter((c) => c.checked).map((c) => c.value);
+            // All ticked is the same as no preference - stored empty so a
+            // style added later joins the rotation automatically.
+            return on.length === picksBox.querySelectorAll('input').length ? [] : on;
+        };
+
         const idleHint = document.createElement('p');
         idleHint.style.cssText = 'margin:2px 0 10px;color:var(--se-txt-dim);font-size:11px;';
         idleHint.textContent = 'Starts after that many minutes without keyboard or mouse. ' +
@@ -165,7 +195,8 @@
             row('Scrollback lines', fScrollback),
             logRow, row('Log timestamps', fTimestamps),
             syncRow, syncHint, row('Check sync every (s)', fPoll),
-            styleRow, row('Start after (min)', fIdleMin), row('Play over', fIdleArea), idleHint);
+            styleRow, row('Start after (min)', fIdleMin), row('Play over', fIdleArea),
+            picksWrap, idleHint);
 
         const note = document.createElement('p');
         note.style.cssText = 'margin-top:10px;color:var(--se-txt-dim);font-size:11px;';
@@ -177,7 +208,7 @@
             middleClickPaste: fMiddle.value === 'yes',
             confirmations: { pasteMultiline: fPasteConfirm.value === 'yes' },
             idle: { style: fIdleStyle.value, minutes: Number(fIdleMin.value) || 5,
-                area: fIdleArea.value },
+                area: fIdleArea.value, picks: readPicks() },
             autoOpenFileBrowser: fAutoFiles.value === 'yes',
             terminalColors: {
                 mode: fTermMode.value,
