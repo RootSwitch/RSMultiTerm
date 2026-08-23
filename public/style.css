@@ -41,6 +41,12 @@
        proportional fallback. */
     --mt-mono: 'Cascadia Mono', Consolas, 'DejaVu Sans Mono', 'Ubuntu Mono',
                Menlo, 'Courier New', monospace;
+    /* Folders are amber wherever they appear - the session tree and the
+       file browser - because manila is the one icon convention everybody
+       already knows. It tracks --se-warn rather than being a fixed hex so
+       light themes get their own legible amber; a theme that wants a
+       different folder can override just this. */
+    --se-folder: var(--se-warn);
 }
 
 html, body {
@@ -264,7 +270,29 @@ label { color: var(--se-txt-dim); }
 .tree-row:hover { background: var(--se-panel-2); }
 .tree-row.selected { background: color-mix(in srgb, var(--se-accent) 25%, var(--se-panel)); }
 .tree-arrow { width: 12px; color: var(--se-txt-dim); flex: none; }
-.tree-glyph { width: 12px; color: var(--se-accent); font-family: var(--mt-mono); flex: none; }
+/* Folder or session, at a glance. Five folders and one session used to be
+   distinguishable only by whether a host address happened to be shown. */
+.tree-icon {
+    width: 13px;
+    height: 12px;
+    flex: none;
+    margin-right: 6px;
+    -webkit-mask: var(--tree-icon) center / contain no-repeat;
+    mask: var(--tree-icon) center / contain no-repeat;
+}
+.tree-icon.folder {
+    --tree-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 14'%3E%3Cpath d='M1 1h5l2 2h7a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H1a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1z'/%3E%3C/svg%3E");
+    background: var(--se-folder);
+}
+.tree-icon.session {
+    /* A prompt, not a screen. The first attempt drew a terminal frame with
+       a chevron inside it and turned to mush at 13px - the same reason the
+       file browser uses a solid page silhouette rather than an outline.
+       Bold strokes, no interior holes, reads at any size. */
+    --tree-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 14'%3E%3Cpath d='M1.4 1.9l5.6 5.1-5.6 5.1V9.2l2.9-2.2-2.9-2.2z'/%3E%3Cpath d='M8.2 9.6h6.4v2.5H8.2z'/%3E%3C/svg%3E");
+    background: var(--se-txt-dim);
+}
+.tree-row.selected .tree-icon.session { background: var(--se-txt); }
 .tree-name { overflow: hidden; text-overflow: ellipsis; }
 .tree-host { color: var(--se-txt-dim); font-size: 11px; margin-left: auto; padding-left: 8px; }
 .tree-health {
@@ -647,7 +675,7 @@ label { color: var(--se-txt-dim); }
 }
 .sftp-name.dir::before {
     --sftp-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 14'%3E%3Cpath d='M1 1h5l2 2h7a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H1a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1z'/%3E%3C/svg%3E");
-    background: #dda94b;
+    background: var(--se-folder);
 }
 .sftp-name.file::before {
     --sftp-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 14'%3E%3Cpath d='M1 0h6l4 4v9a1 1 0 0 1-1 1H1a1 1 0 0 1-1-1V1a1 1 0 0 1 1-1zm6 0v4h4z'/%3E%3C/svg%3E");

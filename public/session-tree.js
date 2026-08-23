@@ -95,6 +95,12 @@
                 el.appendChild(arrow);
             }
 
+            // Folder or session, said with an icon rather than left to be
+            // inferred from whether a host address happens to be present.
+            const icon = document.createElement('span');
+            icon.className = `tree-icon ${node.type === 'folder' ? 'folder' : 'session'}`;
+            el.appendChild(icon);
+
             const name = document.createElement('span');
             name.className = 'tree-name';
             name.textContent = node.name;

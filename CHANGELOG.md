@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+- **The session tree has folder and session icons.** A folder of
+  folders used to be readable only by whether a row happened to show a
+  host address - five folders and one session looked alike. Folders now
+  wear the same amber folder as the file browser; sessions wear a
+  prompt mark. The folder color moved into a `--se-folder` variable
+  that tracks the theme's amber, so light themes get their own legible
+  one instead of the dark-theme amber, in both the tree and the file
+  browser.
+- **Two light themes were missing their amber.** Sakura and Solar Light
+  never took the light-tuned status colors, so anything amber on them -
+  warning banners, refused-connection dots, and now folders - wore the
+  dark-theme value on a pale panel. Both fixed; every light theme now
+  has one.
+
 - **The authentication-failed banner clears when you fix the profile.**
   Editing a profile's credentials now also lifts its lockout guard -
   previously you could change the password and the profile stayed

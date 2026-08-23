@@ -96,7 +96,7 @@
             vars: { '--se-panel': '#fbeef2', '--se-panel-2': '#f6e0e8', '--se-input': '#fef8fa',
                     '--se-border': '#eecdd8', '--se-txt': '#4a3540', '--se-txt-dim': '#9a7c88',
                     '--se-accent': '#e58aab', '--se-active': '#d06b90',
-                    '--se-up': '#2f8a4d', '--se-down': '#c23934',
+                    '--se-up': '#2f8a4d', '--se-down': '#c23934', '--se-warn': '#9a7415',
                     '--se-unknown': '#9a8a92', '--se-series-out': '#6aa06a' }
         },
         retro: {   // Gruvbox
@@ -167,7 +167,8 @@
             vars: { '--se-panel': '#eee8d5', '--se-panel-2': '#e3dcc4', '--se-input': '#fdf6e3',
                     '--se-border': '#cfc8b0', '--se-txt': '#586e75', '--se-txt-dim': '#93a1a1',
                     '--se-accent': '#268bd2', '--se-active': '#2aa198',
-                    '--se-up': '#859900', '--se-down': '#dc322f', '--se-series-out': '#859900' }
+                    '--se-up': '#859900', '--se-down': '#dc322f', '--se-warn': '#9a7415',
+                    '--se-series-out': '#859900' }
         },
 
         // --- Night ---
