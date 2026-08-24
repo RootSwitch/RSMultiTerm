@@ -2,6 +2,26 @@
 
 ## Unreleased
 
+- **Reachability dots fade with age, and say when they were measured.**
+  Nothing is probed in the background - the dots come from the last
+  Audit - but a two-week-old red circle at full strength reads as "this
+  device is down right now". They now fade from solid to a ghost as the
+  reading ages out to the fortnight staleness mark, and the tooltip
+  says how old it is and that nothing runs in the background.
+- **Opening a session updates its dot.** Connecting to a device is
+  better evidence than a port probe, so a saved session you just used
+  stops wearing a stale red dot. Only success is recorded - a failed
+  connect can be a wrong password, which says nothing about whether the
+  device is there - and nothing is ever probed on your behalf.
+- **The sidebar toggle is no longer a hamburger.** At the far left of a
+  title bar that promises an app menu; it only shows and hides the
+  session tree. It now sits after the logo, with the panel glyph
+  editors use.
+- **A stray byte-order mark can no longer stop the app from starting.**
+  Invisible in an editor, fatal to JSON.parse, and one Notepad save or
+  PowerShell redirect away - the app refused to start with a corruption
+  message. BOMs are now skipped when reading its JSON.
+
 - **The session tree has folder and session icons.** A folder of
   folders used to be readable only by whether a row happened to show a
   host address - five folders and one session looked alike. Folders now

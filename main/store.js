@@ -68,9 +68,17 @@ function atomicWrite(file, obj) {
 
 // Tolerant load: anything wrong returns the fallback. For files where a
 // wrong "empty" answer is harmless (settings, health cache).
+// A UTF-8 BOM is invisible in every editor and fatal to JSON.parse. Files
+// here are written by the app, but they are plain JSON in a folder people
+// open - one save from Notepad or a PowerShell redirect adds one, and
+// without this the app refuses to start with a modal about corruption.
+function parseJson(raw) {
+    return JSON.parse(raw.charCodeAt(0) === 0xfeff ? raw.slice(1) : raw);
+}
+
 function load(name, fallback) {
     try {
-        return JSON.parse(fs.readFileSync(fileOf(name), 'utf8'));
+        return parseJson(fs.readFileSync(fileOf(name), 'utf8'));
     } catch (_) {
         return fallback;
     }
@@ -93,7 +101,7 @@ function loadCritical(name, fallback) {
             'Restore it from a backup, or delete it deliberately to start over.');
     }
     try {
-        return JSON.parse(raw);
+        return parseJson(raw);
     } catch (err) {
         throw new Error(`${name}.json is not valid JSON (${err.message}) - refusing to treat it as empty`);
     }

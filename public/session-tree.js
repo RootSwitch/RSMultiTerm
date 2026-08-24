@@ -13,6 +13,15 @@
     const selected = new Set();      // node ids
     let lastClicked = null;          // anchor for shift ranges
 
+    // How old a reading is, in words - the tooltip's job is to stop a
+    // stale dot from being read as live.
+    function describeAge(days) {
+        if (days < 1 / 24) return 'Checked in the last hour';
+        if (days < 1) return `Checked ${Math.round(days * 24)} hour${Math.round(days * 24) === 1 ? '' : 's'} ago`;
+        if (days < 14) return `Checked ${Math.round(days)} day${Math.round(days) === 1 ? '' : 's'} ago`;
+        return 'Checked more than two weeks ago';
+    }
+
     async function refresh() {
         nodes = await rsterm.invoke('rs:tree.get');
         healthByNode = await rsterm.invoke('rs:health.get');
@@ -123,14 +132,27 @@
                 // device that has gone away entirely.
                 const kind = !unreachable ? 'ok' : (h.lastState === 'refused' ? 'warn' : 'bad');
                 dot.className = `tree-health ${kind}`;
-                dot.title = !unreachable
+                // These dots are a SNAPSHOT, not a monitor: nothing probes
+                // in the background, so a two-week-old red circle at full
+                // strength reads as "this device is down right now" when it
+                // means "it was down a fortnight ago". Fade with age -
+                // fresh is solid, and by the 14-day staleness mark it is a
+                // ghost - and say so on hover.
+                const measured = Math.max(Date.parse(h.lastOk) || 0, Date.parse(h.lastFail) || 0);
+                const ageDays = measured ? (Date.now() - measured) / 86400000 : 99;
+                dot.style.opacity = String(Math.max(0.22, Math.min(1, 1 - (ageDays / 14) * 0.78)));
+                dot.title = (!unreachable
                     ? `Answered ${new Date(h.lastOk).toLocaleString()}`
                     : (h.lastState === 'refused'
                         ? `Connection refused on this port ${new Date(h.lastFail).toLocaleString()}` +
                           ' - the address is in use, but not by this service'
                         : `No answer since ${new Date(h.lastFail).toLocaleString()}`) +
                       (h.lastOk ? ` - last answered ${new Date(h.lastOk).toLocaleString()}`
-                                : ' - has never answered');
+                                : ' - has never answered')) +
+                    `
+
+${describeAge(ageDays)}. Nothing is probed in the background: ` +
+                    'this is from the last Audit, or from a session you opened.';
                 el.appendChild(dot);
             }
 

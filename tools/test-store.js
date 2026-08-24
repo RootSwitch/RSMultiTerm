@@ -100,12 +100,24 @@ try {
     assert.strictEqual(sessions.resolveDescriptor(child.id).logging, false,
         'a folder default of logging:false must inherit');
 
-    // 9. Folder delete takes the subtree.
+    // 9. A UTF-8 BOM must not brick startup. Invisible in an editor,
+    // fatal to JSON.parse, and one Notepad save or PowerShell redirect
+    // away - it used to raise a corruption modal before the window opened.
+    const bomFile = path.join(dir, 'health.json');
+    fs.writeFileSync(bomFile, '﻿' + JSON.stringify({ schema: 1, nodes: { a: 1 } }), 'utf8');
+    assert.deepStrictEqual(store.load('health', null), { schema: 1, nodes: { a: 1 } },
+        'a BOM-prefixed file must load, not fall back to the default');
+    const bomCritical = path.join(dir, 'profiles.json');
+    fs.writeFileSync(bomCritical, '﻿' + JSON.stringify({ schema: 1, profiles: [] }), 'utf8');
+    assert.deepStrictEqual(store.loadCritical('profiles', null), { schema: 1, profiles: [] },
+        'loadCritical must tolerate a BOM too - it throws on bad JSON by design');
+
+    // 10. Folder delete takes the subtree.
     const removed = sessions.remove([site.id]);
     assert.ok(removed.length >= 4, `expected subtree removal, got ${removed.length}`);
     assert.strictEqual(sessions.get(sw1.id), null);
 
-    console.log('ok - store + session tree (9 scenarios incl. logging tri-state)');
+    console.log('ok - store + session tree (10 scenarios incl. logging tri-state, BOM tolerance)');
 } finally {
     fs.rmSync(dir, { recursive: true, force: true });
 }

@@ -13,7 +13,6 @@
 <body>
 
 <div id="topbar">
-  <button id="sidebar-toggle" title="Show/hide the session tree">☰</button>
   <!-- The same artwork the .ico is generated from, so the header and the
        taskbar cannot drift apart. This used to be a separate hand-drawn
        SVG and the two marks were visibly different. -->
@@ -21,6 +20,10 @@
     <img src="brand/mark-small.svg" class="brand-mark" width="18" height="18" alt="">
     RSMultiTerm
   </div>
+  <!-- After the mark, not before it: at the far left of a title bar a
+       hamburger reads as "the app menu", and this only shows and hides the
+       session tree. The glyph says panel now for the same reason. -->
+  <button id="sidebar-toggle" title="Show or hide the session tree"></button>
   <span style="flex:1"></span>
   <button id="diff-btn" title="Compare the last command output of two panes, or paste two captures to compare (Ctrl+Shift+D)">Diff</button>
   <button id="highlights-btn" title="Edit context-highlighting rules">Highlights</button>

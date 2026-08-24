@@ -922,6 +922,16 @@ function wireIpc(engineRef, getWindow, bootConfig) {
                     // opened a device; this is that moment.
                     const desc = liveDescriptors.get(m.sessionId);
                     if (desc) {
+                        // Connecting to a device proves it is reachable far
+                        // better than a port probe does, so a saved session
+                        // that just opened stops wearing a red dot from an
+                        // audit days ago. Only success is recorded: a failed
+                        // connect can be a wrong password, which says nothing
+                        // about whether the device is there.
+                        if (desc.nodeId) {
+                            health.record(desc.nodeId, true, 'open');
+                            health.flush();
+                        }
                         const used = [desc.credentialProfile,
                             ...(desc.jumpChain || []).map((h) => h.credentialProfile)].filter(Boolean);
                         for (const p of used) {
