@@ -99,6 +99,25 @@ process.parentPort.on('message', (e) => {
             require('./sftp').drop(m.sessionId);
             break;
         }
+        // Field tools: TFTP/HTTP servers and Wake-on-LAN. They live here
+        // rather than in main for the same reason tunnels do - a flood of
+        // transfers must not touch the main process event loop.
+        case 'field': {
+            const field = require('./field-servers');
+            field.setNotifier(send);
+            const reply = (ok, payload) => send({
+                t: 'field-result', reqId: m.reqId, ok, ...(ok ? { result: payload } : { error: payload }),
+            });
+            const run = async () => {
+                if (m.op === 'start') return field.start(m.spec);
+                if (m.op === 'stop') return field.stop(m.id);
+                if (m.op === 'list') return { servers: field.list(), interfaces: field.interfaces() };
+                if (m.op === 'wake') return field.wake(m.mac, m.broadcast, m.port);
+                throw new Error(`unknown field op ${m.op}`);
+            };
+            run().then((r) => reply(true, r), (err) => reply(false, err.message));
+            break;
+        }
         case 'key-install': {
             const ki = sessions.get(m.sessionId);
             if (!ki) {

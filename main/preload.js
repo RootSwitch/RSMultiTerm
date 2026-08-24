@@ -72,6 +72,10 @@ const INVOKE_ALLOW = new Set([
     'rs:health.audit',
     'rs:health.stop',
     'rs:health.get',
+    'rs:field.start',
+    'rs:field.stop',
+    'rs:field.list',
+    'rs:field.wake',
     'rs:health.stale',
     'rs:health.forget',
 ]);
@@ -108,6 +112,7 @@ const EVENT_ALLOW = new Set([
     'rs:evt.team-changes',
     'rs:evt.team-error',
     'rs:evt.health-result',
+    'rs:evt.field',
     'rs:evt.health-done',
 ]);
 

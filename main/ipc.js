@@ -210,6 +210,29 @@ function wireIpc(engineRef, getWindow, bootConfig) {
     ipcMain.handle('rs:health.stop', () => {
         if (engineRef.proc) engineRef.proc.postMessage({ t: 'healthcheck-stop' });
     });
+    // --- field tools ------------------------------------------------------
+    // One channel for the lot; the engine owns the sockets. Nothing starts
+    // by itself - every call here is a button somebody pressed.
+    let nextFieldReq = 1;
+    const fieldCall = (op, extra) => {
+        const engine = engineRef.proc;
+        if (!engine) throw new Error('engine not running');
+        return new Promise((resolve, reject) => {
+            const reqId = 'f' + (nextFieldReq++);
+            fieldWaiters.set(reqId, { resolve, reject });
+            engine.postMessage({ t: 'field', reqId, op, ...extra });
+            setTimeout(() => {
+                const w = fieldWaiters.get(reqId);
+                if (w) { fieldWaiters.delete(reqId); w.reject(new Error('the engine did not answer')); }
+            }, 15000);
+        });
+    };
+    ipcMain.handle('rs:field.start', (_e, spec) => fieldCall('start', { spec }));
+    ipcMain.handle('rs:field.stop', (_e, { id }) => fieldCall('stop', { id }));
+    ipcMain.handle('rs:field.list', () => fieldCall('list', {}));
+    ipcMain.handle('rs:field.wake', (_e, { mac, broadcast, port }) =>
+        fieldCall('wake', { mac, broadcast, port }));
+
     ipcMain.handle('rs:health.get', () => health.all());
     ipcMain.handle('rs:health.stale', (_e, { days }) => health.staleNodeIds(days || 14));
     ipcMain.handle('rs:health.forget', (_e, { nodeIds }) => health.forget(nodeIds || []));
@@ -772,6 +795,7 @@ function wireIpc(engineRef, getWindow, bootConfig) {
     // --- sftp -------------------------------------------------------------
     const sftpWaiters = new Map();
     const keyInstallWaiters = new Map();
+    const fieldWaiters = new Map();
     let nextSftpReq = 1;
     ipcMain.handle('rs:sftp.op', (_e, { sessionId, req }) => {
         const engine = engineRef.proc;
@@ -948,6 +972,19 @@ function wireIpc(engineRef, getWindow, bootConfig) {
                 forward('rs:evt.session-status', d && d.nodeId ? { ...m, nodeId: d.nodeId } : m);
                 break;
             }
+            case 'field-result': {
+                const fw = fieldWaiters.get(m.reqId);
+                if (fw) {
+                    fieldWaiters.delete(m.reqId);
+                    if (m.ok) fw.resolve(m.result);
+                    else fw.reject(new Error(m.error));
+                }
+                break;
+            }
+            case 'field-log':
+            case 'field-state':
+                forward('rs:evt.field', m);
+                break;
             case 'key-install-result': {
                 const kw = keyInstallWaiters.get(m.reqId);
                 if (kw) {
@@ -985,6 +1022,10 @@ function wireIpc(engineRef, getWindow, bootConfig) {
         for (const [reqId, w] of keyInstallWaiters) {
             keyInstallWaiters.delete(reqId);
             w.reject(new Error('the engine restarted - key install aborted'));
+        }
+        for (const [reqId, w] of fieldWaiters) {
+            fieldWaiters.delete(reqId);
+            w.reject(new Error('the engine restarted - the servers stopped with it'));
         }
         for (const [reqId, resolve] of serialWaiters) {
             serialWaiters.delete(reqId);

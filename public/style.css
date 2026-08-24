@@ -260,6 +260,14 @@ label { color: var(--se-txt-dim); }
 }
 #log-status:hover { color: var(--se-txt); }
 
+/* While anything is listening, the button says so from the main window -
+   a listening service must never be visible only from inside the dialog
+   that started it. */
+#field-btn.serving {
+    color: var(--se-warn);
+    border-color: var(--se-warn);
+}
+
 /* Pushes whatever follows to the right end of a toolbar row. */
 .bar-fill { flex: 1; }
 

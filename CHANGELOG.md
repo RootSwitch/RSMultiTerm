@@ -2,6 +2,26 @@
 
 ## Unreleased
 
+- **Field tools: a TFTP server, an HTTP server, and Wake-on-LAN.** The
+  three things a laptop in a wiring closet actually needs to SERVE.
+  `copy tftp: flash:` is still how an image gets onto a switch and
+  Windows ships no TFTP server; newer gear pulls firmware over HTTP;
+  and a magic packet wakes the lab box. All three are plain Node - no
+  new dependencies, nothing bundled, nothing to license.
+  The TFTP server speaks RFC 1350 plus the options that matter: without
+  block-size negotiation a 1 GB image is two million lockstep round
+  trips, so blksize and tsize are answered properly.
+
+  This is where the app stops being purely a client, so the rules are
+  stricter than anywhere else in it. Nothing listens until you press
+  start. The bind address is chosen from this machine's actual
+  addresses and "all addresses" is never the default. TFTP is
+  read-only unless you tick uploads - it has no authentication of any
+  kind, so the served folder is the entire security model, and every
+  path is resolved and checked to be inside it, for reads and writes,
+  on both servers. Every server carries a stop time, and while
+  anything is listening the toolbar button says so.
+
 - **Reachability dots fade with age, and say when they were measured.**
   Nothing is probed in the background - the dots come from the last
   Audit - but a two-week-old red circle at full strength reads as "this
