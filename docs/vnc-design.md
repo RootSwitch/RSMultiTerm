@@ -16,6 +16,13 @@ than an option.** The reasoning is below, along with the two rejected
 alternatives and the part nobody expects to be the hard part - the
 keyboard.
 
+> **Superseded, same day. See section 9.** New evidence arrived after
+> the first read: the owner has had integrated VNC and RDP in
+> MobaXterm for years, on two machines, and reaches for `mstsc.exe`
+> and TightVNC Viewer anyway. That changes the recommendation to
+> "build phase 0, do not build the viewer". Sections 1 to 8 stand as
+> the analysis; section 9 is the conclusion.
+
 ---
 
 ## 1. Why this is not "just another transport"
@@ -406,10 +413,91 @@ and compression settings, reconnect.
    terminals is cramped, but a separate window loses the tab model and
    the workspace save. My instinct is same grid, with a "maximise this
    pane" that already half-exists.
-5. **Linux support as a stated 2.0 goal?** It changes small decisions
-   throughout - key handling, the external-viewer hand-off, where
-   `DISPLAY` comes from - and it is much cheaper to decide now than to
-   retrofit.
+5. ~~**Linux support as a stated 2.0 goal?**~~ **Answered 2026-08-23:
+   yes.** Platform-dependent decisions get made with Linux in mind from
+   here on - key handling, the external-viewer hand-off, and where
+   `DISPLAY` comes from.
+
+
+---
+
+## 9. Addendum, 2026-08-23: the revealed-preference argument
+
+Written after the first read of this document, and it changes the
+recommendation.
+
+The evidence, in the owner's own words: he has integrated VNC *and* RDP
+in MobaXterm, at work and at home, and still reaches for `mstsc.exe`
+and a freshly downloaded TightVNC Viewer when he needs either. He has
+had the feature for years, on two machines, and does not use it.
+
+That is revealed preference beating stated preference, and it is the
+most reliable product signal there is. Everything above was written
+without it.
+
+### Why the integrated viewers lose
+
+**A remote desktop wants to be a window, not a pane.** It wants to go
+on the second monitor, be snapped to half the screen, be alt-tabbed to
+and away from. An embedded pane can do none of that, and no amount of
+implementation quality fixes it.
+
+**The grid's advantage does not transfer.** The MultiTerm grid is
+valuable because text panes are small, scannable, and you watch several
+at once - eight switches reacting to one command. A desktop is one
+large thing you look at directly. Putting one in a tiled grid makes it
+smaller for no gain.
+
+**The stated workflow is the strongest case against.** Two side-by-side
+screens, a capture running on one and testing on the other, is exactly
+the case where the OS window manager wins: two real windows, snapped,
+optionally on two monitors, each independently focusable. An in-app
+2-pane grid is a worse version of something Windows already does for
+free.
+
+### What the app uniquely offers here, and it is not pixels
+
+The friction in that workflow is not the viewer. It is everything
+before the viewer: knowing the address, remembering the port, opening
+the tunnel to reach a box behind a bastion, finding the credentials.
+
+That is precisely what this app already holds - the saved session tree,
+the credential profiles, and a pooled SSH connection with
+`forwardOut`. The valuable feature is:
+
+> Right-click a saved node, choose VNC or RDP, and the tunnel opens
+> over the SSH connection you have already authenticated while your
+> own viewer launches pointed at `127.0.0.1:<port>`.
+
+No RFB implementation, no keyboard problem, no vendored dependency, no
+pane refactor. Days, not weeks. And it makes his existing habit faster
+rather than asking him to replace it - which, given he has already
+declined to replace it twice, is the only version with evidence behind
+it.
+
+### One detail that defines the requirement
+
+Worth naming because it explains why he runs VNC on *Windows* boxes at
+all, when Windows ships RDP: RDP to a Windows client OS takes over the
+console session and locks the local screen. VNC mirrors the physical
+console instead, leaving whatever is on it visible and shared.
+
+So the two are not interchangeable. The VNC case is specifically "the
+machine I need to *see* as it actually is" - a lab box, a machine
+mid-capture, something with a local user in front of it. Any hand-off
+feature should therefore treat VNC and RDP as different tools with
+different defaults, not two entries in the same menu.
+
+### Revised recommendation
+
+**Build Phase 0. Do not build the viewer.**
+
+Sections 1 through 8 stay as written, because if the need ever does
+appear they are the plan and the analysis will still be true. But
+nothing in phases 1 through 4 should be started on spec. The honest
+read of the evidence is that the embedded viewer is a feature the owner
+would build, admire, and then not use - for the same reasons he does
+not use the two he already has.
 
 ---
 
