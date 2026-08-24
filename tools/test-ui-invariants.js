@@ -171,7 +171,34 @@ assert.ok(/preventDefault\(\)/.test(wake) && /stopImmediatePropagation\(\)/.test
 assert.ok(/addEventListener\('keydown', onWakeKey, \{ capture: true \}\)/.test(idle),
     'the wake listener must run in the capture phase, ahead of xterm');
 
-// 14. What Windows shows for the app. FileDescription is misnamed: it is
+// 14. Popup menus come from Modals.menu, which is the only code that
+// knows how to flip a menu back on screen near an edge and how to give
+// the keyboard back afterwards. The terminal context menu had its own
+// copy with neither, so right-clicking near the bottom of the window put
+// half the menu off screen, and Paste left focus on a button that had
+// just been removed - the pane had to be clicked again before Enter
+// would send the command.
+const ctx = fs.readFileSync(path.join(PUBLIC, 'context-menu.js'), 'utf8');
+assert.ok(/Modals\.menu\(/.test(ctx),
+    'context-menu.js must build its menu with Modals.menu, not by hand');
+assert.ok(!/position:fixed;left:/.test(ctx),
+    'context-menu.js must not position a popup itself - edge flipping lives in Modals.menu');
+
+assert.ok(/function restoreFocus\(/.test(modals),
+    'modals.js must keep restoreFocus - a menu or dialog that closes has to hand the keyboard back');
+const closeMenuBody = modals.slice(modals.indexOf('function closeMenu()'),
+    modals.indexOf('function restoreFocus('));
+assert.ok(closeMenuBody.includes('restoreFocus()'),
+    'closeMenu must restore focus, or the key after a menu action goes nowhere');
+assert.ok(/returnFocusTo = cameFrom;/.test(modals),
+    'closing a dialog must restore the focus it took - confirming a paste must not leave the pane dead');
+// Restoring must never steal focus from something that deliberately took
+// it: a menu item that opens a dialog, or a dialog that focuses a field.
+const restoreBody = modals.slice(modals.indexOf('function restoreFocus('));
+assert.ok(/now !== document\.body/.test(restoreBody),
+    'restoreFocus must stand down when something else already holds focus');
+
+// 15. What Windows shows for the app. FileDescription is misnamed: it is
 // the label Windows puts on the taskbar jump list, in Task Manager and in
 // Explorer's Description column, so it has to be the app's NAME. Shipping
 // package.json's description there made right-clicking the taskbar button
@@ -194,5 +221,5 @@ assert.ok(!/\bteam\b/i.test(pkg.description),
 
 console.log(`ok - ui invariants (hidden rule, outside-click menus, clipboard perms, ` +
     `no default menu, wheel zoom, remote-name sanitizing, gated dev hooks, idle overlay-only, ` +
-    `exe metadata, ` +
+    `exe metadata, shared menus, focus handback, ` +
     `${scripts.length} scripts, ${wired.size} wired ids)`);

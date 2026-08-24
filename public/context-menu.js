@@ -81,59 +81,42 @@
     }
 
     // --- context menu (mode 2) -------------------------------------------
+    // Built through Modals.menu rather than by hand. This used to be its own
+    // popup, which meant it missed everything the shared one already did:
+    // flipping back on screen near an edge (right-click low or far right and
+    // half the menu was outside the window), Escape to dismiss, and putting
+    // the keyboard back where it was. That last one is why Paste appeared to
+    // work and then swallow the Enter after it - focus was sitting on a
+    // button that no longer existed, so the terminal never saw the key.
     function showMenu(e, pane) {
-        closeMenu();
-        const menu = document.createElement('div');
-        menu.id = 'term-menu';
-        menu.style.cssText = `position:fixed;left:${e.clientX}px;top:${e.clientY}px;z-index:2000;` +
-            'background:var(--se-panel);border:1px solid var(--se-border);border-radius:4px;' +
-            'display:flex;flex-direction:column;min-width:170px;box-shadow:0 4px 14px rgba(0,0,0,.4);';
-        const add = (label, fn, disabled) => {
-            const b = document.createElement('button');
-            b.textContent = label;
-            b.disabled = !!disabled;
-            b.style.cssText = 'border:none;background:none;text-align:left;padding:6px 12px;border-radius:0;';
-            if (!disabled) {
-                b.addEventListener('mouseenter', () => b.style.background = 'var(--se-panel-2)');
-                b.addEventListener('mouseleave', () => b.style.background = 'none');
-                b.addEventListener('click', () => { closeMenu(); fn(); });
-            }
-            menu.appendChild(b);
-        };
         const sel = pane.term.getSelection();
         const lastOut = window.TermPanes.lastCommandOutput(pane.sessionId);
-        add('Copy', () => navigator.clipboard.writeText(sel), !sel);
-        add('Paste', () => pasteInto(pane));
-        add('Paste to all panes', () => window.MultiExec.pasteAll());
-        // Only offered when the shell actually marks its commands (OSC 133);
-        // greyed-out clutter would just advertise a feature the device the
-        // user is on cannot do.
-        add('Copy last command output', () => navigator.clipboard.writeText(lastOut), lastOut === null);
-        add('Select all', () => pane.term.selectAll());
-        add('Save output as...', () => window.TermPanes.saveOutput(pane.sessionId));
-        if (pane.transport === 'ssh') {
-            add('Install SSH key on this device...', () => window.Forms.installKeyDialog(pane.sessionId));
-        }
-        add('Clear scrollback', () => pane.term.clear());
+        const items = [
+            { label: 'Copy', onClick: () => navigator.clipboard.writeText(sel), disabled: !sel },
+            { label: 'Paste', onClick: () => pasteInto(pane) },
+            { label: 'Paste to all panes', onClick: () => window.MultiExec.pasteAll() },
+            // Only offered when the shell actually marks its commands (OSC
+            // 133); greyed-out clutter would just advertise a feature the
+            // device the user is on cannot do.
+            { label: 'Copy last command output', disabled: lastOut === null,
+                onClick: () => navigator.clipboard.writeText(lastOut) },
+            null,
+            { label: 'Select all', onClick: () => pane.term.selectAll() },
+            { label: 'Save output as...', onClick: () => window.TermPanes.saveOutput(pane.sessionId) },
+            null,
+        ];
         // Only for SSH: there is no shell to integrate with on a serial
         // console into a switch, and none on a telnet vty either.
         if (pane.transport === 'ssh') {
-            add('Shell integration...', () => window.ShellIntegration.openDialog());
+            items.push({ label: 'Install SSH key on this device...',
+                onClick: () => window.Forms.installKeyDialog(pane.sessionId) });
         }
-        document.body.appendChild(menu);
-        setTimeout(() => document.addEventListener('mousedown', outside, { capture: true }));
-        function outside(ev) {
-            if (!menu.contains(ev.target)) closeMenu();
+        items.push({ label: 'Clear scrollback', onClick: () => pane.term.clear() });
+        if (pane.transport === 'ssh') {
+            items.push({ label: 'Shell integration...',
+                onClick: () => window.ShellIntegration.openDialog() });
         }
-        function closeMenuInner() {
-            document.removeEventListener('mousedown', outside, { capture: true });
-        }
-        menu.dataset.cleanup = '1';
-        menu._cleanup = closeMenuInner;
-    }
-    function closeMenu() {
-        const m = document.getElementById('term-menu');
-        if (m) { if (m._cleanup) m._cleanup(); m.remove(); }
+        window.Modals.menu(e.clientX, e.clientY, items);
     }
 
     // --- global wiring ----------------------------------------------------

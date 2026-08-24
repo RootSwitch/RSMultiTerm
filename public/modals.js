@@ -11,6 +11,10 @@
     const stack = [];
 
     function open(title, bodyEl, actions, opts = {}) {
+        // Same story as the menus: a dialog steals the keyboard and has to
+        // hand it back, or confirming a multi-line paste leaves the pane
+        // unfocused and the command sitting there unsent.
+        const cameFrom = document.activeElement;
         const backdrop = document.createElement('div');
         backdrop.className = 'modal-backdrop';
         const modal = document.createElement('div');
@@ -31,6 +35,8 @@
             const at = stack.indexOf(backdrop);
             if (at !== -1) stack.splice(at, 1);
             document.removeEventListener('keydown', onKey, true);
+            returnFocusTo = cameFrom;
+            restoreFocus();
         };
         const onKey = (e) => {
             if (e.key !== 'Escape') return;
@@ -141,6 +147,11 @@
     // itself back on screen when opened near an edge.
     function menu(x, y, items) {
         closeMenu();
+        // Where the keyboard was before the menu took it. Clicking an item
+        // moves focus to that button, and closing removes the button, which
+        // drops focus to <body> - so a Paste worked but the Enter after it
+        // went nowhere and the pane had to be clicked again.
+        returnFocusTo = document.activeElement;
         const el = document.createElement('div');
         el.className = 'rs-menu';
         el.style.left = `${x}px`;
@@ -177,9 +188,13 @@
         }
         document.body.appendChild(el);
 
+        // Flip back on screen near an edge: left of the pointer when it
+        // would run off the right, above it when it would run off the
+        // bottom. A menu with more items than the window is tall cannot be
+        // flipped anywhere useful, so it pins to the top and scrolls.
         const r = el.getBoundingClientRect();
         if (r.right > window.innerWidth) el.style.left = `${Math.max(0, window.innerWidth - r.width - 4)}px`;
-        if (r.bottom > window.innerHeight) el.style.top = `${Math.max(0, y - r.height)}px`;
+        if (r.bottom > window.innerHeight) el.style.top = `${Math.max(4, y - r.height)}px`;
 
         // A mousedown OUTSIDE the menu dismisses it - outside being the
         // whole point. Dismissing on any mousedown tore the menu out of the
@@ -207,6 +222,7 @@
     // off the document - an outside-click handler that outlives its menu
     // would close the NEXT one on its first click.
     let openMenu = null;
+    let returnFocusTo = null;
     function closeMenu() {
         document.removeEventListener('keydown', onEsc, { capture: true });
         if (openMenu) {
@@ -215,6 +231,20 @@
         }
         const el = document.querySelector('.rs-menu');
         if (el) el.remove();
+        restoreFocus();
+    }
+
+    // Give the keyboard back - but only if nothing else has claimed it.
+    // After the menu goes, focus has fallen to <body>; if it is anywhere
+    // else, something took it deliberately (a dialog the item opened, a
+    // field it focused) and must not be interrupted.
+    function restoreFocus() {
+        const prev = returnFocusTo;
+        returnFocusTo = null;
+        if (!prev || !prev.isConnected || prev === document.body) return;
+        const now = document.activeElement;
+        if (now && now !== document.body) return;
+        try { prev.focus(); } catch (_) { /* gone between then and now */ }
     }
 
     window.Modals = { open, row, input, select, promptText, menu, closeMenu };

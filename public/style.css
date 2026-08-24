@@ -817,6 +817,11 @@ label { color: var(--se-txt-dim); }
     display: flex;
     flex-direction: column;
     padding: 3px 0;
+    /* A menu with more items than the window is tall cannot be flipped
+       anywhere that fits, so it scrolls rather than losing its last item
+       off the bottom edge. */
+    max-height: calc(100vh - 8px);
+    overflow-y: auto;
     background: var(--se-panel);
     border: 1px solid var(--se-border);
     border-radius: 4px;

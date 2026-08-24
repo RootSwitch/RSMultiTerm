@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+- **The terminal's right-click menu no longer runs off the window.**
+  Right-click near the bottom or the right edge and it flipped up and
+  left onto the screen instead of being half hidden. The menu was
+  hand-rolled and never used the shared menu helper, which has done
+  this correctly for every other menu in the app all along; now it does
+  too, and it gets Escape-to-dismiss with it.
+- **Fixed: after Paste from that menu, the terminal did not have the
+  keyboard.** Clicking a menu item moves focus to the button, and
+  closing the menu removes the button, so focus fell to nothing at
+  all - the text pasted, and then the Enter to run it went nowhere
+  until you clicked back into the pane. Menus and dialogs now hand the
+  keyboard back to whatever had it, unless something else has
+  deliberately claimed it in the meantime.
+- The menu is grouped with separators: clipboard, then this pane's
+  output, then the device and session actions.
+
 - **Fixed: the taskbar showed a sentence where the app name belongs.**
   Right-clicking the running app offered "Multi-session terminal
   emulator for network and Linux administration - SSH, Telnet,
