@@ -46,7 +46,12 @@ const DEFAULTS = {
     osc52: { allowWrite: true },
     // Idle animation: off unless asked for. 'random' picks a style each time.
     // picks: which styles "Surprise me" may choose; empty means all.
-    idle: { style: 'off', minutes: 5, area: 'window', picks: [] },
+    // rotateMinutes: how long "Surprise me" stays on one style; 0 = forever.
+    idle: { style: 'off', minutes: 5, area: 'panes', picks: [], rotateMinutes: 0 },
+    // Field tools remembers the folder you were serving and the ports you
+    // set. Nothing here starts anything - it is only what the dialog opens
+    // with, so you are not re-typing a path every time you push an image.
+    field: { root: null, bind: null, tftpPort: 69, httpPort: 8080, stopAfterMinutes: 60 },
 };
 
 let data = null;
@@ -78,6 +83,18 @@ function sanitize(patch) {
         if ('filePath' in out.teamSync && out.teamSync.filePath !== null &&
             typeof out.teamSync.filePath !== 'string') {
             delete out.teamSync.filePath;
+        }
+    }
+    if (out.field && typeof out.field === 'object') {
+        for (const [key, lo, hi, dflt] of [['tftpPort', 1, 65535, 69],
+            ['httpPort', 1, 65535, 8080], ['stopAfterMinutes', 1, 1440, 60]]) {
+            if (!(key in out.field)) continue;
+            const n = Number(out.field[key]);
+            out.field[key] = Number.isFinite(n) ? Math.max(lo, Math.min(hi, Math.round(n))) : dflt;
+        }
+        for (const key of ['root', 'bind']) {
+            if (key in out.field && out.field[key] !== null &&
+                typeof out.field[key] !== 'string') delete out.field[key];
         }
     }
     for (const key of ['scrollbackLines', 'sidebarWidth']) {

@@ -369,6 +369,14 @@ label { color: var(--se-txt-dim); }
     text-overflow: ellipsis;
 }
 
+/* Open right now. It has to be told apart from a fresh green audit dot at
+   a glance, and the audit dots fade with age while this one never does, so
+   the difference is a halo rather than another color - green already means
+   "answered" here and a second green would be two things saying one word. */
+.tree-health.live {
+    background: var(--se-up);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--se-up) 30%, transparent);
+}
 .tree-health.ok { background: var(--se-up); }
 .tree-health.warn { background: var(--se-warn); }
 .tree-health.bad { background: var(--se-down); }

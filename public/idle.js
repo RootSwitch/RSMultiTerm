@@ -53,9 +53,15 @@
         settings = {
             style: i.style || 'off',
             minutes: Math.max(1, Math.min(240, Number(i.minutes) || 5)),
-            area: i.area === 'panes' ? 'panes' : 'window',
+            // Panes is the default: an animation that keeps the sidebar,
+            // tabs and toolbar visible reads as part of the app, where a
+            // full-window takeover reads as "something has gone wrong".
+            area: i.area === 'window' ? 'window' : 'panes',
             // Which styles "Surprise me" may pick. Empty means all of them.
             picks: Array.isArray(i.picks) ? i.picks : [],
+            // Minutes before "Surprise me" moves to another style. 0 = stay
+            // on the one it picked.
+            rotate: Math.max(0, Math.min(240, Number(i.rotateMinutes) || 0)),
         };
     };
     rsterm.invoke('rs:settings.get').then(applySettings);
@@ -174,17 +180,26 @@
     // The union of the visible terminal hosts: a clip path plus its
     // bounding box. Null when there are no panes (then it is the window).
     function paneRegion() {
-        if (!window.Tabs || !window.TermPanes) return null;
-        const tab = window.Tabs.active();
-        if (!tab) return null;
         const rects = [];
-        for (const sid of tab.sessionIds) {
+        const tab = window.Tabs && window.TermPanes && window.Tabs.active();
+        for (const sid of (tab ? tab.sessionIds : [])) {
             const pane = window.TermPanes.panes.get(sid);
             if (!pane || !pane.host || !pane.host.isConnected) continue;
             const r = pane.host.getBoundingClientRect();
             if (r.width > 10 && r.height > 10) rects.push(r);
         }
-        if (!rects.length) return null;
+        // Nothing open. This used to return null, and the caller reads null
+        // as "the whole window" - so picking "terminal panes only" and then
+        // idling with no session connected produced a full-screen takeover
+        // and a setting that looked like it had not saved. Reported twice,
+        // both times with no panes up. The terminal AREA exists whether or
+        // not a session does, so play in that and leave the chrome alone.
+        if (!rects.length) {
+            const grid = document.getElementById('grid');
+            const r = grid && grid.getBoundingClientRect();
+            if (!r || r.width < 40 || r.height < 40) return null;
+            return { x: r.left, y: r.top, w: r.width, h: r.height, rects: [r] };
+        }
         const x = Math.min(...rects.map((r) => r.left)), y = Math.min(...rects.map((r) => r.top));
         const right = Math.max(...rects.map((r) => r.right)), bottom = Math.max(...rects.map((r) => r.bottom));
         return { x, y, w: right - x, h: bottom - y, rects };
@@ -199,8 +214,12 @@
         const all = Object.keys(STYLES);
         const chosen = settings.picks.filter((p) => STYLES[p]);
         const pool = chosen.length ? chosen : all;
+        // On a rotation, do not draw the style that just finished - with two
+        // or three ticked, chance alone repeats often enough to look stuck.
+        const avoid = opts && opts.avoid;
+        const draw = (avoid && pool.length > 1) ? pool.filter((p) => p !== avoid) : pool;
         const id = styleId === 'random' || !STYLES[styleId]
-            ? pool[Math.floor(Math.random() * pool.length)] : styleId;
+            ? draw[Math.floor(Math.random() * draw.length)] : styleId;
         const style = STYLES[id];
 
         const canvas = document.createElement('canvas');
@@ -213,7 +232,8 @@
         // "Terminal panes only": the animation is clipped to the terminal
         // hosts and its world is their bounding box, so the rain falls in
         // your terminal while the sidebar, tabs and title stay visible.
-        const region = (opts && opts.area || settings.area) === 'panes' ? paneRegion() : null;
+        const areaChoice = (opts && opts.area) || settings.area;
+        const region = areaChoice === 'panes' ? paneRegion() : null;
         if (region) canvas.classList.add('keyed');
         const screen = style.screen ? sampleScreen() : null;
         if (region && screen) shiftScreen(screen, -region.x, -region.y);
@@ -229,7 +249,12 @@
         // serves - the three keys everybody guesses first.
         const play = !!(opts && opts.play);
         env.play = play ? { left: false, right: false, fire: false, fired: false, score: 0 } : null;
-        running = { canvas, ctx, style, env, region, state: style.init(env), raf: 0, lastFrame: 0, id, play };
+        running = { canvas, ctx, style, env, region, state: style.init(env), raf: 0, lastFrame: 0,
+            id, play, areaChoice,
+            // Only "Surprise me" rotates - a chosen style changing itself
+            // would be the app overruling the choice. A game never does.
+            rotateAt: (!play && styleId === 'random' && settings.rotate)
+                ? Date.now() + settings.rotate * 60000 : 0 };
         lastMouse = null;
 
         // The waking keystroke never reaches a terminal: capture phase,
@@ -246,7 +271,7 @@
             : `idle: ${style.label} - any key or mouse movement to return`);
     }
 
-    function stop() {
+    function stop(opts) {
         if (!running) return;
         cancelAnimationFrame(running.raf);
         running.canvas.remove();
@@ -259,6 +284,9 @@
         running = null;
         touch();
         setStatus('');
+        // A rotation is not the user coming back: leave the focus and the
+        // status line alone, because the next style is about to claim both.
+        if (opts && opts.quiet) return;
         // Back to where the keyboard was.
         const tab = window.Tabs && window.Tabs.active();
         const pane = tab && window.TermPanes.panes.get(tab.focusedSessionId);
@@ -280,6 +308,16 @@
         input[k] = down;
     }
     function onWakeMouse() { stop(); }
+
+    // "Surprise me" moving on by itself. The idle clock is not restarted -
+    // the user has not touched anything - and start() sets `running` before
+    // this returns, so the 5s idle check cannot race a second animation in.
+    function rotate() {
+        const prev = running.id;
+        const area = running.areaChoice;
+        stop({ quiet: true });
+        start('random', { area, avoid: prev });
+    }
     function onVisibility() {
         if (!running) return;
         if (document.hidden) cancelAnimationFrame(running.raf);
@@ -301,6 +339,9 @@
         running.raf = requestAnimationFrame(frame);
         // A dialog the app raised must never sit hidden under an animation.
         if ((frames++ & 15) === 0 && document.querySelector('.modal-backdrop')) { stop(); return; }
+        // Wall-clock, not the rAF timestamp: this is a minutes-scale
+        // deadline and the loop stops dead while the window is hidden.
+        if (running.rotateAt && Date.now() >= running.rotateAt) { rotate(); return; }
         if (running.lastFrame && now - running.lastFrame < 1000 / FPS_CAP) return;
         const dt = running.lastFrame ? Math.min(0.1, (now - running.lastFrame) / 1000) : 1 / FPS_CAP;
         running.lastFrame = now;
@@ -990,5 +1031,10 @@
         // never used to refuse an explicit opt-in.
         reducedMotion: () => reducedMotion,
         styles: () => Object.entries(STYLES).map(([id, s]) => ({ id, label: s.label })),
+        // For probes: which style is up, and whether it is clipped to the
+        // terminal area or has taken the window.
+        currentStyle: () => (running ? running.id : null),
+        currentArea: () => (running ? (running.region ? 'panes' : 'window') : null),
+        rotateNow: () => { if (running && !running.play) rotate(); },
     };
 })();

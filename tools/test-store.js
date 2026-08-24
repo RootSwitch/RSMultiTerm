@@ -10,6 +10,7 @@ const path = require('path');
 
 const store = require('../main/store');
 const sessions = require('../main/session-store');
+const settings = require('../main/settings');
 
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rsmt-test-'));
 store.init(dir);
@@ -117,7 +118,45 @@ try {
     assert.ok(removed.length >= 4, `expected subtree removal, got ${removed.length}`);
     assert.strictEqual(sessions.get(sw1.id), null);
 
-    console.log('ok - store + session tree (10 scenarios incl. logging tri-state, BOM tolerance)');
+    // 11. Settings: unknown keys refused, nested patches merged rather
+    // than replacing, and the numbers with teeth clamped. The renderer
+    // parses hostile terminal output, so a patch arriving from it is not
+    // trusted to be shaped like a setting.
+    settings.init();
+    const d = settings.get();
+    assert.strictEqual(d.idle.area, 'panes',
+        'the idle animation defaults to the terminal panes, not the whole window');
+    assert.strictEqual(d.idle.rotateMinutes, 0, '"Surprise me" stays put unless asked to rotate');
+    assert.strictEqual(d.field.root, null, 'Field tools remembers nothing until something is served');
+    assert.strictEqual(d.field.httpPort, 8080);
+
+    // A nested patch merges: setting the rotation must not wipe the style.
+    settings.update({ idle: { style: 'random' } });
+    settings.update({ idle: { rotateMinutes: 15 } });
+    assert.strictEqual(settings.get().idle.style, 'random', 'a nested patch must merge, not replace');
+    assert.strictEqual(settings.get().idle.rotateMinutes, 15);
+
+    // Ports are clamped, not trusted. A port of 0 or 999999 binds nothing
+    // useful; 'evil' is not a number at all.
+    settings.update({ field: { tftpPort: 999999, httpPort: 0, stopAfterMinutes: 99999 } });
+    assert.strictEqual(settings.get().field.tftpPort, 65535, 'a port above 65535 must clamp');
+    assert.strictEqual(settings.get().field.httpPort, 1, 'port 0 must clamp into range');
+    assert.strictEqual(settings.get().field.stopAfterMinutes, 1440,
+        'a server deadline must stay inside a day');
+    settings.update({ field: { tftpPort: 'evil' } });
+    assert.strictEqual(settings.get().field.tftpPort, 69, 'a non-number port falls back to the default');
+
+    // A remembered folder must be a string or nothing at all.
+    settings.update({ field: { root: 'C:/images' } });
+    settings.update({ field: { root: { toString: () => 'C:/evil' } } });
+    assert.strictEqual(settings.get().field.root, 'C:/images',
+        'a non-string folder must be dropped, leaving the last good one');
+
+    // A key that is not a setting is not stored, whatever it claims.
+    settings.update({ notASetting: 'hello' });
+    assert.strictEqual('notASetting' in settings.get(), false, 'unknown keys must be refused');
+
+    console.log('ok - store + session tree (11 scenarios incl. logging tri-state, BOM, settings clamps)');
 } finally {
     fs.rmSync(dir, { recursive: true, force: true });
 }

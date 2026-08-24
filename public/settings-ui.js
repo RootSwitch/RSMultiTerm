@@ -132,7 +132,21 @@
         const fIdleArea = select([
             { value: 'window', label: 'The whole window' },
             { value: 'panes', label: 'Terminal panes only - sidebar and tabs stay visible' },
-        ], idle.area === 'panes' ? 'panes' : 'window');
+        ], idle.area === 'window' ? 'window' : 'panes');
+        // How long "Surprise me" stays on one style. Only meaningful for
+        // "Surprise me", so it is disabled otherwise rather than hidden - a
+        // field that vanishes is a field nobody finds again.
+        const fIdleRotate = input(idle.rotateMinutes || 0, '0', 'number');
+        const rotateRow = row('Change style every (min)', fIdleRotate);
+        const syncRotate = () => {
+            const on = fIdleStyle.value === 'random';
+            fIdleRotate.disabled = !on;
+            rotateRow.style.opacity = on ? '1' : '0.5';
+            rotateRow.title = on ? 'Minutes on one style before another is picked. 0 stays put.'
+                : 'Only applies to "Surprise me".';
+        };
+        fIdleStyle.addEventListener('change', syncRotate);
+        syncRotate();
         // Which styles "Surprise me" may pick. Some are calm and some are
         // chaotic, and which is which is a matter of taste - so the choice
         // is a list rather than a "calm/energetic" guess.
@@ -196,7 +210,7 @@
             logRow, row('Log timestamps', fTimestamps),
             syncRow, syncHint, row('Check sync every (s)', fPoll),
             styleRow, row('Start after (min)', fIdleMin), row('Play over', fIdleArea),
-            picksWrap, idleHint);
+            picksWrap, rotateRow, idleHint);
 
         const note = document.createElement('p');
         note.style.cssText = 'margin-top:10px;color:var(--se-txt-dim);font-size:11px;';
@@ -208,7 +222,8 @@
             middleClickPaste: fMiddle.value === 'yes',
             confirmations: { pasteMultiline: fPasteConfirm.value === 'yes' },
             idle: { style: fIdleStyle.value, minutes: Number(fIdleMin.value) || 5,
-                area: fIdleArea.value, picks: readPicks() },
+                area: fIdleArea.value, picks: readPicks(),
+                rotateMinutes: Number(fIdleRotate.value) || 0 },
             autoOpenFileBrowser: fAutoFiles.value === 'yes',
             terminalColors: {
                 mode: fTermMode.value,

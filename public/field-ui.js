@@ -48,8 +48,24 @@
     });
 
     // --- the panel --------------------------------------------------------
+    // What the dialog opens with. Remembered because re-typing a path
+    // every time you push an image is the kind of friction that stops a
+    // tool being used - but remembering is ALL it does: nothing here starts
+    // a server, and the saved bind address is checked against the machine's
+    // real addresses before it is offered (a laptop that moved networks
+    // must not silently bind to an address that no longer exists).
+    async function remember(patch) {
+        try {
+            await rsterm.invoke('rs:settings.update', { field: patch });
+        } catch (_) { /* a preference; never worth interrupting the user for */ }
+    }
+
     async function openPanel() {
-        const state = await rsterm.invoke('rs:field.list');
+        const [state, settings] = await Promise.all([
+            rsterm.invoke('rs:field.list'),
+            rsterm.invoke('rs:settings.get'),
+        ]);
+        const saved = settings.field || {};
         const body = document.createElement('div');
         body.style.minWidth = '560px';
 
@@ -66,16 +82,17 @@
         const bindOpts = addrs.map((i) => ({ value: i.address, label: `${i.address} (${i.name})` }))
             .concat(loopback.map((i) => ({ value: i.address, label: `${i.address} (this machine only)` })))
             .concat([{ value: '0.0.0.0', label: 'All addresses - anything that can route here' }]);
+        const stillHere = saved.bind && bindOpts.some((o) => o.value === saved.bind);
         const fBind = select(bindOpts.length ? bindOpts : [{ value: '0.0.0.0', label: 'All addresses' }],
-            addrs.length ? addrs[0].address : '0.0.0.0');
+            stillHere ? saved.bind : (addrs.length ? addrs[0].address : '0.0.0.0'));
 
-        const fRoot = input('', 'pick a folder to serve');
+        const fRoot = input(saved.root || '', 'pick a folder to serve');
         fRoot.style.flex = '1';
         const browse = document.createElement('button');
         browse.textContent = 'Browse...';
         browse.addEventListener('click', async () => {
             const dir = await rsterm.invoke('rs:sftp.pickFolder');
-            if (dir) fRoot.value = dir;
+            if (dir) { fRoot.value = dir; remember({ root: dir }); }
         });
         const rootRow = document.createElement('div');
         rootRow.className = 'field-row';
@@ -83,9 +100,9 @@
         rootLabel.textContent = 'Folder';
         rootRow.append(rootLabel, fRoot, browse);
 
-        const fTftpPort = input(69, '69', 'number');
-        const fHttpPort = input(8080, '8080', 'number');
-        const fStop = input(60, '60', 'number');
+        const fTftpPort = input(saved.tftpPort || 69, '69', 'number');
+        const fHttpPort = input(saved.httpPort || 8080, '8080', 'number');
+        const fStop = input(saved.stopAfterMinutes || 60, '60', 'number');
         const fWrites = document.createElement('input');
         fWrites.type = 'checkbox';
         const writesLabel = document.createElement('label');
@@ -131,7 +148,14 @@
                         listing: kind === 'http' && fListing.checked,
                         stopAfterMinutes: Number(fStop.value) || 60,
                     });
-                    logLines.push(`${new Date().toLocaleTimeString()}  ${kind.toUpperCase()} started`);
+                    logLines.push(`${new Date().toLocaleTimeString()}  ${kind.toUpperCase()} started ` +
+                        `on ${fBind.value}:${kind === 'tftp' ? fTftpPort.value : fHttpPort.value}`);
+                    remember({
+                        root: fRoot.value.trim(), bind: fBind.value,
+                        tftpPort: Number(fTftpPort.value) || 69,
+                        httpPort: Number(fHttpPort.value) || 8080,
+                        stopAfterMinutes: Number(fStop.value) || 60,
+                    });
                     await render();
                 } catch (err) {
                     const hint = /EACCES|EPERM/i.test(err.message)

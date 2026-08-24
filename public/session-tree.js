@@ -7,6 +7,11 @@
 (function () {
     let nodes = {};
     let healthByNode = {};           // nodeId -> {lastOk, lastFail, streak}
+    // Sessions open right now. Two collections because a node can hold
+    // several sessions at once (a MultiTerm tab, a duplicated pane) and the
+    // marker must survive one of them closing.
+    const liveBySession = new Map(); // sessionId -> nodeId
+    const liveNodes = new Set();     // nodeIds with at least one open session
     const expanded = new Set();      // folder ids
     const expandedSessions = new Set();
     const effectiveCache = new Map();   // sessionId -> resolved settings
@@ -21,6 +26,21 @@
         if (days < 14) return `Checked ${Math.round(days)} day${Math.round(days) === 1 ? '' : 's'} ago`;
         return 'Checked more than two weeks ago';
     }
+
+    // The audit dots are a MEMORY - a reading from the last sweep, faded by
+    // age. This one is a STATE: the app's own connection, open at this
+    // instant, gone the moment it drops. Nothing is probed for it; it is
+    // just what the window already knows about itself.
+    const DEAD = new Set(['closed', 'error', 'auth-blocked']);
+    rsterm.on('rs:evt.session-status', (m) => {
+        if (!m || !m.sessionId) return;
+        if (m.state === 'connected' && m.nodeId) liveBySession.set(m.sessionId, m.nodeId);
+        else if (DEAD.has(m.state)) { if (!liveBySession.delete(m.sessionId)) return; }
+        else return;
+        liveNodes.clear();
+        for (const id of liveBySession.values()) liveNodes.add(id);
+        render();
+    });
 
     async function refresh() {
         nodes = await rsterm.invoke('rs:tree.get');
@@ -122,9 +142,16 @@
                 el.appendChild(host);
             }
 
-            // Reachability marker, only for devices that have been probed.
+            // Open right now, or - failing that - the last reading taken.
             const h = healthByNode[node.id];
-            if (node.type === 'session' && h) {
+            const open = node.type === 'session' && liveNodes.has(node.id);
+            if (open) {
+                const dot = document.createElement('span');
+                dot.className = 'tree-health live';
+                dot.title = 'Connected now - this session is open in this window. ' +
+                    'It clears the moment the connection drops.';
+                el.appendChild(dot);
+            } else if (node.type === 'session' && h) {
                 const dot = document.createElement('span');
                 const unreachable = (h.streak || 0) > 0;
                 // Amber for refused: something answered at that address but

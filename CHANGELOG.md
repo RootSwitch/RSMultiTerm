@@ -2,6 +2,27 @@
 
 ## Unreleased
 
+- **A green dot next to a session that is open right now**, and gone the
+  moment it drops. The dots already in the tree are a memory - what the
+  last Audit found, faded by age - and there was no way to say "this one
+  is connected to me at this instant". This one is not a probe: it is
+  the window reporting its own connections.
+- **"Surprise me" can rotate.** A "change style every N minutes" setting
+  moves it on to another of the styles you ticked, never repeating the
+  one that just finished.
+- **Fixed: "Terminal panes only" played over the whole window when no
+  session was open.** The animation asked for the union of the open
+  terminal panes, got nothing back, and fell through to the full window,
+  which looked exactly like the setting had not saved. It now plays in
+  the terminal AREA whether or not a session is in it, so the sidebar,
+  tabs and toolbar stay put either way.
+- **The idle animation now defaults to the terminal panes** rather than
+  the whole window.
+- **Field tools reopens with the folder and ports you used last.** The
+  bind address is remembered too, but checked against this machine's
+  real addresses first - a laptop that changed networks falls back to a
+  live one rather than silently offering an address that has gone.
+
 - **Field tools: a TFTP server, an HTTP server, and Wake-on-LAN.** The
   three things a laptop in a wiring closet actually needs to SERVE.
   `copy tftp: flash:` is still how an image gets onto a switch and
