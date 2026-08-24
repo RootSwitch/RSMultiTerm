@@ -1,7 +1,7 @@
 {
   "name": "rsmultiterm",
   "version": "0.1.2",
-  "description": "Multi-session terminal emulator for network and Linux administration - SSH, Telnet, Serial, team session sync",
+  "description": "Multi-session terminal emulator for network and Linux administration - SSH, Telnet, Serial, session sync",
   "author": "RootSwitch",
   "license": "Unlicense",
   "main": "main/main.js",

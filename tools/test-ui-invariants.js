@@ -171,6 +171,28 @@ assert.ok(/preventDefault\(\)/.test(wake) && /stopImmediatePropagation\(\)/.test
 assert.ok(/addEventListener\('keydown', onWakeKey, \{ capture: true \}\)/.test(idle),
     'the wake listener must run in the capture phase, ahead of xterm');
 
+// 14. What Windows shows for the app. FileDescription is misnamed: it is
+// the label Windows puts on the taskbar jump list, in Task Manager and in
+// Explorer's Description column, so it has to be the app's NAME. Shipping
+// package.json's description there made right-clicking the taskbar button
+// offer a whole sentence where "RSMultiTerm" belongs.
+const { versionStrings } = require('./after-pack');
+const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8'));
+const stamped = versionStrings(pkg);
+assert.strictEqual(stamped.FileDescription, 'RSMultiTerm',
+    'FileDescription is the name Windows shows in the taskbar and Task Manager - ' +
+    'it must be the app name, not the description');
+assert.strictEqual(stamped.ProductName, 'RSMultiTerm');
+assert.strictEqual(stamped.Comments, pkg.description,
+    'the sentence belongs in Comments, which is the field meant for one');
+// The Team concept was re-homed as session sync; user-visible strings must
+// not still say "team". This one ships inside the exe, where it is easy to
+// forget it exists at all.
+assert.ok(!/\bteam\b/i.test(pkg.description),
+    'package.json description still says "team" - it is stamped into the exe ' +
+    'and shown by Windows, and the feature is called session sync now');
+
 console.log(`ok - ui invariants (hidden rule, outside-click menus, clipboard perms, ` +
     `no default menu, wheel zoom, remote-name sanitizing, gated dev hooks, idle overlay-only, ` +
+    `exe metadata, ` +
     `${scripts.length} scripts, ${wired.size} wired ids)`);

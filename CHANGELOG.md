@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+- **Fixed: the taskbar showed a sentence where the app name belongs.**
+  Right-clicking the running app offered "Multi-session terminal
+  emulator for network and Linux administration - SSH, Telnet,
+  Serial..." as its jump-list title. Windows takes that label from the
+  exe's FileDescription field, which despite the name is where an app
+  puts its NAME - Firefox ships "Firefox", Chrome ships "Google
+  Chrome" - and ours was carrying package.json's description. The
+  sentence moved to Comments, which is the field that is for one.
+  Also affects Task Manager and Explorer's Description column.
+- The description itself no longer says "team session sync". The Team
+  concept was re-homed as session sync a while ago; this copy of the
+  old name was stamped inside the exe, which is a good place to forget
+  one exists.
+
 - **A green dot next to a session that is open right now**, and gone the
   moment it drops. The dots already in the tree are a memory - what the
   last Audit found, faded by age - and there was no way to say "this one
