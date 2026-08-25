@@ -136,7 +136,10 @@ process.parentPort.on('message', (e) => {
                 break;
             }
             require('./sftp').run(s, m.req, (p) => {
-                send({ t: 'sftp-progress', sessionId: m.sessionId, reqId: m.reqId, bytes: p.bytes, total: p.total });
+                // Spread rather than pick: a byte transfer reports bytes, a
+                // folder walk reports a phase and a file count, and picking
+                // two named fields silently dropped everything else.
+                send({ t: 'sftp-progress', sessionId: m.sessionId, reqId: m.reqId, ...p });
             }).then(
                 (result) => send({ t: 'sftp-result', reqId: m.reqId, ok: true, result }),
                 (err) => send({ t: 'sftp-result', reqId: m.reqId, ok: false, error: err.message }));

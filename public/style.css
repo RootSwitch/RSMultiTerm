@@ -955,6 +955,23 @@ label { color: var(--se-txt-dim); }
     border-top: 1px solid var(--se-border);
 }
 
+/* Label above the field, for anything that needs the full dialog width. */
+.field-stack { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; }
+.field-stack > label { color: var(--se-txt-dim); font-size: 12px; }
+.field-hint { margin: 0; color: var(--se-txt-dim); font-size: 11px; }
+/* A textarea meant to be dragged bigger. The default resize grip is a few
+   grey pixels that nobody finds, so this gives it a visible bottom edge and
+   a floor tall enough that most commands never need dragging at all. */
+.grow-box {
+    width: 100%;
+    min-height: 11rem;
+    resize: vertical;
+    font-family: var(--mt-mono);
+    font-size: 12px;
+    line-height: 1.45;
+    border-bottom: 2px solid var(--se-accent);
+}
+
 .field-row {
     display: flex;
     align-items: center;

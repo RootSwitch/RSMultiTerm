@@ -136,6 +136,11 @@ async function run(session, req, onProgress) {
                 throw new Error('SCP cannot list directories - type a full path to download, or upload a file');
             case 'download':
                 return scp.download(client, req.path, req.local, onProgress);
+            case 'downloadTree':
+                // SCP here is the fallback for devices with no SFTP at all -
+                // switches, mostly - and it cannot even list a directory,
+                // let alone walk one.
+                throw new Error('SCP cannot download folders - it cannot list them');
             case 'upload':
                 return scp.upload(client, req.local, req.path, onProgress);
             default:
@@ -171,6 +176,10 @@ async function run(session, req, onProgress) {
             }));
         case 'download':
             return transfer(sftp, 'get', req, onProgress);
+        // A whole folder, walked and fetched here rather than one round trip
+        // per file from the renderer. See engine/sftp-tree.js.
+        case 'downloadTree':
+            return require('./sftp-tree').downloadTree(sftp, req, onProgress);
         case 'upload':
             return transfer(sftp, 'put', req, onProgress);
         case 'mkdir':

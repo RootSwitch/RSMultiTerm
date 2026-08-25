@@ -450,11 +450,20 @@
         const many = targets.length > 1;
         const items = [];
 
+        const folders = targets.filter((t) => t.isDir);
         if (files.length) {
             items.push({
                 label: many ? `Download ${files.length} file${files.length === 1 ? '' : 's'}...`
                     : 'Download',
                 onClick: () => (many ? downloadMany(files) : download(files[0])),
+            });
+        }
+        if (folders.length) {
+            items.push({
+                label: folders.length === 1
+                    ? `Download folder ${folders[0].name}...`
+                    : `Download ${folders.length} folders...`,
+                onClick: () => downloadTree(folders),
             });
         }
         if (!many) {
@@ -523,6 +532,48 @@
 
     // Batch download: one destination folder for the lot, then sequential
     // transfers so the progress line stays readable.
+    // A folder, or a mixed selection with folders in it. One engine call
+    // does the whole tree: the renderer's job here is to pick a destination
+    // and then say honestly what happened, including what was refused.
+    async function downloadTree(targets) {
+        if (transferMode !== 'sftp') {
+            return status('this device offers only SCP, which cannot list folders');
+        }
+        const dir = await rsterm.invoke('rs:sftp.pickFolder');
+        if (!dir) return;
+        const sep = dir.includes('\\') ? '\\' : '/';
+        let ok = 0, folders = 0, links = 0, unsafe = 0, failed = 0;
+        const problems = [];
+        for (const t of targets) {
+            const safe = localName(t.name);
+            if (!safe) { unsafe++; continue; }
+            status(`scanning ${t.name}...`);
+            try {
+                const r = await op({ op: 'downloadTree', path: join(cwd, t.name), local: dir + sep + safe });
+                ok += r.files; folders += r.folders + 1;
+                links += r.skippedLinks; unsafe += r.skippedUnsafe; failed += r.failureCount;
+                if (r.truncated) problems.push(`${t.name} was too large to fetch in one go`);
+                for (const n of r.notes) problems.push(n);
+                for (const f of r.failures) problems.push(`${f.remote}: ${f.error}`);
+            } catch (err) {
+                problems.push(`${t.name}: ${err.message}`);
+                failed++;
+            }
+        }
+        // Every one of these matters to somebody who just pulled a config
+        // tree off a device and needs to know it is all there.
+        const bits = [`${ok} file${ok === 1 ? '' : 's'} in ${folders} folder${folders === 1 ? '' : 's'}`];
+        if (failed) bits.push(`${failed} failed`);
+        if (links) bits.push(`${links} symlink${links === 1 ? '' : 's'} skipped`);
+        if (unsafe) bits.push(`${unsafe} name${unsafe === 1 ? '' : 's'} not safe to save locally`);
+        status(`${bits.join(', ')} - to ${dir}`);
+        if (problems.length) {
+            window.Forms.showBanner(failed ? 'error' : 'warn',
+                `Folder download: ${problems.slice(0, 3).join('; ')}` +
+                (problems.length > 3 ? ` (and ${problems.length - 3} more)` : ''));
+        }
+    }
+
     async function downloadMany(files) {
         const dir = await rsterm.invoke('rs:sftp.pickFolder');
         if (!dir) return;
@@ -552,6 +603,11 @@
 
     rsterm.on('rs:evt.sftp-progress', (m) => {
         if (m.sessionId !== bound) return;
+        // A tree reports files done; a single transfer reports bytes.
+        if (m.phase === 'scanning') return status('scanning the folder...');
+        if (m.phase === 'downloading') {
+            return status(`${m.files} of ${m.total} files - ${m.name || ''}`);
+        }
         status(m.total ? `${human(m.bytes)} of ${human(m.total)}` : human(m.bytes));
     });
 

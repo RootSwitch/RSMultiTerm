@@ -96,6 +96,24 @@
         return r;
     }
 
+    // A label ABOVE its field, for anything that wants the full width: a
+    // multi-line command in a label-beside-field row gets whatever is left
+    // after the label, which is not enough to see a command on one line.
+    function stacked(labelText, el, hintText) {
+        const wrap = document.createElement('div');
+        wrap.className = 'field-stack';
+        const l = document.createElement('label');
+        l.textContent = labelText;
+        wrap.append(l, el);
+        if (hintText) {
+            const h = document.createElement('p');
+            h.className = 'field-hint';
+            h.textContent = hintText;
+            wrap.appendChild(h);
+        }
+        return wrap;
+    }
+
     function input(value, placeholder, type = 'text') {
         const i = document.createElement('input');
         i.type = type;
@@ -247,5 +265,5 @@
         try { prev.focus(); } catch (_) { /* gone between then and now */ }
     }
 
-    window.Modals = { open, row, input, select, promptText, menu, closeMenu };
+    window.Modals = { open, row, stacked, input, select, promptText, menu, closeMenu };
 })();

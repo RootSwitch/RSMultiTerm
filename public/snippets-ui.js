@@ -7,7 +7,7 @@
 // safety margin.
 
 (function () {
-    const { open, row, input } = window.Modals;
+    const { open, row, stacked, input } = window.Modals;
 
     let snippets = [];
 
@@ -154,13 +154,22 @@
     function editDialog(existing, onDone) {
         const body = document.createElement('div');
         const name = input(existing ? existing.name : '', 'Bounce interface {{interface}}');
+        // Commands are the point of this dialog, so they get the room. The
+        // first version put the textarea in a normal label-beside-field row
+        // inside a dialog that sized itself to its content: about forty
+        // columns, which wrapped every real command and made the box look
+        // like it could not be made bigger at all. It stacks now, opens wide
+        // enough for a long command line, and says that it drags.
         const cmd = document.createElement('textarea');
-        cmd.rows = 6;
-        cmd.style.cssText = 'width:100%;font-family:var(--mt-mono);font-size:12px;';
+        cmd.rows = 10;
+        cmd.className = 'grow-box';
         cmd.value = existing ? existing.command : '';
         cmd.placeholder = 'configure terminal\ninterface {{interface}}\n...';
         const notes = input(existing ? existing.notes || '' : '', 'optional notes');
-        body.append(row('Name', name), row('Command', cmd), row('Notes', notes));
+        body.style.minWidth = 'min(760px, 80vw)';
+        body.append(row('Name', name), stacked('Command', cmd,
+            'One command per line. Drag the bottom-right corner to make this taller.'),
+        row('Notes', notes));
 
         open(existing ? 'Edit snippet' : 'New snippet', body, [
             { label: 'Cancel' },

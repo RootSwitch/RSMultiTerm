@@ -2,6 +2,25 @@
 
 ## Unreleased
 
+- **Download a folder from the file browser**, with everything under it.
+  Right-click a folder (or several) and the whole tree comes down.
+  The walk and the transfers happen inside the engine rather than as a
+  loop in the window, which is also why it is quick: the old multi-file
+  download was one full round trip per file and waited for each, which
+  is the "watch every file crawl past" pace you get elsewhere. Several
+  files are now in flight at once and each one is pipelined internally.
+  Symlinks are never followed - a directory link is how a walk becomes
+  infinite - and are counted and reported instead. Every name in the
+  listing is a name the DEVICE chose, so each component is checked
+  before it steers a local path; anything that will not sit safely
+  inside the folder you picked is refused and reported rather than
+  written.
+- **The snippet editor opens big enough for a command.** It was about
+  forty columns, so every real command wrapped, and the only resize
+  grip in sight belonged to the text box rather than the dialog. The
+  command field now spans the dialog, starts around 100 columns and
+  ten rows, and says that it drags.
+
 - **The terminal's right-click menu no longer runs off the window.**
   Right-click near the bottom or the right edge and it flipped up and
   left onto the screen instead of being half hidden. The menu was
