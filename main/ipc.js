@@ -61,6 +61,29 @@ function defaultLogDir() {
 // Effective logging config for the engine: tree value (bool or object) plus
 // app defaults. Logging is ON by default - a terminal for network gear that
 // silently didn't log the change window is the worst kind of surprise.
+// Somewhere a session log may be written. main/team-serializer.js STRIPS
+// logging.folder out of incoming team files, because "the share could point
+// teammates' logs at arbitrary directories" - correct, and this is the same
+// input arriving by a different door. A log is ANSI-stripped text under a
+// .log name, so this is not an arbitrary-write primitive; what it can do is
+// drop a file into a directory that treats new files as instructions, or
+// quietly fill a system location.
+const FORBIDDEN_LOG_DIRS = [
+    'startup', 'system32', 'syswow64', 'windows', 'program files',
+    'program files (x86)', 'programdata\\microsoft\\windows\\start menu',
+    '/etc', '/bin', '/sbin', '/usr/bin', '/boot',
+];
+function safeLogDir(dir) {
+    if (!dir || typeof dir !== 'string') return null;
+    if (!path.isAbsolute(dir)) return null;
+    const low = dir.replace(/\//g, '\\').toLowerCase();
+    for (const bad of FORBIDDEN_LOG_DIRS) {
+        const b = bad.replace(/\//g, '\\');
+        if (low === b || low.includes(`\\${b}\\`) || low.endsWith(`\\${b}`)) return null;
+    }
+    return dir;
+}
+
 function resolveLogging(treeValue) {
     const v = treeValue === null || treeValue === undefined ? {} :
         (typeof treeValue === 'boolean' ? { enabled: treeValue } : treeValue);
@@ -70,7 +93,7 @@ function resolveLogging(treeValue) {
     const appCfg = settings.get();
     return {
         enabled: v.enabled !== false,
-        dir: v.folder || appCfg.defaultLogFolder || defaultLogDir(),
+        dir: safeLogDir(v.folder) || safeLogDir(appCfg.defaultLogFolder) || defaultLogDir(),
         mode: v.mode || 'text',
         timestamps: v.timestamps !== undefined
             ? v.timestamps !== false

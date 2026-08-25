@@ -14,8 +14,21 @@ const listeners = [];
 
 const KINDS = new Set(['local', 'dynamic', 'remote']);
 
+let shapeWarning = null;
+
 function init() {
-    data = store.load('tunnels', { schema: 1, tunnels: [] });
+    data = store.shaped('tunnels',
+        (d) => d && typeof d === 'object' && Array.isArray(d.tunnels),
+        { schema: 1, tunnels: [] },
+        (msg) => { shapeWarning = msg; });
+}
+
+// A one-shot complaint for the UI: rebuilding from defaults silently is
+// how a user discovers their tunnels are gone by not finding them.
+function takeWarning() {
+    const w = shapeWarning;
+    shapeWarning = null;
+    return w;
 }
 
 function onChange(fn) { listeners.push(fn); }
@@ -80,4 +93,4 @@ function persist() {
     for (const fn of listeners) fn();
 }
 
-module.exports = { init, onChange, all, get, upsert, remove, newId, validate };
+module.exports = { init, onChange, all, get, upsert, remove, newId, validate, takeWarning };

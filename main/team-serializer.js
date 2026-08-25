@@ -77,9 +77,23 @@ function validateTeamFile(data) {
     if (data.schema !== 1) throw new Error(`unsupported team file schema ${data.schema}`);
     if (typeof data.rev !== 'number') throw new Error('team file has no rev');
     if (!data.nodes || typeof data.nodes !== 'object') throw new Error('team file has no nodes');
+    const UNSAFE = new Set(['__proto__', 'constructor', 'prototype']);
     for (const [id, n] of Object.entries(data.nodes)) {
-        if (id === '__proto__' || id === 'constructor' || id === 'prototype') {
+        if (UNSAFE.has(id)) {
             throw new Error('team file contains an unsafe node id - refusing');
+        }
+        // The KEY was checked; the node's own `id` FIELD was not - and
+        // merge.apply writes the local tree with local[node.id], reaching
+        // the store through replaceAll, which bypasses upsert's guard
+        // entirely. So {"safe": {"id": "__proto__", ...}} passed. Not a
+        // working exploit (the assignment reparents the map, not
+        // Object.prototype, and it is dropped on persist) - but a defense
+        // described as airtight had a seam, and this is the seam.
+        if (n && n.id !== undefined && (typeof n.id !== 'string' || UNSAFE.has(n.id))) {
+            throw new Error('team file contains an unsafe node id - refusing');
+        }
+        if (n && n.id !== undefined && n.id !== id) {
+            throw new Error(`team file node ${id} disagrees with its own id field - refusing`);
         }
         if (!n || (n.type !== 'folder' && n.type !== 'session')) {
             throw new Error(`invalid node ${id}`);

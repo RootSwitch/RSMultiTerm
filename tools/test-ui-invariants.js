@@ -374,7 +374,25 @@ assert.ok(/phase === 'sending'/.test(scpSrc),
 assert.ok(/is not an address on this machine/.test(ipcSrc) && /the served folder does not exist/.test(ipcSrc),
     'rs:field.start must validate bind address and root before starting a listener');
 
-// 25. What Windows shows for the app. FileDescription is misnamed: it is
+// 25. The security amendments. Loaded JSON is shape-checked (a valid-JSON
+// wrong-shape highlights.json used to stop the app launching, inside
+// whenReady, with no recovery message); the local logging folder is
+// confined the way the team path already confined it; and the team file's
+// node id FIELD is guarded, not only its map key.
+const storeSrc = fs.readFileSync(path.join(__dirname, '..', 'main', 'store.js'), 'utf8');
+assert.ok(/function shaped\(/.test(storeSrc) && /function shapedCritical\(/.test(storeSrc),
+    'store.js must offer shape-checked loads for rebuildable and critical files');
+const hlSrc = fs.readFileSync(path.join(__dirname, '..', 'main', 'highlights.js'), 'utf8');
+assert.ok(/store\.shaped\('highlights'/.test(hlSrc),
+    'highlights must load shape-checked - it runs before the window exists');
+assert.ok(/function safeLogDir\(/.test(ipcSrc) &&
+    /dir: safeLogDir\(v\.folder\) \|\| safeLogDir\(appCfg\.defaultLogFolder\)/.test(ipcSrc),
+    'the log folder must be confined in main, matching the team serializer');
+const teamSrc = fs.readFileSync(path.join(__dirname, '..', 'main', 'team-serializer.js'), 'utf8');
+assert.ok(/disagrees with its own id field/.test(teamSrc),
+    "the team file's node id field must be checked, not only its map key");
+
+// 26. What Windows shows for the app. FileDescription is misnamed: it is
 // the label Windows puts on the taskbar jump list, in Task Manager and in
 // Explorer's Description column, so it has to be the app's NAME. Shipping
 // package.json's description there made right-clicking the taskbar button
@@ -398,5 +416,5 @@ assert.ok(!/\bteam\b/i.test(pkg.description),
 console.log(`ok - ui invariants (hidden rule, outside-click menus, clipboard perms, ` +
     `no default menu, wheel zoom, remote-name sanitizing, gated dev hooks, idle overlay-only, ` +
     `exe metadata, shared menus, focus handback, contrast floor, broadcast truth, no orphan sessions, ` +
-    `armed-tab growth, focus trap, scp discipline, low-batch pins, ` +
+    `armed-tab growth, focus trap, scp discipline, low-batch pins, shape guards, ` +
     `${scripts.length} scripts, ${wired.size} wired ids)`);

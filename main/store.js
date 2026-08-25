@@ -111,4 +111,35 @@ function save(name, obj) {
     atomicWrite(fileOf(name), obj);
 }
 
-module.exports = { init, load, loadCritical, save, atomicWrite };
+// Shape guards. load()/loadCritical() verify a file PARSES; neither
+// verified it was the right shape, so a file that is valid JSON but
+// structurally wrong sailed through both and threw somewhere later -
+// `highlights.json` containing {"schema":1} threw inside app.whenReady and
+// the window never opened, with none of the friendly recovery loadCritical
+// exists to provide.
+//
+// shaped() is for files that can be rebuilt: wrong shape means the default,
+// and the caller is told so it can say something. shapedCritical() is for
+// files where "default" would mean losing the user's data, so a wrong
+// shape throws exactly like corrupt JSON does.
+function shaped(name, isValid, fallback, onBad) {
+    const data = load(name, null);
+    if (data !== null && isValid(data)) return data;
+    if (data !== null && onBad) {
+        onBad(`${name}.json is not shaped like a ${name} file - starting from defaults. ` +
+            'The old file is left on disk.');
+    }
+    return fallback;
+}
+
+function shapedCritical(name, isValid, fallback) {
+    const data = loadCritical(name, null);
+    if (data === null) return fallback;   // genuinely absent: a fresh install
+    if (!isValid(data)) {
+        throw new Error(`${name}.json is not valid ${name} data - refusing to start ` +
+            'rather than treat it as empty. Move the file aside to start fresh.');
+    }
+    return data;
+}
+
+module.exports = { init, load, loadCritical, save, atomicWrite, shaped, shapedCritical };

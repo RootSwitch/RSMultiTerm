@@ -254,4 +254,21 @@ const tree = (...nodes) => Object.fromEntries(nodes.map((n) => [n.id, n]));
     assert.deepStrictEqual(none.snippets, [], 'absent snippets normalize to empty');
 }
 
-console.log('ok - team merge + serializer (17 scenarios: matrix, whitelist, cycle repair, field validation, snippets)');
+// S5: the node's own `id` FIELD, not just its map key. merge.apply writes
+// local[node.id] and reaches the store through replaceAll, which bypasses
+// upsert's UNSAFE_IDS guard - so a node keyed 'safe' carrying id
+// '__proto__' passed validation entirely.
+{
+    const { validateTeamFile } = require('../main/team-serializer');
+    const base = { schema: 1, rev: 1, nodes: {} };
+    assert.throws(() => validateTeamFile({ ...base,
+        nodes: { safe: { id: '__proto__', type: 'session', name: 'x' } } }),
+    /unsafe node id/, "a node whose id FIELD is __proto__ must be refused");
+    assert.throws(() => validateTeamFile({ ...base,
+        nodes: { safe: { id: 'somethingelse', type: 'session', name: 'x' } } }),
+    /disagrees with its own id/, 'a node whose id does not match its key must be refused');
+    // ...and an honest node still passes.
+    validateTeamFile({ ...base, nodes: { n1: { id: 'n1', type: 'session', name: 'sw' } } });
+}
+
+console.log('ok - team merge + serializer (18 scenarios: matrix, whitelist, cycle repair, field validation, id-field guard, snippets)');

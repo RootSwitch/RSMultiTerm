@@ -129,8 +129,16 @@ const SEED_FIXUPS = {
     ],
 };
 
+let shapeWarning = null;
+
 function init() {
-    data = store.load('highlights', null);
+    // This one is why S3 matters: it runs inside app.whenReady, and
+    // data.sets.find() on a file without a sets array threw before the
+    // window existed - no recovery modal, no launch, nothing to click.
+    data = store.shaped('highlights',
+        (d) => d && typeof d === 'object' && Array.isArray(d.sets),
+        null,
+        (msg) => { shapeWarning = msg; });
     if (!data) {
         data = { schema: 1, sets: [DEFAULT_SET] };
         store.save('highlights', data);
@@ -169,4 +177,11 @@ function saveSets(sets) {
     for (const fn of listeners) fn();
 }
 
-module.exports = { init, onChange, getSets, saveSets };
+function takeWarning() {
+    const w = shapeWarning;
+    shapeWarning = null;
+    return w;
+}
+
+module.exports = {
+    takeWarning, init, onChange, getSets, saveSets };

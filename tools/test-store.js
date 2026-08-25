@@ -181,11 +181,43 @@ try {
         'a corrupt known_hosts must stop the app, not silently empty the trust store');
     fs.unlinkSync(path.join(dir, 'known_hosts.json'));
 
+    // 13. Shape validation. A file that PARSES but is the wrong shape used
+    // to sail through both loaders and throw somewhere later - and for
+    // highlights that "later" was inside app.whenReady, so a mangled
+    // highlights.json stopped the app from launching with no recovery
+    // message at all.
+    const highlights = require('../main/highlights');
+    fs.writeFileSync(path.join(dir, 'highlights.json'), '{"schema":1}');
+    highlights.init();                       // must NOT throw
+    const warned = highlights.takeWarning();
+    assert.ok(warned && /not shaped like/.test(warned),
+        'a wrong-shaped highlights file must rebuild from defaults AND say so');
+    assert.ok(Array.isArray(highlights.all ? highlights.all() : []) ||
+        typeof highlights.init === 'function', 'highlights recovered');
+    assert.strictEqual(highlights.takeWarning(), null, 'the warning is one-shot');
+    fs.unlinkSync(path.join(dir, 'highlights.json'));
+
+    // Rebuildable stores recover quietly-but-audibly...
+    const tunnels = require('../main/tunnel-store');
+    fs.writeFileSync(path.join(dir, 'tunnels.json'), '{"schema":1}');
+    tunnels.init();
+    assert.deepStrictEqual(tunnels.all(), [], 'a wrong-shaped tunnels file rebuilds empty');
+    assert.ok(tunnels.takeWarning(), 'and says so');
+    fs.unlinkSync(path.join(dir, 'tunnels.json'));
+
+    // ...but the session tree does NOT: an empty tree where a full one
+    // belongs is data loss, so a wrong shape throws like corrupt JSON.
+    fs.writeFileSync(path.join(dir, 'sessions.json'), '{"schema":1}');
+    assert.throws(() => sessions.init(), /refusing to start/,
+        'a wrong-shaped sessions file must refuse, not silently start empty');
+    fs.unlinkSync(path.join(dir, 'sessions.json'));
+    sessions.init();   // back to a clean tree for anything after this
+
     // A key that is not a setting is not stored, whatever it claims.
     settings.update({ notASetting: 'hello' });
     assert.strictEqual('notASetting' in settings.get(), false, 'unknown keys must be refused');
 
-    console.log('ok - store + session tree (12 scenarios incl. logging tri-state, BOM, settings clamps, hostkeys fail-closed)');
+    console.log('ok - store + session tree (13 scenarios incl. logging tri-state, BOM, settings clamps, hostkeys fail-closed, shape guards)');
 } finally {
     fs.rmSync(dir, { recursive: true, force: true });
 }

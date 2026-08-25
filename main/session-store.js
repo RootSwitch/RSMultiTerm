@@ -24,7 +24,12 @@ function newId() {
 }
 
 function init() {
-    tree = store.loadCritical('sessions', { schema: 1, nodes: {} });
+    // Critical: an empty tree where a full one belongs is data loss, and
+    // {"schema":1} with no nodes used to pass loadCritical and then throw
+    // on the first Object.values(tree.nodes).
+    tree = store.shapedCritical('sessions',
+        (d) => d && typeof d === 'object' && d.nodes && typeof d.nodes === 'object',
+        { schema: 1, nodes: {} });
 }
 
 function onChange(fn) { listeners.push(fn); }

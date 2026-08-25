@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+- **Security amendments from the review (S3, S4, S5).**
+  - **A corrupt settings file can no longer stop the app from starting.**
+    A highlights.json that was valid JSON but the wrong shape threw
+    before the window existed - no error, no recovery, nothing to
+    click. Files that can be rebuilt (highlights, tunnels,
+    reachability) now fall back to defaults and say so; files where
+    "empty" would mean losing your data (sessions) refuse to start with
+    the same recovery message a corrupt file already gave, instead of
+    silently opening with an empty tree.
+  - **The session-log folder is confined.** Team files already had
+    their log folder stripped for exactly this reason; the same setting
+    arriving from the app itself was trusted. It now has to be an
+    absolute path outside system and startup locations.
+  - **A team file's node identity is checked twice.** The validator
+    guarded each node's key but not the id field inside it, and the
+    merge writes by that field.
+
 - **The review's low-severity batch - all twenty-four.** The ones you
   might notice:
   - The broadcast paste confirmation now opens with CANCEL focused, so

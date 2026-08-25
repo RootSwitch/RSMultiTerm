@@ -9,7 +9,10 @@ let data = null;
 const listeners = [];
 
 function init() {
-    data = store.load('health', { schema: 1, nodes: {} });
+    // Reachability history is a convenience; a wrong shape rebuilds it.
+    data = store.shaped('health',
+        (d) => d && typeof d === 'object' && d.nodes && typeof d.nodes === 'object',
+        { schema: 1, nodes: {} });
 }
 
 function onChange(fn) { listeners.push(fn); }
