@@ -255,7 +255,7 @@ function wireIpc(engineRef, getWindow, bootConfig) {
         // LISTENS, so the renderer's spec is checked in main rather than
         // trusted shapewise. The engine re-checks the root; the bind
         // address must be one this machine actually has.
-        if (!spec || (spec.kind !== 'tftp' && spec.kind !== 'http')) {
+        if (!spec || !['tftp', 'http', 'syslog'].includes(spec.kind)) {
             throw new Error('unknown server kind');
         }
         const port = Number(spec.port);
@@ -270,10 +270,13 @@ function wireIpc(engineRef, getWindow, bootConfig) {
         if (!known.includes(bind)) {
             throw new Error(`${bind || '(empty)'} is not an address on this machine`);
         }
-        let rootStat;
-        try { rootStat = fs.statSync(String(spec.root || '')); } catch (_) { /* below */ }
-        if (!rootStat || !rootStat.isDirectory()) {
-            throw new Error('the served folder does not exist');
+        // A syslog sink serves no folder; the others must have a real one.
+        if (spec.kind !== 'syslog') {
+            let rootStat;
+            try { rootStat = fs.statSync(String(spec.root || '')); } catch (_) { /* below */ }
+            if (!rootStat || !rootStat.isDirectory()) {
+                throw new Error('the served folder does not exist');
+            }
         }
         return fieldCall('start', {
             spec: {
@@ -287,6 +290,7 @@ function wireIpc(engineRef, getWindow, bootConfig) {
     ipcMain.handle('rs:field.list', () => fieldCall('list', {}));
     ipcMain.handle('rs:field.wake', (_e, { mac, broadcast, port }) =>
         fieldCall('wake', { mac, broadcast, port }));
+    ipcMain.handle('rs:field.syslog', (_e, { id }) => fieldCall('syslog', { id }));
 
     ipcMain.handle('rs:health.get', () => health.all());
     ipcMain.handle('rs:health.stale', (_e, { days }) => health.staleNodeIds(days || 14));
@@ -1090,6 +1094,7 @@ function wireIpc(engineRef, getWindow, bootConfig) {
                 // bug, so it lands in the main log where a report can find it.
                 require('./safe-log').error('engine uncaught exception (survived):', m.error);
                 break;
+            case 'field-syslog':
             case 'field-log':
             case 'field-state':
                 forward('rs:evt.field', m);

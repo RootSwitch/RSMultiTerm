@@ -127,6 +127,7 @@ process.parentPort.on('message', (e) => {
                 if (m.op === 'stop') return field.stop(m.id);
                 if (m.op === 'list') return { servers: field.list(), interfaces: field.interfaces() };
                 if (m.op === 'wake') return field.wake(m.mac, m.broadcast, m.port);
+                if (m.op === 'syslog') return field.syslogLines(m.id);
                 throw new Error(`unknown field op ${m.op}`);
             };
             run().then((r) => reply(true, r), (err) => reply(false, err.message));

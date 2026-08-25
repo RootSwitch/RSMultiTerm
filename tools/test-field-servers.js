@@ -396,6 +396,54 @@ const get = (port, p) => new Promise((resolve, reject) => {
         assert.ok(index.body.toString().includes('image.bin'), 'listing shows the folder');
         field.stop('http');
 
+        // --- syslog -------------------------------------------------------
+        // PRI decoding is the part worth testing: severity is what a
+        // technician filters on, and getting the mask wrong shows every
+        // message as emergencies.
+        assert.strictEqual(field.parseSyslog('<189>sw1: up').severityName, 'notice',
+            '189 = local7.notice');
+        assert.strictEqual(field.parseSyslog('<0>meltdown').severityName, 'emerg');
+        assert.strictEqual(field.parseSyslog('<191>chatty').severityName, 'debug');
+        assert.strictEqual(field.parseSyslog('<189>sw1: up').facility, 23);
+        assert.strictEqual(field.parseSyslog('<189>sw1: up').message, 'sw1: up',
+            'the PRI is stripped from the message');
+        // Not-syslog, and out-of-range PRI, pass through as plain text
+        // rather than being dropped - a device sending junk to 514 is
+        // something you want to SEE.
+        assert.strictEqual(field.parseSyslog('plain line').severity, null);
+        assert.strictEqual(field.parseSyslog('plain line').message, 'plain line');
+        assert.strictEqual(field.parseSyslog('<999>nonsense').severity, null);
+
+        const sink = await field.start({
+            id: 'syslog', kind: 'syslog', bind: '127.0.0.1', port: 0, stopAfterMinutes: 5 });
+        assert.ok(sink.port > 0, 'the sink reports its bound port');
+        const say = (text) => new Promise((resolve, reject) => {
+            const s = dgram.createSocket('udp4');
+            s.send(Buffer.from(text), sink.port, '127.0.0.1', (err) => {
+                s.close();
+                if (err) reject(err); else resolve();
+            });
+        });
+        await say('<189>Aug 25 18:20:01 sw1 %LINK-3-UPDOWN: Gi0/1 up');
+        await say('<187>Aug 25 18:20:02 sw1 %SYS-3-CPUHOG: task ran long');
+        // A line carrying control bytes must be scrubbed: this buffer goes
+        // into the DOM and can be saved to a file.
+        await say('<189>bad[31mlinehere');
+        await new Promise((r) => setTimeout(r, 300));
+        const got = field.syslogLines('syslog').lines;
+        assert.strictEqual(got.length, 3, `expected 3 messages, got ${got.length}`);
+        assert.strictEqual(got[0].severityName, 'notice');
+        assert.strictEqual(got[1].severityName, 'err');
+        assert.ok(got[0].text.includes('%LINK-3-UPDOWN'), 'the message survives intact');
+        assert.ok(!/[ -]/.test(got[2].text),
+            'control bytes must be scrubbed out of syslog text');
+        assert.ok(got[2].text.includes('badline') || got[2].text.includes('bad '),
+            `the readable part survives, got ${JSON.stringify(got[2].text)}`);
+        assert.strictEqual(got[0].from, '127.0.0.1');
+        field.stop('syslog');
+        assert.deepStrictEqual(field.syslogLines('syslog').lines, [],
+            'a stopped sink keeps nothing');
+
         // --- Wake on LAN ------------------------------------------------
         // Catch the packet on a local socket and check the bytes: six 0xFF
         // then the MAC sixteen times.
@@ -428,7 +476,7 @@ const get = (port, p) => new Promise((resolve, reject) => {
 
         console.log('ok - field servers (tftp read/write + blksize/tsize + junction escape + ' +
             'WRQ truncate guard + size cap + stop-kills-transfers + TID + netascii refusal, ' +
-            'http incl. ranges, wol packet, ' +
+            'http incl. ranges, syslog PRI + scrubbing, wol packet, ' +
             'and every path outside the folder refused)');
         process.exit(0);
     } catch (err) {

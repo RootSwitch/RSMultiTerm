@@ -537,13 +537,81 @@ async function wake(mac, broadcast, port) {
     });
 }
 
+// --- syslog ---------------------------------------------------------------
+// A UDP 514 sink. The change-window staple: reload a switch and watch it
+// announce itself coming back, without standing up a syslog server.
+//
+// This is a LISTENER like the others, so it obeys the same rules - nothing
+// starts by itself, the bind address is chosen, and it carries a deadline.
+// One thing it does that the file servers do not: it keeps what it heard,
+// so the messages are still there when you look up. That buffer is capped,
+// because a chatty estate at debug level will fill anything given time.
+
+const SYSLOG_KEEP = 5000;          // lines held for the panel
+const SYSLOG_MAX_LINE = 8 * 1024;  // a single datagram past this is truncated
+
+// RFC 3164 and 5424 both start <PRI>. Facility and severity fall out of it:
+// severity is the low three bits, and severity is what a technician
+// actually filters on - "show me anything at warning or worse".
+const SEVERITY = ['emerg', 'alert', 'crit', 'err', 'warn', 'notice', 'info', 'debug'];
+
+function parseSyslog(text) {
+    const out = { severity: null, severityName: null, facility: null, message: text };
+    const m = /^<(\d{1,3})>([\s\S]*)$/.exec(text);
+    if (!m) return out;
+    const pri = Number(m[1]);
+    if (!Number.isFinite(pri) || pri > 191) return out;
+    out.severity = pri & 7;
+    out.severityName = SEVERITY[out.severity];
+    out.facility = pri >> 3;
+    out.message = m[2];
+    return out;
+}
+
+function startSyslog(id, spec) {
+    return new Promise((resolve, reject) => {
+        const sock = dgram.createSocket({ type: 'udp4', reuseAddr: false });
+        const lines = [];
+        let dropped = 0;
+        sock.on('error', (err) => reject(err));
+        sock.on('message', (msg, rinfo) => {
+            // Device output, so: no control bytes, bounded length. The
+            // panel puts this in the DOM via textContent, but a log line
+            // carrying a stray escape has no business reaching a terminal
+            // either, and this buffer can be saved to a file.
+            let text = msg.toString('utf8', 0, Math.min(msg.length, SYSLOG_MAX_LINE));
+            text = text.replace(/[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/g, ' ').trim();
+            const parsed = parseSyslog(text);
+            const entry = {
+                at: Date.now(), from: rinfo.address,
+                severity: parsed.severity, severityName: parsed.severityName,
+                text: parsed.message,
+            };
+            lines.push(entry);
+            if (lines.length > SYSLOG_KEEP) { lines.shift(); dropped++; }
+            // The panel is told about each line as it lands; the buffer is
+            // for what it missed and for saving.
+            onEvent({ t: 'field-syslog', id, entry });
+        });
+        sock.bind(spec.port, spec.bind === '0.0.0.0' ? undefined : spec.bind, () => {
+            resolve({
+                close: () => { try { sock.close(); } catch (_) { /* closed */ } },
+                port: sock.address().port,
+                lines,
+                stats: () => ({ kept: lines.length, dropped }),
+            });
+        });
+    });
+}
+
 // --- lifecycle --------------------------------------------------------------
 
 async function start(spec) {
     if (servers.has(spec.id)) throw new Error('already running');
     const started = spec.kind === 'tftp' ? await startTftp(spec.id, spec)
         : spec.kind === 'http' ? await startHttp(spec.id, spec)
-            : (() => { throw new Error(`unknown server ${spec.kind}`); })();
+            : spec.kind === 'syslog' ? await startSyslog(spec.id, spec)
+                : (() => { throw new Error(`unknown server ${spec.kind}`); })();
 
     // Every server has a deadline. A tool started to move one file must not
     // still be serving a directory tomorrow because someone forgot.
@@ -556,6 +624,7 @@ async function start(spec) {
 
     servers.set(spec.id, {
         kind: spec.kind, close: started.close, timer,
+        lines: started.lines || null,
         info: { id: spec.id, kind: spec.kind, root: spec.root, bind: spec.bind,
             port: started.port, allowWrites: !!spec.allowWrites, listing: !!spec.listing,
             startedAt: Date.now(), stopsAt: Date.now() + minutes * 60000 },
@@ -585,6 +654,13 @@ function list() {
     return [...servers.values()].map((s) => s.info);
 }
 
+// Everything a running syslog sink has heard. The panel asks for this
+// when it opens, so a sink started an hour ago is not a blank window.
+function syslogLines(id) {
+    const s = servers.get(id);
+    return { lines: s && s.lines ? s.lines.slice(-1000) : [] };
+}
+
 // The addresses a device could actually reach this machine on.
 function interfaces() {
     const out = [];
@@ -599,4 +675,7 @@ function interfaces() {
     return out;
 }
 
-module.exports = { start, stop, stopAll, list, wake, interfaces, setNotifier, inside };
+module.exports = {
+    start, stop, stopAll, list, wake, interfaces, setNotifier, inside,
+    syslogLines, parseSyslog,
+};

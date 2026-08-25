@@ -14,6 +14,15 @@
     let dialog = null;
     let logLines = [];
     let logEl = null;
+    // Syslog is kept at module scope so messages accumulate whether or not
+    // the panel is open - the sink runs in the engine either way, and a
+    // change window is exactly when the dialog is closed.
+    const syslogLines = [];
+    let syslogRender = null;
+    const SYSLOG_KEEP = 5000;
+
+    const fmtSyslog = (e) => `${new Date(e.at).toLocaleTimeString()}  ` +
+        `${(e.severityName || '-').padEnd(6)} ${String(e.from).padEnd(15)}  ${e.text}`;
 
     // --- toolbar state --------------------------------------------------
     // A listening service must be visible from the main window, not only
@@ -33,6 +42,12 @@
     }
 
     rsterm.on('rs:evt.field', (m) => {
+        if (m.t === 'field-syslog' && m.entry) {
+            syslogLines.push(m.entry);
+            if (syslogLines.length > SYSLOG_KEEP) syslogLines.shift();
+            if (syslogRender) syslogRender();
+            return;
+        }
         if (m.t === 'field-log') {
             logLines.push(`${new Date(m.at).toLocaleTimeString()}  ${m.text}` +
                 (m.detail ? `  (${m.detail})` : ''));
@@ -122,8 +137,13 @@
         listingText.textContent = 'HTTP: allow browsing the folder contents';
         listingLabel.append(fListing, listingText);
 
+        // 514 needs admin on Windows, same as TFTP's 69, and the error
+        // says so - but a lot of gear can be pointed at a high port.
+        const fSyslogPort = input(saved.syslogPort || 514, '514', 'number');
+
         body.append(rootRow, row('Serve on', fBind),
             row('TFTP port', fTftpPort), row('HTTP port', fHttpPort),
+            row('Syslog port', fSyslogPort),
             row('Stop after (min)', fStop), writesLabel, listingLabel);
 
         // Running servers.
@@ -143,7 +163,8 @@
                         id: kind, kind,
                         root: fRoot.value.trim(),
                         bind: fBind.value,
-                        port: Number(kind === 'tftp' ? fTftpPort.value : fHttpPort.value),
+                        port: Number(kind === 'tftp' ? fTftpPort.value
+                            : kind === 'syslog' ? fSyslogPort.value : fHttpPort.value),
                         allowWrites: kind === 'tftp' && fWrites.checked,
                         listing: kind === 'http' && fListing.checked,
                         stopAfterMinutes: Number(fStop.value) || 60,
@@ -154,6 +175,7 @@
                         root: fRoot.value.trim(), bind: fBind.value,
                         tftpPort: Number(fTftpPort.value) || 69,
                         httpPort: Number(fHttpPort.value) || 8080,
+                        syslogPort: Number(fSyslogPort.value) || 514,
                         stopAfterMinutes: Number(fStop.value) || 60,
                     });
                     await render();
@@ -166,7 +188,8 @@
             });
             return b;
         };
-        actions.append(startBtn('tftp', 'Start TFTP'), startBtn('http', 'Start HTTP'));
+        actions.append(startBtn('tftp', 'Start TFTP'), startBtn('http', 'Start HTTP'),
+            startBtn('syslog', 'Start syslog'));
         body.appendChild(actions);
 
         // Wake-on-LAN: not a server, so it sits apart.
@@ -196,6 +219,62 @@
         wolWrap.append(wolRow, wolHint);
         body.appendChild(wolWrap);
 
+        // --- syslog view ---------------------------------------------
+        // Its own pane rather than mixing into the activity log: this is
+        // the thing you WATCH during a change window, and it wants a
+        // severity filter and a way off the machine.
+        const sysWrap = document.createElement('div');
+        sysWrap.style.cssText = 'margin-top:14px;border-top:1px solid var(--se-border);padding-top:10px;';
+        const sysHead = document.createElement('div');
+        sysHead.style.cssText = 'display:flex;align-items:center;gap:8px;flex-wrap:wrap;';
+        const sysTitle = document.createElement('span');
+        sysTitle.style.cssText = 'font-size:12px;color:var(--se-txt-dim);flex:1;';
+        sysTitle.textContent = 'Syslog';
+        const fSeverity = select([
+            { value: '7', label: 'everything' },
+            { value: '6', label: 'info and worse' },
+            { value: '4', label: 'warnings and worse' },
+            { value: '3', label: 'errors and worse' },
+        ], '7');
+        const btnClear = document.createElement('button');
+        btnClear.textContent = 'Clear';
+        const btnSave = document.createElement('button');
+        btnSave.textContent = 'Save...';
+        sysHead.append(sysTitle, fSeverity, btnClear, btnSave);
+
+        const sysEl = document.createElement('pre');
+        sysEl.style.cssText = 'margin-top:6px;height:150px;overflow:auto;font-family:var(--mt-mono);' +
+            'font-size:11px;background:var(--se-input);border:1px solid var(--se-border);' +
+            'border-radius:4px;padding:6px 8px;';
+        sysWrap.append(sysHead, sysEl);
+        body.appendChild(sysWrap);
+
+        const renderSyslog = () => {
+            const floor = Number(fSeverity.value);
+            const shown = syslogLines.filter((e) =>
+                e.severity === null || e.severity <= floor);
+            sysEl.textContent = shown.slice(-500).map(fmtSyslog).join('\n');
+            sysEl.scrollTop = sysEl.scrollHeight;
+            sysTitle.textContent = syslogLines.length
+                ? `Syslog - ${syslogLines.length} message${syslogLines.length === 1 ? '' : 's'}` +
+                  (shown.length !== syslogLines.length ? `, ${shown.length} shown` : '')
+                : 'Syslog - nothing received yet';
+        };
+        syslogRender = renderSyslog;
+        fSeverity.addEventListener('change', renderSyslog);
+        btnClear.addEventListener('click', () => { syslogLines.length = 0; renderSyslog(); });
+        btnSave.addEventListener('click', async () => {
+            const floor = Number(fSeverity.value);
+            const text = syslogLines
+                .filter((e) => e.severity === null || e.severity <= floor)
+                .map(fmtSyslog).join('\r\n');
+            if (!text) return;
+            // Reuses the terminal's save-text path: one place decides where
+            // app-written files may land.
+            await rsterm.invoke('rs:term.saveText', {
+                name: `syslog-${new Date().toISOString().slice(0, 10)}.log`, text });
+        });
+
         logEl = document.createElement('pre');
         logEl.style.cssText = 'margin-top:12px;height:120px;overflow:auto;font-family:var(--mt-mono);' +
             'font-size:11px;background:var(--se-input);border:1px solid var(--se-border);' +
@@ -222,6 +301,17 @@
                 what.textContent = `${s.kind.toUpperCase()} on ${s.bind}:${s.port} - ${s.root}` +
                     (s.kind === 'tftp' ? (s.allowWrites ? ' - uploads allowed' : ' - read-only') : '') +
                     ` - stops in ${mins} min`;
+                // The loop between the server and the session in the next
+                // pane: with the address and port already known, the
+                // device-side command is a clipboard away instead of a
+                // thing to get wrong by hand.
+                if (s.kind === 'tftp' || s.kind === 'http') {
+                    const copy = document.createElement('button');
+                    copy.textContent = 'Copy fetch command';
+                    copy.title = 'Put the device-side command on the clipboard';
+                    copy.addEventListener('click', () => fetchMenu(copy, s));
+                    line.appendChild(copy);
+                }
                 const stop = document.createElement('button');
                 stop.textContent = 'Stop';
                 stop.addEventListener('click', async () => {
@@ -234,6 +324,16 @@
             }
             logEl.textContent = logLines.join('\n');
             logEl.scrollTop = logEl.scrollHeight;
+            // A sink already running when the panel opens has history the
+            // panel never saw; pull it once rather than starting blank.
+            const sink = running.find((s) => s.kind === 'syslog');
+            if (sink && !syslogLines.length) {
+                try {
+                    const got = await rsterm.invoke('rs:field.syslog', { id: sink.id });
+                    if (got && got.lines) syslogLines.push(...got.lines);
+                } catch (_) { /* the sink stopped between list and ask */ }
+            }
+            renderSyslog();
             await refreshButton();
         }
         dialog = { render };
@@ -242,6 +342,61 @@
         open('Field tools', body, [
             { label: 'Close', primary: true },
         ], { onCancel: () => { dialog = null; } });
+    }
+
+    // What a device would type to pull a file from this server. The
+    // address is the one the server is BOUND to - if it is listening on
+    // 0.0.0.0 the device needs a real address, so the first non-internal
+    // interface stands in and the menu says which.
+    function fetchCommands(server, addr, file) {
+        const f = file || 'FILE';
+        if (server.kind === 'tftp') {
+            return [
+                { label: 'Cisco IOS - copy to flash', text: `copy tftp://${addr}/${f} flash:` },
+                { label: 'Cisco IOS - copy running-config out',
+                    text: `copy running-config tftp://${addr}/${f}` },
+                { label: 'Linux - tftp get', text: `tftp -g -r ${f} ${addr}` },
+                { label: 'ROMMON - tftpdnld', text:
+                    `TFTP_SERVER=${addr}\nTFTP_FILE=${f}\ntftpdnld` },
+            ];
+        }
+        return [
+            { label: 'curl', text: `curl -O http://${addr}:${server.port}/${f}` },
+            { label: 'wget', text: `wget http://${addr}:${server.port}/${f}` },
+            { label: 'Cisco IOS - copy to flash',
+                text: `copy http://${addr}:${server.port}/${f} flash:` },
+            { label: 'PowerShell',
+                text: `Invoke-WebRequest http://${addr}:${server.port}/${f} -OutFile ${f}` },
+        ];
+    }
+
+    async function fetchMenu(anchor, server) {
+        const state = await rsterm.invoke('rs:field.list');
+        let addr = server.bind;
+        let note = null;
+        if (addr === '0.0.0.0') {
+            const real = (state.interfaces || []).find((i) => !i.internal);
+            addr = real ? real.address : '0.0.0.0';
+            note = real ? `using ${real.address} (${real.name})` : null;
+        }
+        const file = await window.Modals.promptText('Copy fetch command',
+            'File name on the server (leave blank for a placeholder)', '');
+        if (file === null) return;
+        const items = fetchCommands(server, addr, file.trim()).map((c) => ({
+            label: c.label,
+            onClick: async () => {
+                try {
+                    await navigator.clipboard.writeText(c.text);
+                    logLines.push(`${new Date().toLocaleTimeString()}  copied: ${c.text.split('\n')[0]}`);
+                    if (logEl) logEl.textContent = logLines.join('\n');
+                } catch (err) {
+                    window.Forms.showBanner('error', `Clipboard: ${err.message}`);
+                }
+            },
+        }));
+        if (note) items.unshift({ label: note, disabled: true }, null);
+        const r = anchor.getBoundingClientRect();
+        window.Modals.menu(r.left, r.bottom + 2, items);
     }
 
     const btn = document.getElementById('field-btn');

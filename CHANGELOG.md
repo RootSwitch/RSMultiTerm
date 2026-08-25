@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+- **A syslog sink in Field tools.** Start a listener on 514 (or a high
+  port, since 514 needs admin) and watch devices announce themselves -
+  the change-window staple, without standing up a syslog server. It
+  decodes the priority into a severity so you can filter to "warnings
+  and worse", keeps what it heard whether or not the panel is open,
+  and saves the filtered view to a file. Same rules as the other
+  listeners: nothing starts by itself, the address is chosen, and it
+  stops on the deadline.
+- **Copy fetch command.** Next to a running TFTP or HTTP server, a
+  button that puts the DEVICE-side command on your clipboard, already
+  filled in with the address and port it is listening on: `copy
+  tftp://.../file flash:`, `curl -O http://...`, the ROMMON tftpdnld
+  block, and the PowerShell and wget equivalents. If the server is on
+  "all addresses" it picks a real one and says which.
+
 - **Output triggers.** Highlight rules gain a "watch" checkbox: when a
   watched pattern matches in a background tab, the tab wears an amber
   dot (louder than the unread dot), the status line names the match,

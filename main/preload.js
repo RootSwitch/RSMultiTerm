@@ -78,6 +78,7 @@ const INVOKE_ALLOW = new Set([
     'rs:field.stop',
     'rs:field.list',
     'rs:field.wake',
+    'rs:field.syslog',
     'rs:health.stale',
     'rs:health.forget',
 ]);
