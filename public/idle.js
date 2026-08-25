@@ -252,7 +252,7 @@
         // or a click ends the game. Arrows or A/D move, Space fires or
         // serves - the three keys everybody guesses first.
         const play = !!(opts && opts.play);
-        env.play = play ? { left: false, right: false, fire: false, fired: false, score: 0 } : null;
+        env.play = play ? { left: false, right: false, up: false, down: false, fire: false, fired: false, score: 0 } : null;
         running = { canvas, ctx, style, env, region, state: style.init(env), raf: 0, lastFrame: 0,
             id, play, areaChoice,
             // Only "Surprise me" rotates - a chosen style changing itself
@@ -305,7 +305,9 @@
         const input = running.env.play;
         const k = (e.code === 'ArrowLeft' || e.code === 'KeyA') ? 'left'
             : (e.code === 'ArrowRight' || e.code === 'KeyD') ? 'right'
-                : (e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'KeyW') ? 'fire' : null;
+                : (e.code === 'ArrowUp' || e.code === 'KeyW') ? 'up'
+                    : (e.code === 'ArrowDown' || e.code === 'KeyS') ? 'down'
+                        : e.code === 'Space' ? 'fire' : null;
         if (!k) return;
         const down = e.type === 'keydown';
         if (k === 'fire' && down && !input.fire) input.fired = true;   // an edge, consumed by the style
@@ -390,7 +392,7 @@
         ctx.fillText(`score ${p.score}`, env.w - 12, 10);
         ctx.textAlign = 'left';
         ctx.fillStyle = c.dim;
-        ctx.fillText('arrows / A D move   space fires   esc quits', 12, env.h - 20);
+        ctx.fillText('arrows / WASD steer   space fires   esc quits', 12, env.h - 20);
     }
 
     // The Extras menu: every effect on demand, and the two games to play.
@@ -1031,93 +1033,6 @@
     };
 
 
-    // --- Gravity ------------------------------------------------------------
-    // The screen lets go. Words lose their grip one at a time, tumble, and
-    // pile along the bottom; every so often the whole thing gives way at
-    // once. Uses the same word sample Bricks does - your own hostnames and
-    // interface names are what fall - so it reads as YOUR terminal melting
-    // rather than a generic particle toy.
-    STYLES.gravity = {
-        label: 'Gravity', screen: true, mood: 'lively',
-        init(env) {
-            const words = (env.screen ? env.screen.words : [])
-                .filter((w) => w.text.length > 0)
-                .slice(0, 400)
-                .map((w) => ({
-                    text: w.text, x: w.x, y: w.y, w: w.w, h: w.h,
-                    vx: 0, vy: 0, rot: 0, spin: 0, held: true, rest: false,
-                }));
-            // A blank screen still gets something to drop.
-            if (words.length < 8) {
-                const filler = ['no', 'output', 'yet', 'still', 'idle', 'waiting',
-                    'nothing', 'here', 'quiet', 'listening'];
-                for (let i = 0; i < 40; i++) {
-                    const t = filler[i % filler.length];
-                    words.push({
-                        text: t, x: Math.random() * env.w * 0.85, y: Math.random() * env.h * 0.7,
-                        w: t.length * 9, h: 17, vx: 0, vy: 0, rot: 0, spin: 0, held: true, rest: false,
-                    });
-                }
-            }
-            return { words, t: 0, next: 0.25, collapse: 6 + Math.random() * 6, first: true };
-        },
-        frame(ctx, env, s, dt) {
-            const c = env.colors;
-            if (s.first) { ctx.fillStyle = c.bg; ctx.fillRect(0, 0, env.w, env.h); s.first = false; }
-            // Short trails: the fall reads as motion rather than teleporting.
-            ctx.globalAlpha = 0.22;
-            ctx.fillStyle = c.bg;
-            ctx.fillRect(0, 0, env.w, env.h);
-            ctx.globalAlpha = 1;
-
-            s.t += dt;
-            // One at a time, then all at once.
-            s.next -= dt;
-            s.collapse -= dt;
-            const held = s.words.filter((w) => w.held);
-            if (s.collapse <= 0 && held.length) {
-                for (const w of held) { w.held = false; w.spin = (Math.random() - 0.5) * 5; }
-                s.collapse = 9 + Math.random() * 8;
-            } else if (s.next <= 0 && held.length) {
-                const w = held[Math.floor(Math.random() * held.length)];
-                w.held = false;
-                w.spin = (Math.random() - 0.5) * 4;
-                s.next = 0.12 + Math.random() * 0.35;
-            }
-            // Everything down and settled: let the screen re-form and fall
-            // again, so a long idle is not one dead heap.
-            if (!held.length && s.words.every((w) => w.rest)) {
-                Object.assign(s, STYLES.gravity.init(env));
-                return;
-            }
-
-            ctx.textBaseline = 'top';
-            ctx.font = `14px ${c.mono}`;
-            const floor = env.h - 6;
-            for (const w of s.words) {
-                if (!w.held && !w.rest) {
-                    w.vy += 900 * dt;
-                    w.y += w.vy * dt;
-                    w.x += w.vx * dt;
-                    w.rot += w.spin * dt;
-                    if (w.y + w.h >= floor) {
-                        w.y = floor - w.h;
-                        // A little bounce, then it stays put - a heap, not a
-                        // trampoline.
-                        if (w.vy > 260) { w.vy *= -0.28; w.vx = (Math.random() - 0.5) * 40; w.spin *= 0.4; }
-                        else { w.vy = 0; w.vx = 0; w.spin = 0; w.rest = true; w.rot = w.rot * 0.35; }
-                    }
-                }
-                ctx.save();
-                ctx.translate(w.x, w.y);
-                if (w.rot) { ctx.translate(w.w / 2, w.h / 2); ctx.rotate(w.rot); ctx.translate(-w.w / 2, -w.h / 2); }
-                ctx.fillStyle = w.held ? c.dim : (w.rest ? c.accent : c.txt);
-                ctx.fillText(w.text, 0, 0);
-                ctx.restore();
-            }
-        },
-    };
-
     // --- Pipes --------------------------------------------------------------
     // pipes.sh, in box-drawing characters on the theme's palette. Each pipe
     // walks a cell grid, turns at random, and when the screen fills the
@@ -1207,103 +1122,6 @@
                 ctx.fillRect(0, 0, env.w, env.h);
                 s.drawn = 0;
                 s.pipes = Array.from({ length: 3 + Math.floor(Math.random() * 3) }, s.mk);
-            }
-        },
-    };
-
-    // --- Donut --------------------------------------------------------------
-    // donut.c, the one every programmer has seen: a torus sampled in two
-    // angles, projected, z-buffered, and shaded through a character ramp by
-    // the dot product of the surface normal with a fixed light. Rendered in
-    // the theme's own ink so it belongs to the app rather than to 1998.
-    STYLES.donut = {
-        label: 'Donut', screen: false, mood: 'calm',
-        init(env) {
-            // cw is replaced on the first frame with the font's measured
-            // advance; the estimate here only has to be close enough to
-            // survive one frame.
-            const chh = 15;
-            return {
-                cw: 8, ch: chh, measured: false,
-                cols: Math.max(20, Math.floor(env.w / 8)),
-                rows: Math.max(12, Math.floor(env.h / chh)),
-                // Not 0,0: the hole reads immediately from here rather
-                // than after a few seconds of rotation.
-                a: 1.0, b: 0.5,
-                ramp: '.,-~:;=!*#$@',
-            };
-        },
-        frame(ctx, env, s, dt) {
-            const c = env.colors;
-            ctx.fillStyle = c.ground;
-            ctx.fillRect(0, 0, env.w, env.h);
-
-            if (!s.measured) {
-                ctx.font = `${s.ch - 2}px ${c.mono}`;
-                const adv = ctx.measureText('M').width;
-                if (adv > 1) {
-                    s.cw = adv;
-                    s.cols = Math.max(20, Math.floor(env.w / adv));
-                }
-                s.measured = true;
-            }
-            const { cols, rows } = s;
-            const out = new Array(cols * rows).fill(' ');
-            const zbuf = new Float32Array(cols * rows);
-            s.a += dt * 0.9;
-            s.b += dt * 0.45;
-            const cA = Math.cos(s.a), sA = Math.sin(s.a);
-            const cB = Math.cos(s.b), sB = Math.sin(s.b);
-            // K1 scales the torus to the smaller screen axis, so it fills a
-            // wide pane and a tall one equally well.
-            const K2 = 5;
-            const K1 = Math.min(cols * 0.55, rows * 1.1);
-            for (let theta = 0; theta < 6.283; theta += 0.07) {
-                const ct = Math.cos(theta), st = Math.sin(theta);
-                for (let phi = 0; phi < 6.283; phi += 0.02) {
-                    const cp = Math.cos(phi), sp = Math.sin(phi);
-                    const circleX = 2 + ct;
-                    const circleY = st;
-                    const x = circleX * (cB * cp + sA * sB * sp) - circleY * cA * sB;
-                    const y = circleX * (sB * cp - sA * cB * sp) + circleY * cA * cB;
-                    const z = K2 + cA * circleX * sp + circleY * sA;
-                    const ooz = 1 / z;
-                    const xp = Math.floor(cols / 2 + K1 * ooz * x);
-                    const yp = Math.floor(rows / 2 - (K1 / 2) * ooz * y);
-                    if (xp < 0 || xp >= cols || yp < 0 || yp >= rows) continue;
-                    const lum = cp * ct * sB - cA * ct * sp - sA * st + cB * (cA * st - ct * sA * sp);
-                    if (lum <= 0) continue;
-                    const idx = xp + yp * cols;
-                    if (ooz <= zbuf[idx]) continue;
-                    zbuf[idx] = ooz;
-                    out[idx] = s.ramp[Math.min(s.ramp.length - 1, Math.floor(lum * 8))];
-                }
-            }
-            ctx.font = `${s.ch - 2}px ${c.mono}`;
-            ctx.textBaseline = 'top';
-            // Both passes draw a WHOLE row string of the same length, with
-            // the other pass's cells blanked to spaces. Positioning the
-            // highlight per character instead needs the font's real advance
-            // width, and guessing it ghosts the lit side half a cell off the
-            // body - which is exactly what the first version did.
-            const LIT = '#$@';
-            for (let r = 0; r < rows; r++) {
-                let body = '';
-                let lit = '';
-                let any = false;
-                for (let i = 0; i < cols; i++) {
-                    const g = out[i + r * cols];
-                    if (g !== ' ') any = true;
-                    const isLit = LIT.includes(g);
-                    body += isLit ? ' ' : g;
-                    lit += isLit ? g : ' ';
-                }
-                if (!any) continue;
-                const y = r * s.ch;
-                ctx.fillStyle = c.inkDim;
-                ctx.fillText(body, 0, y);
-                ctx.fillStyle = c.ink;
-                ctx.fillText(lit, 0, y);
             }
         },
     };
@@ -1402,11 +1220,15 @@
         advance(env, s) {
             const p = env.play;
             if (p) {
-                // Arrows/A-D turn; Space is unused, so it does not reverse
-                // into the neck by accident.
-                if (p.left && s.dir.x === 0) s.dir = { x: -1, y: 0 };
+                // Absolute directions: up is up, whatever way the snake was
+                // going. The first version used relative turns, which read
+                // as broken - nothing on screen says which way "left" is
+                // when you are travelling down. Reversals are ignored (the
+                // axis check), so pressing back into the neck does nothing.
+                if (p.up && s.dir.y === 0) s.dir = { x: 0, y: -1 };
+                else if (p.down && s.dir.y === 0) s.dir = { x: 0, y: 1 };
+                else if (p.left && s.dir.x === 0) s.dir = { x: -1, y: 0 };
                 else if (p.right && s.dir.x === 0) s.dir = { x: 1, y: 0 };
-                else if (p.fired) { p.fired = false; s.dir = { x: s.dir.y, y: -s.dir.x }; }
             } else {
                 const head = s.body[0];
                 let best = null;
@@ -1458,207 +1280,6 @@
         },
     };
 
-
-    // --- Defrag -------------------------------------------------------------
-    // A Windows-95 defragmenter pastiche: a block grid slowly reading its
-    // scattered clusters into one contiguous run, with the little legend.
-    // Nothing is actually defragmented, which is also true of how most
-    // people remember it - what mattered was watching the blocks march.
-    STYLES.defrag = {
-        label: 'Defrag', screen: false, mood: 'calm',
-        init(env) {
-            const cell = 12, gap = 2;
-            const cols = Math.max(10, Math.floor((env.w - 24) / cell));
-            const rows = Math.max(6, Math.floor((env.h - 90) / cell));
-            const total = cols * rows;
-            // 0 empty, 1 data (contiguous), 2 fragmented, 3 being read.
-            const cells = new Uint8Array(total);
-            const filled = Math.floor(total * (0.45 + Math.random() * 0.15));
-            let placed = 0;
-            while (placed < filled) {
-                const i = Math.floor(Math.random() * total);
-                if (!cells[i]) { cells[i] = 2; placed++; }
-            }
-            return {
-                cell, gap, cols, rows, cells, total, filled,
-                front: 0,          // everything below this index is compacted
-                moving: null,      // {from, to, phase, t}
-                step: 0, pass: 1, done: 0,
-            };
-        },
-        frame(ctx, env, s, dt) {
-            const c = env.colors;
-            ctx.fillStyle = c.ground;
-            ctx.fillRect(0, 0, env.w, env.h);
-
-            // One block move at a time, phased read -> write, on a timer
-            // slow enough to watch. That pacing IS the nostalgia.
-            s.step += dt;
-            if (s.step >= 0.05) {
-                s.step = 0;
-                if (s.moving) {
-                    s.moving.t++;
-                    if (s.moving.phase === 'read' && s.moving.t > 2) {
-                        s.cells[s.moving.from] = 0;
-                        s.moving.phase = 'write';
-                        s.moving.t = 0;
-                    } else if (s.moving.phase === 'write' && s.moving.t > 1) {
-                        s.cells[s.moving.to] = 1;
-                        s.done++;
-                        s.moving = null;
-                    }
-                } else {
-                    // Advance the front past blocks already in place, then
-                    // fetch the next fragment from beyond it.
-                    while (s.front < s.total && s.cells[s.front] === 1) s.front++;
-                    let src = -1;
-                    for (let i = Math.max(s.front, 0); i < s.total; i++) {
-                        if (s.cells[i] === 2) { src = i; break; }
-                    }
-                    if (src === -1) {
-                        // Pass complete: scatter again, the way it never
-                        // seemed to stay done.
-                        const again = STYLES.defrag.init(env);
-                        again.pass = s.pass + 1;
-                        Object.assign(s, again);
-                    } else if (src === s.front) {
-                        s.cells[src] = 1;   // already where it belongs
-                        s.done++;
-                    } else {
-                        s.cells[src] = 3;
-                        s.moving = { from: src, to: s.front, phase: 'read', t: 0 };
-                    }
-                }
-            }
-
-            const ox = Math.floor((env.w - s.cols * s.cell) / 2);
-            const oy = 18;
-            for (let i = 0; i < s.total; i++) {
-                const v = s.cells[i];
-                const x = ox + (i % s.cols) * s.cell;
-                const y = oy + Math.floor(i / s.cols) * s.cell;
-                if (v === 0) {
-                    ctx.strokeStyle = c.inkDim;
-                    ctx.globalAlpha = 0.25;
-                    ctx.strokeRect(x + 0.5, y + 0.5, s.cell - s.gap, s.cell - s.gap);
-                    ctx.globalAlpha = 1;
-                    continue;
-                }
-                ctx.fillStyle = v === 1 ? c.accent : v === 3 ? c.ink : c.warn;
-                ctx.fillRect(x, y, s.cell - s.gap, s.cell - s.gap);
-            }
-            if (s.moving && s.moving.phase === 'write') {
-                const x = ox + (s.moving.to % s.cols) * s.cell;
-                const y = oy + Math.floor(s.moving.to / s.cols) * s.cell;
-                ctx.fillStyle = c.ink;
-                ctx.fillRect(x, y, s.cell - s.gap, s.cell - s.gap);
-            }
-
-            // The legend and the percent line, faithful to the original's
-            // deadpan tone.
-            const ly = oy + s.rows * s.cell + 22;
-            ctx.font = `12px ${c.mono}`;
-            ctx.textBaseline = 'middle';
-            ctx.textAlign = 'left';
-            const key = (x, color, text) => {
-                ctx.fillStyle = color;
-                ctx.fillRect(x, ly - 5, 10, 10);
-                ctx.fillStyle = c.inkDim;
-                ctx.fillText(text, x + 16, ly);
-                return x + 16 + ctx.measureText(text).width + 22;
-            };
-            let kx = ox;
-            kx = key(kx, c.accent, 'optimized');
-            kx = key(kx, c.warn, 'fragmented');
-            kx = key(kx, c.ink, 'reading');
-            const pct = Math.min(100, Math.floor((s.done / s.filled) * 100));
-            ctx.fillStyle = c.ink;
-            ctx.fillText(`Pass ${s.pass}: ${pct}% complete`, kx + 12, ly);
-            ctx.fillStyle = c.inkDim;
-            ctx.fillText('Drive C: (no drives were harmed)', ox, ly + 20);
-        },
-    };
-
-    // --- Steam train --------------------------------------------------------
-    // The `sl` moment: a locomotive crosses the screen now and then, smoke
-    // drifting off behind it, and there is nothing to do but watch it go.
-    // Hand-drawn art rather than sl's (that engine belongs to its author);
-    // the wheels get two frames so it rolls instead of sliding.
-    STYLES.train = {
-        label: 'Steam train', screen: false, mood: 'calm',
-        art(frame) {
-            const w = frame ? 'O' : 'o';
-            const v = frame ? 'o' : 'O';
-            return [
-                '        ____                   ',
-                '     __/\\__\\_    ____ ____ ____',
-                '    | [] [] |]  |____|____|____|',
-                '  __|________|__|_.._|_.._|_.._|',
-                ` |__________ ${w}| |${v}..${w}| |${w}..${v}|`,
-                `    ${v}   ${w}        ${w}    ${v}   `,
-            ];
-        },
-        init(env) {
-            return {
-                x: env.w + 40, y: 0, speed: 110 + Math.random() * 50,
-                wheel: 0, wheelT: 0, wait: 0, smoke: [], puffT: 0, first: true,
-            };
-        },
-        frame(ctx, env, s, dt) {
-            const c = env.colors;
-            ctx.fillStyle = c.ground;
-            ctx.fillRect(0, 0, env.w, env.h);
-
-            const lineY = Math.floor(env.h * (0.55 + 0.001));
-            // The track is always there, so the pause reads as "between
-            // trains" rather than "broken".
-            ctx.fillStyle = c.inkDim;
-            ctx.globalAlpha = 0.5;
-            ctx.fillRect(0, lineY + 8, env.w, 2);
-            ctx.globalAlpha = 1;
-
-            if (s.wait > 0) {
-                s.wait -= dt;
-                if (s.wait <= 0) {
-                    s.x = env.w + 40;
-                    s.speed = 110 + Math.random() * 50;
-                }
-            } else {
-                s.x -= s.speed * dt;
-                s.wheelT += dt;
-                if (s.wheelT > 0.12) { s.wheelT = 0; s.wheel = 1 - s.wheel; }
-                s.puffT += dt;
-                if (s.puffT > 0.16) {
-                    s.puffT = 0;
-                    s.smoke.push({ x: s.x + 62, y: lineY - 86, vx: 14 + Math.random() * 12,
-                        vy: -22 - Math.random() * 14, age: 0 });
-                }
-                const art = STYLES.train.art(s.wheel);
-                const artWidth = 32 * 8.5;
-                if (s.x < -artWidth - 60) s.wait = 6 + Math.random() * 12;
-                ctx.font = `14px ${c.mono}`;
-                ctx.textBaseline = 'top';
-                ctx.fillStyle = c.ink;
-                art.forEach((line, i) => ctx.fillText(line, s.x, lineY - 74 + i * 15));
-            }
-
-            // Smoke outlives the train off-screen, drifting up and back.
-            ctx.textBaseline = 'middle';
-            for (let i = s.smoke.length - 1; i >= 0; i--) {
-                const p = s.smoke[i];
-                p.age += dt;
-                p.x += p.vx * dt;
-                p.y += p.vy * dt;
-                if (p.age > 3.2) { s.smoke.splice(i, 1); continue; }
-                const g = p.age < 0.9 ? '@' : p.age < 1.8 ? 'o' : '.';
-                ctx.font = `${13 + p.age * 4}px ${c.mono}`;
-                ctx.fillStyle = c.inkDim;
-                ctx.globalAlpha = Math.max(0, 1 - p.age / 3.2) * 0.7;
-                ctx.fillText(g, p.x, p.y);
-            }
-            ctx.globalAlpha = 1;
-        },
-    };
 
     // --- Aquarium -----------------------------------------------------------
     // asciiquarium's spirit: fish in both directions, bubbles, and - the
@@ -1802,7 +1423,7 @@
     // style that is also a tool, which is why "Surprise me" never picks it
     // unless it is ticked on purpose: a surprise clock is just a clock.
     STYLES.clock = {
-        label: 'Big clock', screen: false, mood: 'calm', surprise: false,
+        label: 'Big clock (24h)', screen: false, mood: 'calm', surprise: false,
         // Segments per digit: [top, topL, topR, mid, botL, botR, bottom].
         DIGITS: {
             0: [1, 1, 1, 0, 1, 1, 1], 1: [0, 0, 1, 0, 0, 1, 0],
@@ -1837,7 +1458,9 @@
                 s.driftX = (Math.random() - 0.5) * env.w * 0.08;
                 s.driftY = (Math.random() - 0.5) * env.h * 0.12;
             }
-            const text = [now.getHours(), now.getMinutes(), now.getSeconds()]
+            const rawHours = now.getHours();
+            const hours = s.twelve ? (rawHours % 12) || 12 : rawHours;
+            const text = [hours, now.getMinutes(), now.getSeconds()]
                 .map((n) => String(n).padStart(2, '0'));
             const dw = Math.min(env.w / 11, env.h / 4);
             const dh = dw * 1.7;
@@ -1873,11 +1496,26 @@
             ctx.textAlign = 'center';
             ctx.textBaseline = 'top';
             ctx.fillStyle = c.inkDim;
-            ctx.fillText(now.toLocaleDateString(undefined,
-                { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }),
+            const dateLine = now.toLocaleDateString(undefined,
+                { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+            ctx.fillText(s.twelve
+                ? `${dateLine}   ${rawHours < 12 ? 'AM' : 'PM'}` : dateLine,
             centreX, y + dh + 26);
             ctx.textAlign = 'left';
         },
+    };
+
+    // The same clock, half the dial: 12-hour with an AM/PM tag. A separate
+    // entry rather than a setting, so both live in the Extras list and the
+    // picker like everything else.
+    STYLES.clock12 = {
+        label: 'Big clock (12h)', screen: false, mood: 'calm', surprise: false,
+        init(env) {
+            const st = STYLES.clock.init(env);
+            st.twelve = true;
+            return st;
+        },
+        frame(ctx, env, s) { STYLES.clock.frame(ctx, env, s); },
     };
 
     // --- DVD bounce ---------------------------------------------------------
@@ -1885,7 +1523,7 @@
     // corner EXACTLY gets the burst everybody has waited a whole meeting
     // for. The epsilon is honest - a near-miss is a near-miss.
     STYLES.dvd = {
-        label: 'DVD bounce', screen: false, mood: 'calm',
+        label: 'Logo bounce', screen: false, mood: 'calm',
         init(env) {
             return {
                 x: Math.random() * (env.w - 180) + 20,

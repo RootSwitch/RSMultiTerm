@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- **The animation set, pared and polished after real use:** Gravity,
+  Defrag, Steam train and Donut are out. Snake's controls are now
+  absolute - up means up, whatever way you were travelling (arrows or
+  WASD; Space no longer doubles as a mystery turn) - and reversing into
+  your own neck is simply ignored. "DVD bounce" is now "Logo bounce",
+  and the big clock comes in 24h and 12h flavors, the 12h one with an
+  AM/PM tag by the date. Ten styles plus two clocks remain.
+
 - **Six more idle animations - the full set from the review, seventeen
   in all:**
   - **Defrag** - the Windows-95 defragmenter pastiche: scattered blocks

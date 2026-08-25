@@ -429,7 +429,7 @@ assert.ok(!/'tree-health ok'/.test(treeSrc) && !/\? 'ok' :/.test(treeSrc),
 // deliberately made quiet.
 const idleSrc = fs.readFileSync(path.join(PUBLIC, 'idle.js'), 'utf8');
 const styleIds = [...idleSrc.matchAll(/STYLES\.(\w+) = \{/g)].map((m) => m[1]);
-assert.ok(styleIds.length >= 17, `expected the full style set, found ${styleIds.length}`);
+assert.ok(styleIds.length >= 14, `expected the full style set, found ${styleIds.length}`);
 const labelled = [...idleSrc.matchAll(/label: '[^']+', screen: (?:true|false), mood: '(calm|lively)'/g)];
 assert.strictEqual(labelled.length, styleIds.length,
     `every style needs a mood - ${styleIds.length} styles, ${labelled.length} moods`);
