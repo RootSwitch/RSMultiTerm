@@ -69,14 +69,23 @@ class TelnetTransport extends Transport {
                     this._emitClose(1, err.message);
                     reject(err);
                 } else {
+                    // Remember the reason: the close that follows must not
+                    // overwrite 'error' with 'closed' and report code 0 -
+                    // a mid-session ECONNRESET is not a clean exit. Same
+                    // ordering guard the SSH transport has always had.
+                    this._lastError = err.message;
                     this._status('error', err.message);
                 }
             });
 
             sock.on('close', () => {
                 if (!settled) return;   // error path already reported
-                this._status('closed', null);
-                this._emitClose(0, 'connection closed');
+                if (this._lastError) {
+                    this._emitClose(1, this._lastError);
+                } else {
+                    this._status('closed', null);
+                    this._emitClose(0, 'connection closed');
+                }
             });
         });
     }

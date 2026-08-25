@@ -71,8 +71,14 @@
             }
             if (s.device) fDevice.value = s.device;
         });
-        const fBaud = select(['1200', '9600', '19200', '38400', '57600', '115200']
-            .map((b) => ({ value: b, label: b })), String(s.baud || 9600));
+        // The shared list, plus the stored value if it is not on it (a
+        // hand-edited sessions file, a future rate): a select that cannot
+        // SHOW the current value silently rewrites it on save.
+        const bauds = ((window.App && window.App.BAUDS) ||
+            [1200, 2400, 4800, 9600, 19200, 38400, 57600, 115200]).map(String);
+        const current = String(s.baud || 9600);
+        if (!bauds.includes(current)) bauds.push(current);
+        const fBaud = select(bauds.map((b) => ({ value: b, label: b })), current);
         const serialRows = document.createElement('div');
         serialRows.append(row('COM port', fDevice), row('Baud', fBaud));
 
@@ -949,7 +955,10 @@
     function clearBanner(key) {
         const b = bannersByKey.get(key);
         if (b) { b.remove(); bannersByKey.delete(key); }
-        for (const el of document.querySelectorAll(`.banner[data-key="${key}"]`)) el.remove();
+        // CSS.escape: a profile named ops"1 is a legal profile name and
+        // used to throw inside the auth-cleared handler instead of taking
+        // its banner down.
+        for (const el of document.querySelectorAll(`.banner[data-key="${CSS.escape(key)}"]`)) el.remove();
     }
 
     window.Forms = { editSession, editFolder, manageProfiles, showBanner, clearBanner,

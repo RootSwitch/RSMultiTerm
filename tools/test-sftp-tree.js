@@ -354,6 +354,29 @@ function fakeSftp(layout, opts = {}) {
         sftpMod.drop('probe-1');
     }
 
+    // 9e. Two CONCURRENT probes open ONE channel. The panel's bind and
+    // its auto-open race exactly this; both used to miss the cache, both
+    // opened a channel, and the loser leaked for the life of the
+    // connection - on gear that caps concurrent channels low.
+    {
+        let opens = 0;
+        const session2 = {
+            id: 'probe-2',
+            transport: {
+                state: 'connected',
+                sftp(cb) {
+                    opens++;
+                    setTimeout(() => cb(null, { on() {} }), 30);
+                },
+            },
+        };
+        const [a2, b2] = await Promise.all([
+            sftpMod.forSession(session2), sftpMod.forSession(session2)]);
+        assert.strictEqual(opens, 1, 'concurrent probes must share one channel open');
+        assert.strictEqual(a2, b2, 'and get the same channel back');
+        sftpMod.drop('probe-2');
+    }
+
     // 10. Progress reports a file count, and a phase the panel can read.
     const out4 = path.join(box, 'out4');
     const seen = [];

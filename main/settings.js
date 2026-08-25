@@ -51,6 +51,10 @@ const DEFAULTS = {
     // exfiltration path (a password just copied) and is NEVER honored,
     // which is a code guarantee, not a setting.
     osc52: { allowWrite: true },
+    // Font-zoom modifier: 'ctrl' (Ctrl+Plus/Minus/0, the default) or
+    // 'ctrl+shift'. Ctrl+Minus is also what xterm sends as C-_ - emacs
+    // undo - so people who live in remote emacs can free the keystroke.
+    zoomModifier: 'ctrl',
     // Idle animation: off unless asked for. 'random' picks a style each time.
     // picks: which styles "Surprise me" may choose; empty means all.
     // rotateMinutes: how long "Surprise me" stays on one style; 0 = forever.
@@ -103,6 +107,9 @@ function sanitize(patch) {
             if (key in out.field && out.field[key] !== null &&
                 typeof out.field[key] !== 'string') delete out.field[key];
         }
+    }
+    if ('zoomModifier' in out && out.zoomModifier !== 'ctrl' && out.zoomModifier !== 'ctrl+shift') {
+        out.zoomModifier = 'ctrl';
     }
     if (out.terminalColors && 'minContrast' in out.terminalColors) {
         // 1 is "off" and 21 is black on white; anything outside that is not

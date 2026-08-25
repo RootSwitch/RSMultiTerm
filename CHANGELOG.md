@@ -2,6 +2,42 @@
 
 ## Unreleased
 
+- **The review's low-severity batch - all twenty-four.** The ones you
+  might notice:
+  - The broadcast paste confirmation now opens with CANCEL focused, so
+    the Enter meant to run the last pasted line can never confirm a
+    multi-device send by reflex. Escape closes it, like every dialog.
+  - Batch downloads confirm once ("files with the same names will be
+    replaced"), and one failed file no longer abandons the rest.
+  - On an SCP-only device, Enter in the path field downloads the path
+    (it used to wipe the panel with an error), and the listing buttons
+    that cannot work go quiet.
+  - Editing a 2400 or 4800 baud session no longer silently rewrites it
+    to 1200 - the editor shares the quick-connect baud list and keeps
+    an unfamiliar stored rate visible.
+  - Snippet parameters containing $& (or any regex replacement pattern)
+    are inserted literally.
+  - Renaming a session in the tree updates open panes, the tab strip
+    and the status line; workspace snapshots now remember per-session
+    highlight rules.
+  - A failed quick connect shows a banner instead of doing nothing.
+  - Settings > Font zoom keys can move zoom to Ctrl+Shift, freeing
+    Ctrl+Minus for remote emacs undo (C-_).
+  - HTTP field server: resumable downloads (byte ranges, 206). TFTP:
+    netascii requests are refused with a message naming octet mode
+    instead of being silently served untranslated; forged packets from
+    the wrong port (TID) are ignored.
+  - Under the hood: one SFTP channel per session even when two probes
+    race; a telnet reset mid-session reports as the error it is; a
+    device error mid-SCP-upload ("flash is full") surfaces instead of
+    the generic "closed early"; session logs bound their memory if the
+    log destination stalls and rotate on real bytes; overlapping file
+    listings can no longer interleave; tunnel hops get the long
+    first-contact fingerprint timeout; a missing host verifier now
+    fails closed; serial paste backlogs are announced in the status
+    line; and the field-server start request is validated in the main
+    process before anything listens.
+
 - **The review's medium-severity batch.**
   - **Merging tabs no longer silently arms the newcomers.** "Merge into
     MultiTerm" onto a tab with broadcast armed used to make every merged

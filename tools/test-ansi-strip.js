@@ -74,4 +74,18 @@ caseBoth('x\xc2\x85y', 'xy', 'UTF-8-encoded C1 NEL dropped');
 // (a Latin-1 device): dropped, and the next byte processes normally.
 caseBoth('a\xe9x done', 'ax done', 'invalid UTF-8 lead dropped, following text kept');
 
-console.log('ok - ansi stripper (27 cases incl. C1, ESC-intermediate and UTF-8, whole and byte-split)');
+// An unterminated OSC must not swallow the rest of the log. A stray 0x9d
+// in binary device output enters the OSC state; with no bound, everything
+// after it vanished from the text log while the session carried on.
+{
+    const st = new AnsiStripper();
+    const before = st.feed(Buffer.from('hello '));
+    const osc = Buffer.concat([Buffer.from([0x9d]), Buffer.alloc(8192, 0x41),
+        Buffer.from(' world after')]);
+    const after = st.feed(osc);
+    assert.ok(after.includes('world after'),
+        'text after an unterminated OSC must reappear once the cap trips');
+    assert.ok(before.includes('hello'), 'sanity');
+}
+
+console.log('ok - ansi stripper (28 cases incl. C1, ESC-intermediate and UTF-8, whole and byte-split)');

@@ -181,10 +181,13 @@
         }
         try {
             const r = await op({ op: 'realpath', path: '.' });
+            // The probe was for THIS binding; focus can have moved during it.
+            if (bound !== sessionId) return;
             cwd = r.path;
             if (mode === 'scp') renderScpMode();
             else await list();
         } catch (err) {
+            if (bound !== sessionId) return;
             renderMessage(err.message);
         }
     }
@@ -200,19 +203,35 @@
 
     // --- listing ----------------------------------------------------------
 
+    // Monotonic listing token: two overlapping navigations (a double
+    // click racing a refresh) each cleared the box and each appended,
+    // leaving both directories' rows concatenated. Only the latest call
+    // may paint.
+    let listSeq = 0;
+
     async function list() {
+        // SCP has no listing; Enter in the path field and Refresh both land
+        // here, and 'SCP cannot list directories' used to replace the panel
+        // body - taking the download button with it. In SCP mode the path
+        // IS the interface, so re-render that instead.
+        if (transferMode === 'scp') return renderScpMode();
+        const seq = ++listSeq;
+        const target = bound;
         el('sftp-path').value = cwd;
+        let entries;
+        try {
+            entries = (await op({ op: 'list', path: cwd })).entries;
+        } catch (err) {
+            if (seq !== listSeq || bound !== target) return;
+            return renderMessage(err.message);
+        }
+        // Stale answer: a newer navigation started while this one was out.
+        if (seq !== listSeq || bound !== target) return;
         const box = el('sftp-list');
         box.replaceChildren();
         selection.clear();
         lastPicked = null;
         syncColumns();
-        let entries;
-        try {
-            entries = (await op({ op: 'list', path: cwd })).entries;
-        } catch (err) {
-            return renderMessage(err.message);
-        }
         entries.sort((a, b) => (b.isDir - a.isDir) || a.name.localeCompare(b.name));
         listOrder = entries.filter((it) => it.name !== '.' && it.name !== '..').map((it) => it.name);
         entryByName.clear();
@@ -343,6 +362,9 @@
     }
 
     function renderScpMode() {
+        // The listing controls cannot work without a listing; leaving them
+        // clickable routed them into list(), whose error wiped this panel.
+        for (const id of ['sftp-up', 'sftp-refresh', 'sftp-mkdir']) el(id).disabled = true;
         el('sftp-title').textContent += ' (SCP)';
         const box = el('sftp-list');
         box.replaceChildren();
@@ -541,6 +563,16 @@
         }
         const dir = await rsterm.invoke('rs:sftp.pickFolder');
         if (!dir) return;
+        const go = await new Promise((resolve) => {
+            const body = document.createElement('p');
+            body.textContent = `Download ${targets.length} folder${targets.length === 1 ? '' : 's'} ` +
+                `into ${dir}? Files with the same names will be replaced.`;
+            window.Modals.open('Download folders', body, [
+                { label: 'Cancel', onClick: () => resolve(false) },
+                { label: 'Download', primary: true, onClick: () => resolve(true) },
+            ], { onCancel: () => resolve(false) });
+        });
+        if (!go) return;
         const sep = dir.includes('\\') ? '\\' : '/';
         let ok = 0, folders = 0, links = 0, unsafe = 0, failed = 0;
         const problems = [];
@@ -577,7 +609,21 @@
     async function downloadMany(files) {
         const dir = await rsterm.invoke('rs:sftp.pickFolder');
         if (!dir) return;
+        // One honest confirm for the batch: the OS save dialog (and its
+        // overwrite prompt) is only shown for SINGLE downloads, so a batch
+        // into a picked folder replaced same-named files with no word.
+        const go = await new Promise((resolve) => {
+            const body = document.createElement('p');
+            body.textContent = `Save ${files.length} file${files.length === 1 ? '' : 's'} into ` +
+                `${dir}? Files with the same names will be replaced.`;
+            window.Modals.open('Download files', body, [
+                { label: 'Cancel', onClick: () => resolve(false) },
+                { label: 'Download', primary: true, onClick: () => resolve(true) },
+            ], { onCancel: () => resolve(false) });
+        });
+        if (!go) return;
         let done = 0;
+        const failed = [];
         for (const f of files) {
             const safe = localName(f.name);
             if (!safe) {
@@ -590,11 +636,16 @@
                 await op({ op: 'download', path: join(cwd, f.name), local: dir + sep + safe });
                 done++;
             } catch (err) {
-                status(`download ${f.name} failed: ${err.message}`);
-                return;
+                // One refused file must not abandon the dozen behind it -
+                // the tree download already behaves this way.
+                failed.push(`${f.name}: ${err.message}`);
             }
         }
-        status(`downloaded ${done} file${done === 1 ? '' : 's'} to ${dir}`);
+        status(`downloaded ${done} of ${files.length} file${files.length === 1 ? '' : 's'} to ${dir}`);
+        if (failed.length) {
+            window.Forms.showBanner('error', `Download: ${failed.slice(0, 3).join('; ')}` +
+                (failed.length > 3 ? ` (and ${failed.length - 3} more)` : ''));
+        }
     }
 
     function status(text) {
@@ -748,7 +799,16 @@
             catch (err) { status(err.message); }
         });
         el('sftp-path').addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') { cwd = e.target.value.trim() || '/'; list(); }
+            if (e.key !== 'Enter') return;
+            // SCP: the typed path is a file to fetch, not a directory to
+            // list - Enter does what the button under it says.
+            if (transferMode === 'scp') {
+                const remote = e.target.value.trim();
+                if (remote) download({ name: remote.split('/').pop(), isDir: false }, remote);
+                return;
+            }
+            cwd = e.target.value.trim() || '/';
+            list();
         });
 
         // Follow the focused pane while the Files tab is showing - including

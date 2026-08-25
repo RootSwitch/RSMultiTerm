@@ -57,6 +57,14 @@ async function install(session, publicLine) {
     const client = session.transport && session.transport._client;
     if (!client) throw new Error('keys can only be installed over an SSH session');
     const line = String(publicLine || '').trim();
+    // authorized_keys is line-oriented: an interior newline turns one
+    // "key" into two lines, the second being whatever the blob smuggled.
+    // Today the key comes from this user's own file picker; if a key ever
+    // arrives from a shared store, this is the difference between a bad
+    // key and an injected one.
+    if (/[\r\n]/.test(line)) {
+        throw new Error('that does not look like a public key line - it has more than one line');
+    }
     const parts = line.split(/\s+/);
     if (parts.length < 2 || !/^(ssh-|ecdsa-)/.test(parts[0])) {
         throw new Error('that does not look like a public key line');

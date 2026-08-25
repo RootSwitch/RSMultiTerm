@@ -309,7 +309,72 @@ assert.ok(/Date\.now\(\) - lastUp >= 250/.test(scpSrc),
 assert.ok(/stream\.pause\(\);\s*[\s\S]{0,80}out\.once\('drain'/.test(scpSrc),
     'scp download must pause the channel when the local disk falls behind');
 
-// 24. What Windows shows for the app. FileDescription is misnamed: it is
+// 24. The review's low-severity batch, pinned structurally.
+// Overlapping file listings must not interleave (a sequence token), SCP
+// mode must not route into list(), and batch downloads must continue past
+// a failed file instead of abandoning the rest.
+assert.ok(/\+\+listSeq/.test(sftp) && /seq !== listSeq/.test(sftp),
+    'sftp-panel list() must carry a sequence token so stale listings cannot paint');
+assert.ok(/transferMode === 'scp'\) return renderScpMode\(\)/.test(sftp),
+    'list() must re-render SCP mode, not throw the SCP error over the panel');
+assert.ok(/failed\.push/.test(sftp),
+    'downloadMany must continue past a failed file, collecting failures');
+// confirmPaste must ride Modals.open (Escape stack, focus trap, handback)
+// and hand the keyboard to CANCEL - Send pre-focused meant the Enter meant
+// for the terminal instantly confirmed a multi-device send.
+const mePaste = multiExec.slice(multiExec.indexOf('function confirmPaste('));
+assert.ok(/window\.Modals\.open\(/.test(mePaste),
+    'confirmPaste must be built on Modals.open, not a bespoke backdrop');
+assert.ok(/cancel\.focus\(\)/.test(mePaste) && !/ok\.focus\(\)/.test(mePaste),
+    'confirmPaste must focus Cancel, never Send');
+// The baud list is shared, and an unknown stored rate is kept visible
+// rather than silently rewritten to the first option on save.
+assert.ok(/window\.App\.BAUDS/.test(fs.readFileSync(path.join(PUBLIC, 'connect-forms.js'), 'utf8')),
+    'the session editor must build its baud list from the shared App.BAUDS');
+assert.ok(/if \(!bauds\.includes\(current\)\) bauds\.push\(current\)/.test(
+    fs.readFileSync(path.join(PUBLIC, 'connect-forms.js'), 'utf8')),
+    'a stored baud missing from the list must be appended, not rewritten');
+// Snippet parameters are values, not replacement patterns.
+assert.ok(/\(\) => f\.value\.trim\(\)/.test(fs.readFileSync(path.join(PUBLIC, 'snippets-ui.js'), 'utf8')),
+    'snippet substitution must use a function so $& in a value stays literal');
+// Profile names are data in selectors.
+assert.ok(/CSS\.escape\(key\)/.test(fs.readFileSync(path.join(PUBLIC, 'connect-forms.js'), 'utf8')),
+    'clearBanner must CSS.escape the key - a quote in a profile name broke it');
+// Quick-connect failures surface.
+assert.ok(/connectOrSay/.test(appSrc),
+    'quick connect must catch and banner failures instead of vanishing');
+// The pane record carries what snapshots and renames need.
+assert.ok(/highlightSet: highlightSet \|\| null/.test(termPane),
+    'the pane must store its highlight set or snapshots save null');
+assert.ok(/pane\.title = n\.name/.test(treeSrc),
+    'a tree rename must reach open panes');
+// Zoom modifier is a choice.
+assert.ok(/zoomNeedsShift/.test(appSrc),
+    'font zoom must consult the zoomModifier setting (emacs undo lives on Ctrl+Minus)');
+// Engine structural: logger counts bytes and survives a stalled share;
+// serial says when the line is behind; hop timeouts reach tunnel chains;
+// the SSH verifier fails closed; SCP surfaces mid-send errors.
+const loggerSrc = fs.readFileSync(path.join(__dirname, '..', 'engine', 'logger.js'), 'utf8');
+assert.ok(/Buffer\.byteLength\(data\)/.test(loggerSrc),
+    'the logger must count bytes, not UTF-16 units, or rotation drifts');
+assert.ok(/fell behind/.test(loggerSrc),
+    'the logger must bound memory on a stalled destination and say so');
+const serialSrc = fs.readFileSync(path.join(__dirname, '..', 'engine', 'transports', 'serial.js'), 'utf8');
+assert.ok(/_pendingWrite/.test(serialSrc),
+    'serial writes must track the backlog and surface it in the status line');
+assert.ok(/hop\.timeoutMs = hostkeys\.isKnown/.test(ipcSrc) &&
+    ipcSrc.indexOf('hop.timeoutMs = hostkeys.isKnown') !== ipcSrc.lastIndexOf('hop.timeoutMs = hostkeys.isKnown'),
+    'tunnel chains must get the same first-contact timeout as session hops');
+const sshSrc = fs.readFileSync(path.join(__dirname, '..', 'engine', 'transports', 'ssh.js'), 'utf8');
+assert.ok(/return verify\(false\)/.test(sshSrc),
+    'a missing host verifier must fail closed, not accept any key');
+assert.ok(/phase === 'sending'/.test(scpSrc),
+    'scp upload must read acks during the body - "flash is full" arrives mid-send');
+// The field spec is validated in main before anything listens.
+assert.ok(/is not an address on this machine/.test(ipcSrc) && /the served folder does not exist/.test(ipcSrc),
+    'rs:field.start must validate bind address and root before starting a listener');
+
+// 25. What Windows shows for the app. FileDescription is misnamed: it is
 // the label Windows puts on the taskbar jump list, in Task Manager and in
 // Explorer's Description column, so it has to be the app's NAME. Shipping
 // package.json's description there made right-clicking the taskbar button
@@ -333,5 +398,5 @@ assert.ok(!/\bteam\b/i.test(pkg.description),
 console.log(`ok - ui invariants (hidden rule, outside-click menus, clipboard perms, ` +
     `no default menu, wheel zoom, remote-name sanitizing, gated dev hooks, idle overlay-only, ` +
     `exe metadata, shared menus, focus handback, contrast floor, broadcast truth, no orphan sessions, ` +
-    `armed-tab growth, focus trap, scp discipline, ` +
+    `armed-tab growth, focus trap, scp discipline, low-batch pins, ` +
     `${scripts.length} scripts, ${wired.size} wired ids)`);

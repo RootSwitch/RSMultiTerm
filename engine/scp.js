@@ -235,6 +235,16 @@ function upload(client, localPath, remotePath, onProgress) {
                     sendBody();
                     return;
                 }
+                if (phase === 'sending') {
+                    // A device that hits trouble mid-body - flash full,
+                    // quota - says so NOW with an error byte. Ignoring it
+                    // meant pumping the rest of the image into a dying
+                    // channel and reporting a generic "closed early"
+                    // instead of "No space left on device", which this
+                    // parser exists to surface.
+                    readAck(chunk);
+                    return;
+                }
                 if (phase === 'await-final') {
                     if (!readAck(chunk)) return;
                     settled = true;

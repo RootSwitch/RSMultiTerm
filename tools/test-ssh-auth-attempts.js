@@ -62,7 +62,8 @@ async function dial(port, password) {
     const t = new SshTransport();
     try {
         await t.connect({ host: '127.0.0.1', port, timeoutMs: 5000 },
-            { username: 'nettest', password });
+            { username: 'nettest', password },
+            { verifyHostkey: () => Promise.resolve(true) });
         return { t, ok: true };
     } catch (err) {
         return { t, ok: false, err };

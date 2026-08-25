@@ -130,7 +130,10 @@ function connect(port, auth) {
     const seen = [];
     t.on('status', (s) => seen.push(s));
     t.on('close', () => { /* expected on the failure paths below */ });
-    return t.connect({ host: '127.0.0.1', port, timeoutMs: 5000 }, auth).then(
+    // Accept-all on purpose: the transport now fails CLOSED without a
+    // verifier, and these scenarios are about auth, not host keys.
+    return t.connect({ host: '127.0.0.1', port, timeoutMs: 5000 }, auth,
+        { verifyHostkey: () => Promise.resolve(true) }).then(
         () => ({ ok: true, transport: t, seen }),
         (err) => ({ ok: false, err, seen }));
 }

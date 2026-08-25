@@ -76,7 +76,11 @@
         const fill = () => {
             let text = snippet.command;
             for (const [p, f] of fields) {
-                text = text.replace(new RegExp(`\\{\\{\\s*${p}\\s*\\}\\}`, 'g'), f.value.trim());
+                // A function, not a string: a parameter containing $& or $'
+                // is a value the user typed, not a replacement pattern, and
+                // the string form silently expanded it into the command.
+                text = text.replace(new RegExp(`\\{\\{\\s*${p}\\s*\\}\\}`, 'g'),
+                    () => f.value.trim());
             }
             return text;
         };

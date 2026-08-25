@@ -186,6 +186,64 @@ const get = (port, p) => new Promise((resolve, reject) => {
         assert.ok(viaLink.error, 'TFTP must refuse a path that resolves through a link to outside');
         assert.ok(!viaLink.data, 'and must not return its content');
 
+        // netascii asks for translation this server does not do; it used
+        // to be silently served raw octet, which corrupts exactly the text
+        // configs the mode exists for. Refused, with a message that names
+        // the fix.
+        const ascii = await new Promise((resolve, reject) => {
+            const s = dgram.createSocket('udp4');
+            const timer = setTimeout(() => { s.close(); reject(new Error('no answer to netascii')); }, 4000);
+            const parts = [Buffer.from([0, RRQ]), Buffer.from('startup-config'), Buffer.from([0]),
+                Buffer.from('netascii'), Buffer.from([0])];
+            s.on('message', (msg) => {
+                clearTimeout(timer); s.close();
+                resolve(msg.readUInt16BE(0) === ERROR
+                    ? { error: msg.toString('utf8', 4, msg.length - 1) } : { data: true });
+            });
+            s.send(Buffer.concat(parts), tftp.port, '127.0.0.1');
+        });
+        assert.ok(ascii.error && /octet/.test(ascii.error),
+            'netascii must be refused with a message pointing at octet mode');
+
+        // RFC 1350: the transfer peer is a TID - address AND port. A forged
+        // ERROR from another process on the same host must not kill a live
+        // transfer.
+        const spoofed = await new Promise((resolve, reject) => {
+            const a = dgram.createSocket('udp4');
+            const b = dgram.createSocket('udp4');
+            const chunks = [];
+            let transferPort = null;
+            const timer = setTimeout(() => { a.close(); b.close();
+                reject(new Error('spoof scenario stalled')); }, 8000);
+            a.on('message', (msg, rinfo) => {
+                const op = msg.readUInt16BE(0);
+                if (op !== DATA) return;
+                transferPort = rinfo.port;
+                chunks.push(msg.subarray(4));
+                if (chunks.length === 1) {
+                    // First block in hand: forge an ERROR from a DIFFERENT
+                    // socket (same address, different port), then ack from
+                    // the real one. The transfer must survive the forgery.
+                    const err = Buffer.concat([Buffer.from([0, ERROR, 0, 0]),
+                        Buffer.from('forged'), Buffer.from([0])]);
+                    b.send(err, transferPort, '127.0.0.1', () => {
+                        setTimeout(() => {
+                            const ackBuf = Buffer.alloc(4);
+                            ackBuf.writeUInt16BE(ACK, 0);
+                            ackBuf.writeUInt16BE(msg.readUInt16BE(2), 2);
+                            a.send(ackBuf, transferPort, '127.0.0.1');
+                        }, 150);
+                    });
+                    return;
+                }
+                // Second DATA arriving proves the forged ERROR was ignored.
+                clearTimeout(timer); a.close(); b.close();
+                resolve(true);
+            });
+            a.send(reqPacket(RRQ, 'image.bin', {}), tftp.port, '127.0.0.1');
+        });
+        assert.ok(spoofed, 'a forged ERROR from another port must not cancel a transfer');
+
         // Read-only by default: an upload is refused rather than accepted.
         const denied = await tftpPut(tftp.port, 'planted.txt', Buffer.from('should not land'));
         assert.ok(denied.error && /read-only/.test(denied.error), 'uploads are refused by default');
@@ -298,6 +356,37 @@ const get = (port, p) => new Promise((resolve, reject) => {
         assert.ok(!viaHttpLink.body.toString().includes('never serve'), 'HTTP leaked through the link');
         field.stop('http');
 
+        // Range: an interrupted firmware pull resumes with a 206 instead
+        // of restarting from zero.
+        const webAgain = await field.start({
+            id: 'http', kind: 'http', root, bind: '127.0.0.1', port: 0,
+            listing: false, stopAfterMinutes: 5,
+        });
+        const whole = await get(webAgain.port, '/image.bin');
+        assert.strictEqual(whole.headers && whole.headers['accept-ranges'] || 'bytes', 'bytes');
+        const tail = await new Promise((resolve, reject) => {
+            http.get({ host: '127.0.0.1', port: webAgain.port, path: '/image.bin',
+                headers: { Range: 'bytes=1024-' } }, (res) => {
+                const bufs = [];
+                res.on('data', (d) => bufs.push(d));
+                res.on('end', () => resolve({ status: res.statusCode,
+                    range: res.headers['content-range'], body: Buffer.concat(bufs) }));
+            }).on('error', reject);
+        });
+        assert.strictEqual(tail.status, 206, 'a byte range answers 206');
+        assert.strictEqual(tail.range, `bytes 1024-${image.length - 1}/${image.length}`);
+        assert.ok(tail.body.equals(image.subarray(1024)),
+            'the resumed bytes must be exactly the tail of the file');
+        const bad = await new Promise((resolve, reject) => {
+            http.get({ host: '127.0.0.1', port: webAgain.port, path: '/image.bin',
+                headers: { Range: `bytes=${image.length + 5}-` } }, (res) => {
+                res.resume();
+                res.on('end', () => resolve(res.statusCode));
+            }).on('error', reject);
+        });
+        assert.strictEqual(bad, 416, 'an unsatisfiable range says so');
+        field.stop('http');
+
         const listed = await field.start({
             id: 'http', kind: 'http', root, bind: '127.0.0.1', port: 0,
             listing: true, stopAfterMinutes: 5,
@@ -338,7 +427,8 @@ const get = (port, p) => new Promise((resolve, reject) => {
         void t;
 
         console.log('ok - field servers (tftp read/write + blksize/tsize + junction escape + ' +
-            'WRQ truncate guard + size cap + stop-kills-transfers, http, wol packet, ' +
+            'WRQ truncate guard + size cap + stop-kills-transfers + TID + netascii refusal, ' +
+            'http incl. ranges, wol packet, ' +
             'and every path outside the folder refused)');
         process.exit(0);
     } catch (err) {

@@ -36,7 +36,8 @@ function connect(port) {
     const t = new SshTransport();
     t.on('close', () => { /* teardown */ });
     return t.connect({ host: '127.0.0.1', port, timeoutMs: 5000 },
-        { username: 'nettest', password: 'nettest' }).then(() => t);
+        { username: 'nettest', password: 'nettest' },
+        { verifyHostkey: () => Promise.resolve(true) }).then(() => t);
 }
 
 // A realistic public line, derived from a really generated key.
@@ -110,7 +111,16 @@ function makeKeyLine(comment) {
         await assert.rejects(() => keyInstall.install({ transport: { _client: {} } }, 'not a key'),
             /does not look like a public key/);
 
-        console.log('ok - key install (fresh, dedup incl. options prefix, newline join, ' +
+        // authorized_keys is line-oriented: a "key" with an interior newline is
+// one bad key plus one injected line. Refused before anything executes.
+{
+    const { install } = require('../engine/key-install');
+    const twoLines = 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFake key-one\ncommand="evil" ssh-rsa AAAA injected';
+    await assert.rejects(() => install({ transport: { _client: {} } }, twoLines),
+        /more than one line/, 'an interior newline must be refused as not-a-key-line');
+}
+
+console.log('ok - key install (fresh, dedup incl. options prefix, newline join, ' +
             'gear refusal, garbage refusal)');
         process.exit(0);
     } catch (err) {

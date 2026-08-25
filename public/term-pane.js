@@ -207,6 +207,13 @@
         const pane = {
             sessionId, title, host, term, fit, search, serialize,
             transport: transport || 'ssh',
+            // Workspace snapshots read this to restore per-session
+            // highlight rules; it was never stored, so every snapshot
+            // saved null and restored panes wore the default rules.
+            highlightSet: highlightSet || null,
+            // The tree node this pane came from, when it came from one -
+            // how a rename in the tree reaches an open pane's title.
+            nodeId: null,
             port: null,
             state: 'connecting',
             el: null,          // grid cell wrapper, set by layout

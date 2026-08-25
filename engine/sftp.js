@@ -55,14 +55,19 @@ function ownerGroup(longname, attrs) {
     return { owner: (m && m[1]) || uid, group: (m && m[2]) || gid };
 }
 
-const channels = new Map();   // sessionId -> sftp stream
+const channels = new Map();   // sessionId -> Promise<sftp stream>
 // sessionId -> 'sftp' | 'scp'. Decided once per session, on first use.
 const mode = new Map();
 
 function forSession(session) {
-    return new Promise((resolve, reject) => {
-        const cached = channels.get(session.id);
-        if (cached) return resolve(cached);
+    // The cache holds the PROMISE, stored before any async work: two
+    // concurrent callers (the panel's bind and its auto-open race exactly
+    // this) used to both miss, both open a channel, and the loser leaked
+    // for the life of the connection - and network gear caps concurrent
+    // channels low enough for one leak to matter.
+    const cached = channels.get(session.id);
+    if (cached) return cached;
+    const opening = new Promise((resolve, reject) => {
         const transport = session.transport;
         if (!transport.sftp) return reject(new Error('not an SSH session'));
         // Opening a channel before the handshake finishes writes a
@@ -75,11 +80,13 @@ function forSession(session) {
         }
         transport.sftp((err, sftp) => {
             if (err) return reject(new Error(`SFTP unavailable: ${err.message}`));
-            channels.set(session.id, sftp);
             sftp.on('close', () => channels.delete(session.id));
             resolve(sftp);
         });
     });
+    channels.set(session.id, opening);
+    opening.catch(() => channels.delete(session.id));
+    return opening;
 }
 
 function drop(sessionId) {

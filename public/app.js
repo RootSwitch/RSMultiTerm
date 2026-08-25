@@ -119,7 +119,12 @@
     // Serial has no host or credentials, and picking a COM port from a list
     // beats typing one: the transport swaps the fields rather than leaving
     // host/port sitting there meaning nothing.
+    // THE baud list - the session editor builds from this too. It used to
+    // keep its own six-entry copy without 2400/4800, and Modals.select
+    // falls back to the first option when the stored value is absent:
+    // editing a 2400-baud session silently rewrote it to 1200 on save.
     const BAUDS = [1200, 2400, 4800, 9600, 19200, 38400, 57600, 115200];
+    window.App.BAUDS = BAUDS;
     async function syncTransportFields() {
         const serial = document.getElementById('qc-transport').value === 'serial';
         document.getElementById('qc-net').hidden = serial;
@@ -169,16 +174,29 @@
     document.getElementById('qc-com').addEventListener('mousedown', refreshComPorts);
     syncTransportFields();
 
+    // Whether font zoom wants Ctrl+Shift instead of bare Ctrl.
+    let zoomModifier = 'ctrl';
+    const readZoomModifier = (s) => { zoomModifier = (s && s.zoomModifier) || 'ctrl'; };
+    rsterm.invoke('rs:settings.get').then(readZoomModifier);
+    rsterm.on('rs:evt.settings-changed', readZoomModifier);
+    const zoomNeedsShift = () => zoomModifier === 'ctrl+shift';
+    window.App.zoomNeedsShift = zoomNeedsShift;
+
     const quickConnectReady = (o) =>
         o.transport === 'serial' ? !!(o.serial && o.serial.device) : !!o.host;
 
+    // connect() rejects when main does (engine restarting, malformed
+    // input); without a catch that was an unhandled rejection and NO
+    // banner - the button just did nothing.
+    const connectOrSay = (o, split) => connect(o, split)
+        .catch((err) => window.Forms.showBanner('error', `Connect: ${err.message}`));
     document.getElementById('qc-go').addEventListener('click', () => {
         const o = readQuickConnect();
-        if (quickConnectReady(o)) connect(o, false);
+        if (quickConnectReady(o)) connectOrSay(o, false);
     });
     document.getElementById('qc-split').addEventListener('click', () => {
         const o = readQuickConnect();
-        if (quickConnectReady(o)) connect(o, true);
+        if (quickConnectReady(o)) connectOrSay(o, true);
     });
     document.getElementById('broadcast-btn').addEventListener('click', () => {
         window.MultiExec.toggleBroadcast();
@@ -243,11 +261,18 @@
                 pane.term.write('\x1b[2m[reconnect cancelled]\x1b[0m\r\n');
                 return;
             }
-            res = await rsterm.invoke('rs:session.connect', {
-                ...res.args, username: creds.username, password: creds.password,
-            });
+            try {
+                res = await rsterm.invoke('rs:session.connect', {
+                    ...res.args, username: creds.username, password: creds.password,
+                });
+            } catch (err) {
+                pane.term.write(`\x1b[31m[reconnect failed: ${plain(err.message)}]\x1b[0m\r\n`);
+                return;
+            }
         }
         window.TermPanes.create(res.sessionId, res.title || pane.title, res.highlightSet, res.transport);
+        const freshPane = window.TermPanes.panes.get(res.sessionId);
+        if (freshPane) freshPane.nodeId = pane.nodeId;
         adoptWaitingPort(res.sessionId);
         // The dial and the credential prompt above both await; the pane
         // being reconnected can be closed during either. If it is gone,
@@ -265,7 +290,8 @@
     // Dial an SSH host by name/IP - the hints mode and the palette's
     // "SSH to ..." row both land here. Prompts for credentials like any
     // quick connect with no username.
-    window.App.quickSsh = (host) => connect({ host, transport: 'ssh' }, false);
+    window.App.quickSsh = (host) => connect({ host, transport: 'ssh' }, false)
+        .catch((err) => window.Forms.showBanner('error', `Connect: ${err.message}`));
 
     // Second session to the same device, added beside the original.
     async function duplicatePane(sessionId) {
@@ -280,6 +306,8 @@
             return;
         }
         window.TermPanes.create(res.sessionId, res.title || pane.title, res.highlightSet, res.transport);
+        const dupPane = window.TermPanes.panes.get(res.sessionId);
+        if (dupPane) dupPane.nodeId = pane.nodeId;
         adoptWaitingPort(res.sessionId);
         // The tab was captured before the await; a duplicate whose tab was
         // closed while dialing has nowhere to go, and "beside the
@@ -316,20 +344,24 @@
         }
         if (inField || inModal) return;
 
-        // Font zoom, keyboard edition: Ctrl+plus / Ctrl+minus / Ctrl+0.
-        if (e.ctrlKey && !e.shiftKey && !e.altKey &&
+        // Font zoom, keyboard edition. Ctrl+Minus is also what xterm sends
+        // as C-_ - emacs undo - so the modifier is a setting: 'ctrl'
+        // (default, the muscle memory) or 'ctrl+shift' (frees the
+        // keystroke for the remote).
+        const zshift = zoomNeedsShift();
+        if (e.ctrlKey && e.shiftKey === zshift && !e.altKey &&
             (e.code === 'Equal' || e.code === 'NumpadAdd')) {
             e.preventDefault();
             window.TermPanes.zoom(1);
             return;
         }
-        if (e.ctrlKey && !e.shiftKey && !e.altKey &&
+        if (e.ctrlKey && e.shiftKey === zshift && !e.altKey &&
             (e.code === 'Minus' || e.code === 'NumpadSubtract')) {
             e.preventDefault();
             window.TermPanes.zoom(-1);
             return;
         }
-        if (e.ctrlKey && !e.shiftKey && !e.altKey &&
+        if (e.ctrlKey && e.shiftKey === zshift && !e.altKey &&
             (e.code === 'Digit0' || e.code === 'Numpad0')) {
             e.preventDefault();
             window.TermPanes.zoom(0);

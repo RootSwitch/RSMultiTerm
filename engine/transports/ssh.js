@@ -223,7 +223,11 @@ class SshTransport extends Transport {
                 username: auth.username,
                 authHandler,
                 hostVerifier: (key, verify) => {
-                    if (!helpers || !helpers.verifyHostkey) return verify(true);
+                    // Fail CLOSED. Every in-app path passes a verifier; a
+                    // future caller that forgets one must get a refused
+                    // connection, not silently disabled host-key checking.
+                    // Tests that want accept-all say so explicitly.
+                    if (!helpers || !helpers.verifyHostkey) return verify(false);
                     helpers.verifyHostkey(host, port, key).then(verify, () => verify(false));
                 },
                 readyTimeout: descriptor.timeoutMs || 15000,

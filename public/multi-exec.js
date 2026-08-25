@@ -117,31 +117,18 @@
     }
 
     function confirmPaste(text, lineCount, targetCount, onYes) {
-        const backdrop = document.createElement('div');
-        backdrop.className = 'modal-backdrop';
-        const modal = document.createElement('div');
-        modal.className = 'modal';
-
-        const h = document.createElement('h2');
-        h.textContent = `Send ${lineCount} line${lineCount === 1 ? '' : 's'} to ` +
-            `${targetCount} session${targetCount === 1 ? '' : 's'}?`;
-
+        // Built on Modals.open, which this dialog used to bypass - so it
+        // missed the Escape stack, the Tab trap, and the focus handback
+        // every other dialog gets. Worse, Send was pre-focused: the Enter a
+        // user was about to press to run the last pasted line instantly
+        // confirmed a multi-device send. Cancel gets the keyboard now -
+        // confirming a broadcast is a click or a Tab, never a reflex.
         const body = document.createElement('div');
-        body.className = 'modal-body';
         const pre = document.createElement('pre');
         pre.style.cssText = 'font-family:var(--mt-mono);font-size:12px;max-height:40vh;overflow:auto;' +
             'background:var(--se-input);border:1px solid var(--se-border);border-radius:4px;padding:8px;';
         pre.textContent = text;
         body.appendChild(pre);
-
-        const actions = document.createElement('div');
-        actions.className = 'modal-actions';
-        const cancel = document.createElement('button');
-        cancel.textContent = 'Cancel';
-        const ok = document.createElement('button');
-        ok.className = 'primary';
-        ok.textContent = 'Send';
-        actions.append(cancel, ok);
 
         // For one session the dialog is a habit-guard, not the broadcast
         // safety interlock, so it can be dismissed for good right here
@@ -159,30 +146,25 @@
             body.appendChild(lbl);
         }
 
-        modal.append(h, body, actions);
-        backdrop.appendChild(modal);
-        document.body.appendChild(backdrop);
-
-        // Whichever way the dialog closes, the keyboard goes back to the
-        // terminal it was taken from. The muscle memory this serves: paste
-        // a block of commands, hit Send, hit Enter to run the last line -
-        // and the Enter must reach the device, not a dialog-less void.
-        const closeModal = () => {
-            backdrop.remove();
-            const tab = window.Tabs.active();
-            const pane = tab && window.TermPanes.panes.get(tab.focusedSessionId);
-            if (pane) pane.term.focus();
-        };
-        cancel.addEventListener('click', closeModal);
-        backdrop.addEventListener('click', (e) => { if (e.target === backdrop) closeModal(); });
-        ok.addEventListener('click', () => {
-            if (dontAsk && dontAsk.checked) {
-                rsterm.invoke('rs:settings.update', { confirmations: { pasteMultiline: false } });
-            }
-            closeModal();
-            onYes();
-        });
-        ok.focus();
+        const dialog = window.Modals.open(
+            `Send ${lineCount} line${lineCount === 1 ? '' : 's'} to ` +
+            `${targetCount} session${targetCount === 1 ? '' : 's'}?`,
+            body, [
+                { label: 'Cancel' },
+                {
+                    label: 'Send', primary: true,
+                    onClick: () => {
+                        if (dontAsk && dontAsk.checked) {
+                            rsterm.invoke('rs:settings.update',
+                                { confirmations: { pasteMultiline: false } });
+                        }
+                        onYes();
+                    },
+                },
+            ]);
+        const cancel = [...dialog.el.querySelectorAll('.modal-actions button')]
+            .find((b) => b.textContent === 'Cancel');
+        if (cancel) cancel.focus();
     }
 
     // Visual truth: outlines, toggle glyphs, toolbar count.

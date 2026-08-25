@@ -23,6 +23,8 @@
 // is caught after decoding, so a "stripped" log can never carry an
 // executable sequence by either spelling.
 
+// OSC/DCS payload cap - see the S_OSC state for why.
+const MAX_STR = 2048;
 const S_TEXT = 0, S_ESC = 1, S_CSI = 2, S_OSC = 3, S_OSC_ESC = 4, S_STR = 5, S_STR_ESC = 6,
     S_ESC_INT = 7, S_UTF8 = 8;
 
@@ -53,8 +55,8 @@ class AnsiStripper {
                 // Route the sequence-openers into their states, drop the
                 // rest (and DEL) with the other controls.
                 else if (b === 0x9b) this.state = S_CSI;
-                else if (b === 0x9d) this.state = S_OSC;
-                else if (b === 0x90 || b === 0x98 || b === 0x9e || b === 0x9f) this.state = S_STR;
+                else if (b === 0x9d) { this.state = S_OSC; this.strLen = 0; }
+                else if (b === 0x90 || b === 0x98 || b === 0x9e || b === 0x9f) { this.state = S_STR; this.strLen = 0; }
                 else if (b >= 0xc2 && b <= 0xf4) {
                     // UTF-8 lead byte: collect the sequence, decode it
                     // whole. 0xc0/0xc1 and 0xf5-0xff can never start a
@@ -82,8 +84,8 @@ class AnsiStripper {
                         if (bytes[0] === 0xc2 && bytes[1] <= 0x9f) {
                             const c1 = bytes[1];
                             if (c1 === 0x9b) this.state = S_CSI;
-                            else if (c1 === 0x9d) this.state = S_OSC;
-                            else if (c1 === 0x90 || c1 === 0x98 || c1 === 0x9e || c1 === 0x9f) this.state = S_STR;
+                            else if (c1 === 0x9d) { this.state = S_OSC; this.strLen = 0; }
+                            else if (c1 === 0x90 || c1 === 0x98 || c1 === 0x9e || c1 === 0x9f) { this.state = S_STR; this.strLen = 0; }
                             break;
                         }
                         // Invalid-but-well-formed sequences (overlongs,
@@ -100,9 +102,9 @@ class AnsiStripper {
                 return this._byte(b);
             case S_ESC:
                 if (b === 0x5b) this.state = S_CSI;                 // ESC [
-                else if (b === 0x5d) this.state = S_OSC;            // ESC ]
+                else if (b === 0x5d) { this.state = S_OSC; this.strLen = 0; }            // ESC ]
                 else if (b === 0x50 || b === 0x5e || b === 0x5f ||  // DCS APC PM
-                         b === 0x58) this.state = S_STR;            // SOS
+                         b === 0x58) { this.state = S_STR; this.strLen = 0; }            // SOS
                 else if (b >= 0x20 && b <= 0x2f) this.state = S_ESC_INT;
                 // ^ intermediates: charset designations (ESC ( B), DECALN
                 //   (ESC # 8), etc. run "ESC, intermediates, final" - the
@@ -119,14 +121,20 @@ class AnsiStripper {
                 if (b >= 0x40 && b <= 0x7e) this.state = S_TEXT;
                 break;
             case S_OSC:
+                // Real terminals cap OSC length for exactly this reason: a
+                // stray 0x9d in binary output enters this state, and with no
+                // bound the rest of the session's log vanished into an
+                // unterminated string. Past the cap, fall back to text.
                 if (b === 0x07) this.state = S_TEXT;                // BEL
                 else if (b === 0x1b) this.state = S_OSC_ESC;
+                else if (++this.strLen > MAX_STR) this.state = S_TEXT;
                 break;
             case S_OSC_ESC:
                 this.state = b === 0x5c ? S_TEXT : S_OSC;           // ESC \ = ST
                 break;
             case S_STR:
                 if (b === 0x1b) this.state = S_STR_ESC;
+                else if (++this.strLen > MAX_STR) this.state = S_TEXT;
                 break;
             case S_STR_ESC:
                 this.state = b === 0x5c ? S_TEXT : S_STR;

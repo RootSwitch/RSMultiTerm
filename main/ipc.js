@@ -227,7 +227,39 @@ function wireIpc(engineRef, getWindow, bootConfig) {
             }, 15000);
         });
     };
-    ipcMain.handle('rs:field.start', (_e, spec) => fieldCall('start', { spec }));
+    ipcMain.handle('rs:field.start', (_e, spec) => {
+        // Strict on purpose: everything else in the app CONNECTS, this
+        // LISTENS, so the renderer's spec is checked in main rather than
+        // trusted shapewise. The engine re-checks the root; the bind
+        // address must be one this machine actually has.
+        if (!spec || (spec.kind !== 'tftp' && spec.kind !== 'http')) {
+            throw new Error('unknown server kind');
+        }
+        const port = Number(spec.port);
+        if (!Number.isInteger(port) || port < 0 || port > 65535) {
+            throw new Error('the port must be between 0 and 65535');
+        }
+        const bind = String(spec.bind || '');
+        const known = ['0.0.0.0', '127.0.0.1'];
+        for (const list of Object.values(require('os').networkInterfaces())) {
+            for (const iface of list || []) known.push(iface.address);
+        }
+        if (!known.includes(bind)) {
+            throw new Error(`${bind || '(empty)'} is not an address on this machine`);
+        }
+        let rootStat;
+        try { rootStat = fs.statSync(String(spec.root || '')); } catch (_) { /* below */ }
+        if (!rootStat || !rootStat.isDirectory()) {
+            throw new Error('the served folder does not exist');
+        }
+        return fieldCall('start', {
+            spec: {
+                id: String(spec.id), kind: spec.kind, root: String(spec.root),
+                bind, port, allowWrites: !!spec.allowWrites, listing: !!spec.listing,
+                stopAfterMinutes: Number(spec.stopAfterMinutes) || 60,
+            },
+        });
+    });
     ipcMain.handle('rs:field.stop', (_e, { id }) => fieldCall('stop', { id }));
     ipcMain.handle('rs:field.list', () => fieldCall('list', {}));
     ipcMain.handle('rs:field.wake', (_e, { mac, broadcast, port }) =>
@@ -358,7 +390,15 @@ function wireIpc(engineRef, getWindow, bootConfig) {
             port: descriptor.port || 22,
             credentialProfile: descriptor.credentialProfile || null,
         };
-        return [...(descriptor.jumpChain || []), endpoint];
+        const chain = [...(descriptor.jumpChain || []), endpoint];
+        // Same first-contact allowance openNode gives its hops: an unknown
+        // host pops the fingerprint dialog, and 15 seconds is not enough
+        // time to read a fingerprint - the first tunnel attempt died
+        // mid-dialog and only the retry (now-known host) worked.
+        for (const hop of chain) {
+            hop.timeoutMs = hostkeys.isKnown(hop.host, hop.port || 22) ? undefined : 120000;
+        }
+        return chain;
     }
 
     ipcMain.handle('rs:tunnels.list', () => tunnelStore.all());

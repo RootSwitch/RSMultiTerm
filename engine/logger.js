@@ -96,8 +96,31 @@ class SessionLogger {
             data = buf;
         }
 
-        this.stream.write(data);
-        this.bytes += data.length;
+        // A stalled destination must not buffer session output in memory
+        // without bound - the log directory can be a network share, and a
+        // hung share used to grow the heap for as long as the session
+        // talked. Past a real backlog (not a transient burst), drop and say
+        // so in the log itself once the destination recovers: a gap that
+        // announces itself beats an engine that dies remembering.
+        if (this._dropping) {
+            this._droppedBytes += Buffer.byteLength(data);
+        } else {
+            const ok = this.stream.write(data);
+            if (!ok && this.stream.writableLength > 4 * 1024 * 1024) {
+                this._dropping = true;
+                this._droppedBytes = 0;
+                this.stream.once('drain', () => {
+                    this._dropping = false;
+                    if (this._droppedBytes) {
+                        this.stream.write(`\n[log writer fell behind: ` +
+                            `${this._droppedBytes} bytes were not logged]\n`);
+                    }
+                });
+            }
+        }
+        // byteLength, not .length: rotation was counting UTF-16 code units,
+        // so multi-byte-heavy sessions rotated late.
+        this.bytes += Buffer.byteLength(data);
         if (this.bytes >= (this.opts.rotateBytes || ROTATE_BYTES)) this._rotate();
     }
 

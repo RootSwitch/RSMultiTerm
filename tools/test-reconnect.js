@@ -57,7 +57,8 @@ function waitFor(emitter, event, ms = 8000) {
         ssh.on('close', () => { sshCloses++; });
         const closed = waitFor(ssh, 'close');
         await ssh.connect({ host: '127.0.0.1', port: SSH_PORT, cols: 80, rows: 24 },
-            { username: 'nettest', password: 'nettest' });
+            { username: 'nettest', password: 'nettest' },
+            { verifyHostkey: () => Promise.resolve(true) });
         ssh.write('exit\r');          // the device hangs up on this
         await closed;
         await new Promise((r) => setTimeout(r, 400));
@@ -86,7 +87,8 @@ function waitFor(emitter, event, ms = 8000) {
         let badCloses = 0;
         bad.on('close', () => { badCloses++; });
         await bad.connect({ host: '127.0.0.1', port: SSH_PORT, cols: 80, rows: 24 },
-            { username: 'nettest', password: 'wrong-password' })
+            { username: 'nettest', password: 'wrong-password' },
+            { verifyHostkey: () => Promise.resolve(true) })
             .then(() => { throw new Error('expected the auth to be refused'); },
                 (err) => { assert.ok(err.isAuthFailure, 'auth failure should be flagged as such'); });
         await new Promise((r) => setTimeout(r, 600));
@@ -103,7 +105,8 @@ function waitFor(emitter, event, ms = 8000) {
             });
         });
         await again.connect({ host: '127.0.0.1', port: SSH_PORT, cols: 80, rows: 24 },
-            { username: 'nettest', password: 'nettest' });
+            { username: 'nettest', password: 'nettest' },
+            { verifyHostkey: () => Promise.resolve(true) });
         const text = await banner;
         assert.ok(text.includes('reconnect-sw'), 'reconnected session is usable');
         await again.close();
@@ -119,7 +122,33 @@ function waitFor(emitter, event, ms = 8000) {
         assert.ok(true, 'writing to a dead telnet session did not raise');
         await tel.close();
 
-        console.log('ok - reconnect (write-after-close is safe on ssh and telnet, redial works)');
+        // --- telnet: a mid-session RESET is an error, not a clean exit ----
+        // The close handler used to overwrite the error status and emit
+        // code 0 "connection closed" - the UI lost the reason at the one
+        // moment it mattered. A local server that resets the socket (RST,
+        // via resetAndDestroy) reproduces the ECONNRESET ordering exactly.
+        const rstServer = require('net').createServer((sock) => {
+            sock.write('welcome' + String.fromCharCode(13, 10));
+            setTimeout(() => sock.resetAndDestroy(), 150);
+        });
+        await new Promise((r) => rstServer.listen(0, '127.0.0.1', r));
+        const tel2 = new TelnetTransport();
+        const closeArgs = new Promise((resolve) => tel2.on('close', (info) => resolve(info)));
+        const statuses = [];
+        tel2.on('status', (st) => statuses.push(st.state));
+        await tel2.connect({ host: '127.0.0.1',
+            port: rstServer.address().port, cols: 80, rows: 24 }, {});
+        const ended = await closeArgs;
+        rstServer.close();
+        assert.strictEqual(ended.code, 1,
+            `a reset mid-session must close with code 1, got ${ended.code} (${ended.reason})`);
+        assert.ok(/ECONNRESET|reset/i.test(ended.reason || ''),
+            `the close reason must carry the error, got '${ended.reason}'`);
+        assert.ok(!statuses.includes('closed'),
+            'the error status must not be overwritten by a clean-exit status');
+
+        console.log('ok - reconnect (write-after-close is safe on ssh and telnet, ' +
+            'redial works, telnet reset reports as an error)');
     } finally {
         sshFixture.kill();
         telnetFixture.kill();

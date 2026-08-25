@@ -203,6 +203,13 @@
                   'sessions do by default); the animation plays anyway because you turned it on.'
                 : '');
 
+        // Zoom keys: Ctrl+Minus doubles as emacs undo (C-_) on a remote,
+        // so the modifier is a choice rather than a collision.
+        const fZoomMod = select([
+            { value: 'ctrl', label: 'Ctrl +/- (default)' },
+            { value: 'ctrl+shift', label: 'Ctrl+Shift +/- - leaves Ctrl+Minus for the remote (emacs undo)' },
+        ], s.zoomModifier === 'ctrl+shift' ? 'ctrl+shift' : 'ctrl');
+
         const fPoll = input((s.teamSync || {}).pollSeconds || 60, '60', 'number');
 
         const fOsc52 = select([
@@ -222,6 +229,7 @@
             row('File browser', fAutoFiles),
             row('Remote clipboard', fOsc52), osc52Hint,
             row('Font', fFontFamily), row('Font size', fFontSize),
+            row('Font zoom keys', fZoomMod),
             row('Scrollback lines', fScrollback),
             logRow, row('Log timestamps', fTimestamps),
             syncRow, syncHint, row('Check sync every (s)', fPoll),
@@ -241,6 +249,7 @@
                 area: fIdleArea.value, picks: readPicks(),
                 rotateMinutes: Number(fIdleRotate.value) || 0 },
             autoOpenFileBrowser: fAutoFiles.value === 'yes',
+            zoomModifier: fZoomMod.value,
             terminalColors: {
                 mode: fTermMode.value,
                 minContrast: Number(fContrast.value),

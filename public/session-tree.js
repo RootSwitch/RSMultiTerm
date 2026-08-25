@@ -44,6 +44,21 @@
 
     async function refresh() {
         nodes = await rsterm.invoke('rs:tree.get');
+        // A rename reaches open panes: header, tab strip and status line
+        // used to keep the old name until reconnect - confusing when the
+        // rename existed to FIX a wrong label.
+        let renamed = false;
+        for (const pane of window.TermPanes.panes.values()) {
+            const n = pane.nodeId && nodes[pane.nodeId];
+            if (n && n.name && n.name !== pane.title) {
+                pane.title = n.name;
+                renamed = true;
+            }
+        }
+        if (renamed) {
+            if (window.Grid) window.Grid.render(true);
+            if (window.Tabs) window.Tabs.updateStatus();
+        }
         healthByNode = await rsterm.invoke('rs:health.get');
         for (const id of [...selected]) if (!nodes[id]) selected.delete(id);
         // Settings may have changed underneath an open row - an edit, a bulk
@@ -348,6 +363,8 @@ ${describeAge(ageDays)}. Nothing is probed in the background: ` +
                 continue;
             }
             window.TermPanes.create(r.sessionId, r.title, r.highlightSet, r.transport);
+            const opened = window.TermPanes.panes.get(r.sessionId);
+            if (opened) opened.nodeId = r.nodeId;
             window.App.adoptWaitingPort(r.sessionId);
             if (mode === 'tabs') {
                 window.Tabs.addSession(window.Tabs.newTab(r.title).id, r.sessionId);

@@ -196,7 +196,11 @@ function tftpRead(id, root, req, rinfo, bind) {
     };
 
     sock.on('message', (msg, from) => {
-        if (from.address !== rinfo.address) return;
+        // RFC 1350 identifies a transfer by TID - the PORT pair - not by
+        // address alone. Checking only the address let any process on the
+        // same host (or behind the same NAT) inject ACKs and ERRORs into a
+        // live transfer.
+        if (from.address !== rinfo.address || from.port !== rinfo.port) return;
         const op = msg.readUInt16BE(0);
         if (op === ERROR) return finish(`tftp: ${req.filename} cancelled by the device`, rinfo.address);
         if (op !== ACK) return;
@@ -332,7 +336,8 @@ function tftpWrite(id, root, req, rinfo, bind, allowWrites) {
             sock.send(buf, rinfo.port, rinfo.address);
         };
         sock.on('message', (msg, from) => {
-            if (from.address !== rinfo.address) return;
+            // TID check, as on the read path: the peer is address AND port.
+            if (from.address !== rinfo.address || from.port !== rinfo.port) return;
             const op = msg.readUInt16BE(0);
             if (op === ERROR) {
                 return done(`tftp: upload of ${req.filename} cancelled`, rinfo.address);
@@ -389,6 +394,24 @@ function startTftp(id, spec) {
             const op = msg.readUInt16BE(0);
             if (op !== RRQ && op !== WRQ) return;
             const req = parseRequest(msg);
+            // netascii asks for line-ending translation this server does
+            // not do. It used to be parsed and IGNORED - the file went out
+            // raw octet while the client believed it was translated, which
+            // is silent corruption for exactly the text configs netascii
+            // exists for. Refusing with a readable message is honest, and
+            // every real client can be told to use binary/octet mode.
+            if (req.mode !== 'octet') {
+                const s = dgram.createSocket('udp4');
+                s.on('error', () => { try { s.close(); } catch (_) { /* closed */ } });
+                s.bind(0, spec.bind, () => {
+                    tftpError(s, rinfo.port, rinfo.address, 0,
+                        `${req.mode} mode is not supported - transfer in octet (binary) mode`,
+                        () => { try { s.close(); } catch (_) { /* closed */ } });
+                });
+                note(id, `tftp: refused ${req.filename}`,
+                    `${rinfo.address} - asked for ${req.mode} mode`);
+                return;
+            }
             if (op === RRQ) tftpRead(id, root, req, rinfo, spec.bind);
             else tftpWrite(id, root, req, rinfo, spec.bind, !!spec.allowWrites);
         });
@@ -445,10 +468,37 @@ function startHttp(id, spec) {
                 res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
                 return res.end(`<!doctype html><meta charset="utf-8"><pre>${body}</pre>`);
             }
+            // One bytes= range, honored with a 206: an interrupted firmware
+            // pull resumes instead of restarting from zero, which on a slow
+            // WAN link is the difference between a second attempt and a
+            // second hour. Multi-range requests get the whole file - legal,
+            // and no device asks for them.
+            const type = MIME[path.extname(full).toLowerCase()] || 'application/octet-stream';
+            const range = /^bytes=(\d*)-(\d*)$/.exec(req.headers.range || '');
+            if (range && (range[1] || range[2])) {
+                let start = range[1] === '' ? st.size - Number(range[2]) : Number(range[1]);
+                let end = range[1] !== '' && range[2] !== '' ? Number(range[2]) : st.size - 1;
+                end = Math.min(end, st.size - 1);
+                if (!Number.isFinite(start) || !Number.isFinite(end) || start < 0 || start > end) {
+                    res.writeHead(416, { 'Content-Range': `bytes */${st.size}` });
+                    return res.end();
+                }
+                note(id, `http: sending ${path.basename(full)} (bytes ${start}-${end})`,
+                    req.socket.remoteAddress);
+                res.writeHead(206, {
+                    'Content-Type': type,
+                    'Content-Length': end - start + 1,
+                    'Content-Range': `bytes ${start}-${end}/${st.size}`,
+                    'Accept-Ranges': 'bytes',
+                });
+                if (req.method === 'HEAD') return res.end();
+                return fs.createReadStream(full, { start, end }).pipe(res);
+            }
             note(id, `http: sending ${path.basename(full)}`, req.socket.remoteAddress);
             res.writeHead(200, {
-                'Content-Type': MIME[path.extname(full).toLowerCase()] || 'application/octet-stream',
+                'Content-Type': type,
                 'Content-Length': st.size,
+                'Accept-Ranges': 'bytes',
             });
             if (req.method === 'HEAD') return res.end();
             fs.createReadStream(full).pipe(res);

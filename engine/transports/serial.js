@@ -80,7 +80,26 @@ class SerialTransport extends Transport {
     }
 
     write(data) {
-        if (this._port && this._port.isOpen) this._port.write(data);
+        if (!this._port || !this._port.isOpen) return;
+        // A console port drains at its baud rate and serialport buffers
+        // everything handed to it, so a large paste into a 9600-baud line
+        // queues silently for minutes. Full write backpressure needs a
+        // renderer-visible channel (deferred); what CANNOT stay silent is
+        // the state, so the status line says the line is behind, once, and
+        // clears when the queue empties.
+        this._pendingWrite = (this._pendingWrite || 0) + data.length;
+        this._port.write(data, () => {
+            this._pendingWrite -= data.length;
+            if (this._pendingWrite === 0 && this._backlogged) {
+                this._backlogged = false;
+                this._status('connected', null);
+            }
+        });
+        if (this._pendingWrite > 64 * 1024 && !this._backlogged) {
+            this._backlogged = true;
+            this._status('connected',
+                `the line is behind - ${Math.round(this._pendingWrite / 1024)} KB still transmitting`);
+        }
     }
 
     pause() { if (this._port) this._port.pause(); }
