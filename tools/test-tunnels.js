@@ -134,6 +134,21 @@ const refused = (port) => new Promise((resolve) => {
         assert.ok(afterOne.bytesUp >= 12 && afterOne.bytesDown >= 12,
             `byte counters must be real, got up=${afterOne.bytesUp} down=${afterOne.bytesDown}`);
 
+        // 1b. A hostile or merely flaky local client must not crash this
+        // process. The first error listener used to be attached inside
+        // bridge(), AFTER the forwardOut round trip - so a client that
+        // reset in that window emitted 'error' with no listener, which
+        // throws, and this process hosts every session and tunnel there is.
+        // The classic trigger is a browser tab closed as it opened.
+        for (let i = 0; i < 5; i++) {
+            const rude = net.connect(local.bindPort, '127.0.0.1');
+            rude.on('error', () => {});
+            rude.on('connect', () => rude.destroy());
+        }
+        await new Promise((r) => setTimeout(r, 400));
+        assert.strictEqual(await roundTrip(local.bindPort, 'still here'), 'STILL HERE',
+            'the forward must survive clients that reset during setup');
+
         // 2. A second tunnel to the same endpoint SHARES the pooled SSH
         // connection - the whole reason tunnels live in this app. Two refs,
         // one pool entry, one authentication.
@@ -144,6 +159,19 @@ const refused = (port) => new Promise((resolve) => {
         const stats = hopPool.stats();
         assert.strictEqual(Object.keys(stats).length, 1, 'both tunnels ride ONE pooled connection');
         assert.strictEqual(Object.values(stats)[0], 2, 'that connection carries two refs');
+
+        // 2b. Same for the SOCKS path, which additionally parses hostile
+        // bytes: garbage greetings, a request refused into a dead socket,
+        // and a reset mid-handshake all happen the moment anything scans
+        // the port. None of them may throw.
+        const CRLF = String.fromCharCode(13, 10);
+        for (const bytes of [Buffer.from([0x04, 0x01]), Buffer.from('GET / HTTP/1.1' + CRLF + CRLF),
+            Buffer.from([0x05, 0x01, 0x00])]) {
+            const rude = net.connect(socks.bindPort, '127.0.0.1');
+            rude.on('error', () => {});
+            rude.on('connect', () => { rude.write(bytes); rude.destroy(); });
+        }
+        await new Promise((r) => setTimeout(r, 400));
 
         // 3. SOCKS5: the proxy resolves and dials the destination far-side.
         assert.strictEqual(await socksRoundTrip(socks.bindPort, targetPort, 'via socks'), 'VIA SOCKS',
@@ -187,7 +215,7 @@ const refused = (port) => new Promise((resolve) => {
         }
         assert.deepStrictEqual(hopPool.stats(), {}, 'the pool drains when the last tunnel closes');
 
-        console.log('ok - tunnels (local forward, SOCKS5, shared pooled connection, listener hygiene, clean teardown)');
+        console.log('ok - tunnels (local forward, SOCKS5, rude clients survived, shared pooled connection, listener hygiene, clean teardown)');
         process.exit(0);
     } finally {
         ssh.kill();

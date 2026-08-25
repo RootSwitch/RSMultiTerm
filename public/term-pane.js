@@ -398,6 +398,11 @@
         }
         // And in the tab strip, so a background tab can show it too.
         if (window.Tabs) window.Tabs.updateStatus();
+        // Broadcast chrome tracks pane state: a pane dying or coming up
+        // mid-broadcast changes who receives the next keystroke, and the
+        // outlines and the "N of M" count must say so at that moment, not
+        // at the next focus change.
+        if (window.MultiExec) window.MultiExec.refreshChrome();
 
         if (window.SftpPanel) {
             if (state === 'connected') window.SftpPanel.considerAutoOpen(pane.sessionId);
@@ -406,6 +411,14 @@
             // listing for a device that has hung up.
             else if (DEAD.has(state)) window.SftpPanel.noteDead(pane.sessionId);
         }
+    }
+
+    // Able to receive input RIGHT NOW: the shell channel exists. Between
+    // 'connecting' and 'connected' the transport's write() is a silent
+    // discard, so broadcast must not count such a pane as a recipient.
+    function isReady(sessionId) {
+        const pane = panes.get(sessionId);
+        return !!pane && pane.state === 'connected';
     }
 
     function isDead(sessionId) {
@@ -461,7 +474,7 @@
 
     window.TermPanes = {
         create, attachPort, mount, setState, destroy, panes, checkSavable,
-        refreshTheme, currentBackground, isDead,
+        refreshTheme, currentBackground, isDead, isReady,
         promptLines, lastCommandOutput, zoom, saveOutput,
         // null means "following Settings", so anything else is a zoom the
         // user can be offered a way out of.

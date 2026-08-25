@@ -130,11 +130,27 @@ function forwardOut(client, dstHost, dstPort) {
 function connectClient(client, opts, helpers) {
     return new Promise((resolve, reject) => {
         let settled = false;
+        let kiError = null;
         client.on('ready', () => { settled = true; resolve(); });
         client.on('error', (err) => {
             if (!settled) {
+                settled = true;
                 const isAuth = /authentication/i.test(err.message) || err.level === 'client-authentication';
                 reject(Object.assign(err, { isAuthFailure: isAuth }));
+            }
+        });
+        // ssh2 emits 'close' WITHOUT a preceding 'error' when the socket
+        // just closes - including when our own KI dead-end calls
+        // client.end() below. Without this handler that acquire never
+        // settled, and worse, the pool entry's ready promise never settled
+        // either, so every future session and tunnel through this gateway
+        // awaited a dead promise until the app restarted. One
+        // mis-authenticated hop bricked the bastion for the whole session.
+        client.on('close', () => {
+            if (!settled) {
+                settled = true;
+                reject(kiError ||
+                    new Error('the gateway closed the connection during authentication'));
             }
         });
 
@@ -162,6 +178,15 @@ function connectClient(client, opts, helpers) {
             const m = methods[idx++];
             lastMethod = m;
             if (m === 'keyboard-interactive' && passwordRejected) return next(false);
+            // Without this branch an offered 'agent' fell through to the
+            // keyboard-interactive return below, which answered the prompt
+            // with the stored password - spending an extra backend attempt
+            // per connect against exactly the AD/TACACS lockout policies
+            // the pool exists to protect. The transport ten files away had
+            // the branch all along.
+            if (m === 'agent') {
+                return next({ type: 'agent', username: opts.username, agent: opts.agent });
+            }
             if (m === 'publickey') {
                 let key;
                 try {
@@ -185,7 +210,11 @@ function connectClient(client, opts, helpers) {
                         return finish([opts.password]);
                     }
                     // No prompt UI on the hop path either; fail rather than
-                    // hang into a misleading handshake timeout.
+                    // hang into a misleading handshake timeout. Record WHY
+                    // before ending: the close that follows carries no error
+                    // of its own.
+                    kiError = new Error('the gateway asked an interactive question ' +
+                        'this app cannot answer - it needs a password or key profile');
                     client.end();
                 },
             });

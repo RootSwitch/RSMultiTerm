@@ -806,7 +806,11 @@ function wireIpc(engineRef, getWindow, bootConfig) {
             engine.postMessage({ t: 'sftp', reqId, sessionId, req });
             // Transfers can legitimately run for a long time; only cap the
             // quick metadata ops.
-            if (req.op !== 'download' && req.op !== 'upload') {
+            // Transfers run as long as the data takes; only the quick
+            // metadata ops get a deadline. downloadTree was missing here
+            // and any tree slower than 30s was reported failed while the
+            // engine kept downloading it in the background.
+            if (req.op !== 'download' && req.op !== 'upload' && req.op !== 'downloadTree') {
                 setTimeout(() => {
                     const w = sftpWaiters.get(reqId);
                     if (w) { sftpWaiters.delete(reqId); w.reject(new Error('sftp timeout')); }
@@ -981,6 +985,12 @@ function wireIpc(engineRef, getWindow, bootConfig) {
                 }
                 break;
             }
+            case 'engine-warning':
+                // The engine survived an uncaught exception. Surviving is
+                // the backstop doing its job; silence would be it hiding a
+                // bug, so it lands in the main log where a report can find it.
+                require('./safe-log').error('engine uncaught exception (survived):', m.error);
+                break;
             case 'field-log':
             case 'field-state':
                 forward('rs:evt.field', m);

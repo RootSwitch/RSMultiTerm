@@ -13,6 +13,20 @@ const pendingPorts = new Map();      // sessionId -> port (port can arrive first
 
 const send = (msg) => process.parentPort.postMessage(msg);
 
+// Backstop, not a policy. Every socket in this process is supposed to carry
+// its own 'error' listener, and the tests plant defects to keep that true -
+// but this process hosts every session, tunnel and transfer at once, so one
+// missed listener on one code path must degrade to a logged wart rather than
+// severing a technician's entire day. Logged loudly so it is a bug report,
+// not a shrug; anything left half-open reports itself through the normal
+// close events.
+process.on('uncaughtException', (err) => {
+    try {
+        console.error('engine: uncaught exception (surviving):', err && err.stack || err);
+        send({ t: 'engine-warning', error: String(err && err.message || err) });
+    } catch (_) { /* parentPort gone: main is closing us anyway */ }
+});
+
 // Sessions announce their own death ('closed') when the REMOTE side hangs
 // up, and the renderer deliberately keeps dead panes around (scrollback,
 // R to reconnect) - reconnecting then mints a fresh sessionId, so no

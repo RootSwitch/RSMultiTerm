@@ -31,11 +31,14 @@
 
     function participants(tab) {
         const s = forTab(tab.id);
-        // Dead panes are not participants: input fanned out to a
-        // disconnected session is silently dropped at best, and counting it
-        // in "Broadcast: N of M" overstates what a keystroke will do.
+        // Only panes that can actually RECEIVE. Dead is obvious; the subtle
+        // one is connecting/authenticating, where the transport's write()
+        // silently discards every byte because the shell channel does not
+        // exist yet. Counting those panes produced the classic "pushed the
+        // config to 5 of 6 switches" failure: the toolbar said 6 of 6, the
+        // sixth was still dialing, and nothing anywhere reported the drop.
         return tab.sessionIds.filter((sid) =>
-            !s.excluded.has(sid) && !window.TermPanes.isDead(sid));
+            !s.excluded.has(sid) && window.TermPanes.isReady(sid));
     }
 
     // The stdin router term-pane.js calls for every keystroke. Returns the

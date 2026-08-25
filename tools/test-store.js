@@ -168,11 +168,24 @@ try {
     settings.update({ terminalColors: { minContrast: 7 } });
     assert.strictEqual(settings.get().terminalColors.mode, 'custom');
 
+    // 12. The host-key trust store fails CLOSED. The tolerant loader
+    // returns {} on a corrupt file, which silently empties the store:
+    // every pinned host reverts to first contact, and a man-in-the-middle
+    // gets the friendly fingerprint prompt instead of the MISMATCH block.
+    // Corrupt must therefore throw (the recovery modal), like sessions and
+    // profiles - and missing must still mean a legitimately fresh install.
+    const hostkeys = require('../main/hostkeys');
+    hostkeys.init();   // no file: fresh install, trusts nobody, no throw
+    fs.writeFileSync(path.join(dir, 'known_hosts.json'), '{"cut off');
+    assert.throws(() => hostkeys.init(), /not valid JSON/,
+        'a corrupt known_hosts must stop the app, not silently empty the trust store');
+    fs.unlinkSync(path.join(dir, 'known_hosts.json'));
+
     // A key that is not a setting is not stored, whatever it claims.
     settings.update({ notASetting: 'hello' });
     assert.strictEqual('notASetting' in settings.get(), false, 'unknown keys must be refused');
 
-    console.log('ok - store + session tree (11 scenarios incl. logging tri-state, BOM, settings and contrast clamps)');
+    console.log('ok - store + session tree (12 scenarios incl. logging tri-state, BOM, settings clamps, hostkeys fail-closed)');
 } finally {
     fs.rmSync(dir, { recursive: true, force: true });
 }

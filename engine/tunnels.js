@@ -30,8 +30,11 @@ function socksHandshake(sock, onTarget) {
     let buf = Buffer.alloc(0);
 
     const refuse = (code) => {
-        // Reply with the failure code, then hang up.
-        sock.end(Buffer.from([SOCKS_VER, code, 0x00, ATYP.IPV4, 0, 0, 0, 0, 0, 0]));
+        // Reply with the failure code, then hang up. The client may already
+        // be gone (port scanners hang up first); a refusal must never throw.
+        try {
+            sock.end(Buffer.from([SOCKS_VER, code, 0x00, ATYP.IPV4, 0, 0, 0, 0, 0, 0]));
+        } catch (_) { sock.destroy(); }
     };
 
     sock.on('data', function onData(chunk) {
@@ -178,6 +181,10 @@ async function open(spec, helpers, onEvent) {
         rec.onTcp = (info, accept) => {
             if (info.destPort !== (rec.boundPort || spec.bindPort)) return;
             const channel = accept();
+            // Same rule as the accept path above: first listener before any
+            // async work, or a channel error while the local dial is in
+            // flight is an uncaught throw.
+            channel.on('error', () => { try { channel.close(); } catch (_) { /* gone */ } });
             const out = net.connect(spec.destPort, spec.destHost);
             out.on('connect', () => bridge(rec, out, channel));
             out.on('error', () => channel.close());
@@ -189,6 +196,13 @@ async function open(spec, helpers, onEvent) {
         const server = net.createServer();
         rec.server = server;
         server.on('connection', (sock) => {
+            // The error listener goes on BEFORE any async work. bridge()
+            // attaches one too, but only after the forwardOut round trip -
+            // and a client that resets in that window (a closed browser
+            // tab, a port scanner) emits 'error' with no listener, which
+            // throws, and an uncaught throw here takes the whole engine
+            // down: every session, tunnel and transfer at once.
+            sock.on('error', () => sock.destroy());
             if (spec.kind === 'local') {
                 client.forwardOut('127.0.0.1', 0, spec.destHost, spec.destPort, (err, channel) => {
                     if (err) { sock.destroy(); return; }

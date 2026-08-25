@@ -2,6 +2,39 @@
 
 ## Unreleased
 
+- **Nine fixes from an external code review**, the ones it flagged as
+  worth fixing before anything called 2.0:
+  - A jump host with an SSH agent configured spent TWO authentication
+    attempts per connect - the agent slot fell through to a
+    keyboard-interactive answered with the stored password - against the
+    exact AD/TACACS lockout policies the pool exists to protect. Agent
+    auth now works on hops, and costs the one attempt it should.
+  - A gateway that closed without an SSH error left its pool entry
+    pending forever, so every later session and tunnel through that
+    bastion hung until the app was restarted.
+  - A tunnel client that reset during setup - a browser tab closed as
+    it opened, a port scanner - crashed the entire engine process,
+    severing every session and transfer. Same for a TFTP upload client
+    that vanished mid-transfer. Both sockets now handle errors, and the
+    engine carries a logged last-resort backstop besides.
+  - Folder download failed on first use: it required a destination
+    folder that by definition does not exist yet. It creates it now,
+    and the test no longer pre-creates it (which is what hid this).
+  - Folder downloads were also killed by a 30-second control timeout
+    meant for quick metadata calls; big trees on slow links now run to
+    completion like single-file transfers always did.
+  - Broadcast counted panes that were still connecting - whose
+    keystrokes were silently discarded - so "6 of 6" could deliver to
+    five. Only connected panes count now, and the count updates the
+    moment a pane dies or comes up.
+  - Right-click paste with broadcast armed skipped the confirmation for
+    single-line payloads; "reload" to eight switches now confirms like
+    every other broadcast paste.
+  - A corrupt known_hosts file silently EMPTIED the trust store,
+    downgrading the man-in-the-middle MISMATCH block to a friendly
+    first-contact prompt. It now stops with the recovery message, like
+    sessions and profiles.
+
 - **A minimum contrast setting for the terminal.** Settings > Minimum
   contrast puts a floor under text-against-background legibility, and
   it applies to the colors a REMOTE program picks as well as the

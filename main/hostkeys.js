@@ -9,7 +9,15 @@ const store = require('./store');
 let known = {};   // "host:port" -> {fingerprint, keyType, addedAt}
 
 function init() {
-    known = store.load('known_hosts', {});
+    // loadCritical, not load: the tolerant loader returns {} on a corrupt
+    // file, which silently EMPTIES the trust store - every pinned host
+    // reverts to first contact, and a man-in-the-middle gets the friendly
+    // "accept this fingerprint?" prompt instead of the hard MISMATCH block.
+    // The one code path that exists to be scary must not quietly vanish
+    // because a sync tool mangled a JSON file. Missing is still fine (a
+    // fresh install trusts nobody); unreadable stops the app with the
+    // recovery message, same as sessions and profiles.
+    known = store.loadCritical('known_hosts', {});
 }
 
 function fingerprintOf(keyBlob) {

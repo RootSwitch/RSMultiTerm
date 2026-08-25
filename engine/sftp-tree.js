@@ -145,7 +145,12 @@ async function fetchAll(sftp, files, onEach) {
 // both expressible.
 async function downloadTree(sftp, req, onProgress) {
     const localRoot = path.resolve(req.local);
-    if (!fs.existsSync(localRoot)) throw new Error(`${localRoot} does not exist`);
+    // Created, not required: the caller passes <picked folder>/<remote
+    // name>, which by definition does not exist yet on a first download.
+    // Requiring it made the feature fail on first use for everyone whose
+    // destination was not already there - which the test masked, because
+    // the test pre-created it.
+    fs.mkdirSync(localRoot, { recursive: true });
 
     const notes = [];
     onProgress({ phase: 'scanning', files: 0, total: 0 });

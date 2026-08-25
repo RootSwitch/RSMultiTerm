@@ -69,11 +69,15 @@
                 }
             }
         };
-        // Broadcasting multi-line input always confirms. A single pane
-        // confirms multiline too - each line can execute the moment it
-        // lands in a shell - unless the user turned that dialog off.
-        if (lines.length > 1 &&
-            (targets.length > 1 || window.MultiExec.wantsMultilineConfirm())) {
+        // Same predicate as pasteAll, deliberately: ANY broadcast paste
+        // confirms, single-line included - "reload" with no newline fanned
+        // to eight switches deserves a dialog - and multiline to one pane
+        // confirms unless that dialog was turned off. This path used to
+        // require multiline before it would confirm anything, making
+        // right-click quieter than Ctrl+Shift+V, which the header of this
+        // file promises it never is.
+        if (targets.length > 1 ||
+            (lines.length > 1 && window.MultiExec.wantsMultilineConfirm())) {
             window.MultiExec.confirmBroadcastPaste(text, lines.length, targets.length, send);
         } else {
             send();

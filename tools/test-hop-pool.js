@@ -95,7 +95,56 @@ const keyAB = `${keyA}>127.0.0.1:${PORT_B}:lab`;
         h4.release();
         await drainedTo({});
 
-        console.log('ok - hop pool (sharing, gateway death, failed chain, stale handles - pool drains to zero)');
+        // 5. connectClient's auth and close discipline, driven directly with
+        // a stub client so the exact ssh2 event sequences are reproducible.
+        const { EventEmitter } = require('events');
+
+        // 5a. An offered 'agent' method must be SENT as agent. It used to
+        // fall through to keyboard-interactive, which answered with the
+        // stored password - a second backend attempt per connect, against
+        // the exact lockout policies the pool exists to protect.
+        {
+            const fake = new EventEmitter();
+            const offered = [];
+            fake.connect = (cfg) => {
+                // Drive the authHandler the way ssh2 would until it stops.
+                const step = () => cfg.authHandler(['publickey', 'password'], false, (choice) => {
+                    if (choice === false) return;
+                    offered.push(choice === null ? '(skip)' : choice.type);
+                    setImmediate(step);
+                });
+                setImmediate(step);
+                setTimeout(() => fake.emit('ready'), 50);
+            };
+            fake.end = () => {};
+            await hopPool.connectClient(fake,
+                { host: 'x', port: 22, username: 'u', agent: 'pageant', password: 'pw' },
+                helpers);
+            assert.strictEqual(offered[0], 'agent',
+                `agent must be offered AS agent, not fall through - got ${offered.join(',')}`);
+            assert.ok(!offered.slice(0, 2).includes('keyboard-interactive'),
+                'keyboard-interactive must not jump the queue past agent and password');
+        }
+
+        // 5b. A close WITHOUT an error must settle the promise. ssh2 emits
+        // exactly that when our own KI dead-end calls client.end(); an
+        // unsettled promise here left the pool entry permanently pending,
+        // bricking the gateway for every later session until app restart.
+        {
+            const fake = new EventEmitter();
+            fake.connect = () => { setTimeout(() => fake.emit('close'), 30); };
+            fake.end = () => {};
+            let settled = false;
+            const p = hopPool.connectClient(fake, { host: 'x', port: 22, username: 'u' }, helpers)
+                .then(() => { settled = true; }, () => { settled = true; });
+            await new Promise((r) => setTimeout(r, 400));
+            assert.ok(settled,
+                'close-without-error must reject the connect, not hang it (and the pool) forever');
+            await p.catch(() => {});
+        }
+
+        console.log('ok - hop pool (sharing, gateway death, failed chain, stale handles, ' +
+            'agent offered as agent, close-without-error settles - pool drains to zero)');
         process.exit(0);
     } finally {
         gwA.kill();

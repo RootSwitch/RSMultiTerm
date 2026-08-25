@@ -191,6 +191,10 @@ function tftpRead(id, root, req, rinfo, bind) {
 
     function refuse(to, code, message, sid, name) {
         const s = dgram.createSocket('udp4');
+        // An ICMP port-unreachable from a vanished client surfaces as an
+        // 'error' event on Windows; with no listener that throws and takes
+        // the engine with it. Anyone who can reach the port can cause it.
+        s.on('error', () => { try { s.close(); } catch (_) { /* closed */ } });
         s.bind(0, bind, () => {
             tftpError(s, to.port, to.address, code, message,
                 () => { try { s.close(); } catch (_) { /* closed */ } });
@@ -201,10 +205,19 @@ function tftpRead(id, root, req, rinfo, bind) {
 
 function tftpWrite(id, root, req, rinfo, bind, allowWrites) {
     const sock = dgram.createSocket('udp4');
+    let openHandle = null;
     const done = (text, detail) => {
+        if (openHandle !== null) { try { fs.closeSync(openHandle); } catch (_) { /* closed */ } }
+        openHandle = null;
         try { sock.close(); } catch (_) { /* closed */ }
         note(id, text, detail);
     };
+    // The read path has had this from the start; the write path did not,
+    // and an ACK to a client that has gone away surfaces an ICMP
+    // port-unreachable as 'error' on Windows - unhandled, that crashed the
+    // engine and every SSH session with it, from any host that could reach
+    // an upload-enabled port.
+    sock.on('error', () => done(`tftp: upload of ${req.filename} failed`, 'socket error'));
     sock.bind(0, bind, () => {
         if (!allowWrites) {
             return tftpError(sock, rinfo.port, rinfo.address, 2, 'server is read-only',
@@ -218,6 +231,7 @@ function tftpWrite(id, root, req, rinfo, bind, allowWrites) {
         let handle;
         try {
             handle = fs.openSync(file, 'w');
+            openHandle = handle;
         } catch (err) {
             return tftpError(sock, rinfo.port, rinfo.address, 3, 'cannot write there',
                 () => done(`tftp: cannot write ${req.filename}`, err.message));
@@ -244,6 +258,7 @@ function tftpWrite(id, root, req, rinfo, bind, allowWrites) {
             if (from.address !== rinfo.address) return;
             const op = msg.readUInt16BE(0);
             if (op === ERROR) {
+                openHandle = null;
                 try { fs.closeSync(handle); } catch (_) { /* closed */ }
                 return done(`tftp: upload of ${req.filename} cancelled`, rinfo.address);
             }
@@ -254,6 +269,7 @@ function tftpWrite(id, root, req, rinfo, bind, allowWrites) {
             try {
                 fs.writeSync(handle, body);
             } catch (err) {
+                openHandle = null;
                 try { fs.closeSync(handle); } catch (_) { /* closed */ }
                 return tftpError(sock, rinfo.port, rinfo.address, 3, 'write failed',
                     () => done(`tftp: write failed for ${req.filename}`, err.message));
@@ -262,6 +278,7 @@ function tftpWrite(id, root, req, rinfo, bind, allowWrites) {
             ack(n);
             expect++;
             if (body.length < blksize) {
+                openHandle = null;
                 try { fs.closeSync(handle); } catch (_) { /* closed */ }
                 done(`tftp: received ${req.filename} (${received} bytes)`, rinfo.address);
             }

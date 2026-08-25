@@ -210,7 +210,53 @@ assert.ok(/minimumContrastRatio = floor/.test(refresh),
     'refreshTheme must push the contrast floor to open panes, or the setting ' +
     'does nothing until the next session');
 
-// 16. What Windows shows for the app. FileDescription is misnamed: it is
+// 16. Broadcast counts only panes that can actually receive. A pane in
+// 'connecting' has no shell channel, the transport's write() silently
+// discards, and counting it produced "pushed the config to 5 of 6
+// switches" with the toolbar claiming 6 of 6.
+const multiExec = fs.readFileSync(path.join(PUBLIC, 'multi-exec.js'), 'utf8');
+const partBody = multiExec.slice(multiExec.indexOf('function participants('),
+    multiExec.indexOf('function routeInput('));
+assert.ok(partBody.includes('isReady('),
+    'participants must require a pane to be connected, not merely not-dead');
+assert.ok(/isReady\(sessionId\)[\s\S]{0,120}state === 'connected'/.test(termPane),
+    "TermPanes.isReady must mean state === 'connected'");
+// ...and the chrome tracks state changes, or the count lies at the exact
+// moment a pane dies or comes up mid-broadcast.
+const setStateBody = termPane.slice(termPane.indexOf('function setState('),
+    termPane.indexOf('function isReady('));
+assert.ok(setStateBody.includes('refreshChrome()'),
+    'setState must refresh the broadcast chrome when a pane changes state');
+
+// 17. Right-click paste confirms exactly like every other broadcast paste.
+// It used to require multiline before confirming anything, so a single-line
+// "reload" fanned to eight switches with no dialog - quieter than
+// Ctrl+Shift+V, which this file's own header promises it never is.
+const ctxMenu = fs.readFileSync(path.join(PUBLIC, 'context-menu.js'), 'utf8');
+assert.ok(/if \(targets\.length > 1 \|\|[\s\S]{0,40}\(lines\.length > 1/.test(ctxMenu),
+    'pasteInto must confirm ANY broadcast paste, single-line included');
+
+// 18. Long transfers are exempt from the 30s IPC timeout - all of them.
+// downloadTree was missing from the exemption and any tree slower than 30
+// seconds was reported failed while the engine kept downloading it.
+assert.ok(/req\.op !== 'download' && req\.op !== 'upload' && req\.op !== 'downloadTree'/.test(ipcSrc),
+    'downloadTree must be exempt from the sftp op timeout, like download and upload');
+
+// 19. Every socket in the TFTP write path carries an error listener. An
+// ICMP port-unreachable from a vanished client surfaces as 'error' on
+// Windows; with no listener that throws, and the engine hosts every
+// session there is. The read path had this from day one.
+const fieldSrc = fs.readFileSync(path.join(__dirname, '..', 'engine', 'field-servers.js'), 'utf8');
+const writeBody = fieldSrc.slice(fieldSrc.indexOf('function tftpWrite('),
+    fieldSrc.indexOf('function startTftp('));
+assert.ok(writeBody.includes("sock.on('error'"),
+    'tftpWrite must handle socket errors - an unreachable client must not crash the engine');
+const refuseBody = fieldSrc.slice(fieldSrc.indexOf('function refuse('),
+    fieldSrc.indexOf('function tftpWrite('));
+assert.ok(refuseBody.includes(".on('error'"),
+    'the refuse sub-socket must handle errors too');
+
+// 20. What Windows shows for the app. FileDescription is misnamed: it is
 // the label Windows puts on the taskbar jump list, in Task Manager and in
 // Explorer's Description column, so it has to be the app's NAME. Shipping
 // package.json's description there made right-clicking the taskbar button
@@ -233,5 +279,5 @@ assert.ok(!/\bteam\b/i.test(pkg.description),
 
 console.log(`ok - ui invariants (hidden rule, outside-click menus, clipboard perms, ` +
     `no default menu, wheel zoom, remote-name sanitizing, gated dev hooks, idle overlay-only, ` +
-    `exe metadata, shared menus, focus handback, contrast floor, ` +
+    `exe metadata, shared menus, focus handback, contrast floor, broadcast truth, ` +
     `${scripts.length} scripts, ${wired.size} wired ids)`);

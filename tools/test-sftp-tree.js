@@ -123,8 +123,11 @@ function fakeSftp(layout, opts = {}) {
     assert.ok(notes2.some((n) => /permission denied/.test(n)), 'the unreadable folder must be reported');
 
     // 7. End to end: the files land, with their content and their shape.
+    // The destination is NOT pre-created - the panel passes <picked
+    // folder>/<remote name>, which never exists on a first download, and
+    // this test's own mkdirSync here is what hid that failure in the
+    // version that shipped.
     const out = path.join(box, 'out');
-    fs.mkdirSync(out);
     const sftp = fakeSftp(layout);
     const result = await tree.downloadTree(sftp, { path: '/etc/app', local: out }, () => {});
     assert.strictEqual(result.files, 3);
@@ -141,7 +144,6 @@ function fakeSftp(layout, opts = {}) {
     // and the test times out rather than passing quietly.
     const many = { '/many': Array.from({ length: 30 }, (_, i) => entry(`f${i}.txt`, FILE, 1)) };
     const out2 = path.join(box, 'out2');
-    fs.mkdirSync(out2);
     let inFlight = 0, peak = 0;
     const waiters = [];
     const slow = {
@@ -179,7 +181,6 @@ function fakeSftp(layout, opts = {}) {
     // 9. A failed file leaves nothing behind. A truncated config that looks
     // complete is the failure this app is most careful about.
     const out3 = path.join(box, 'out3');
-    fs.mkdirSync(out3);
     const flaky = fakeSftp(layout, { failFile: '/etc/app/sub/b.conf' });
     const r3 = await tree.downloadTree(flaky, { path: '/etc/app', local: out3 }, () => {});
     assert.strictEqual(r3.failureCount, 1);
@@ -189,7 +190,6 @@ function fakeSftp(layout, opts = {}) {
 
     // 10. Progress reports a file count, and a phase the panel can read.
     const out4 = path.join(box, 'out4');
-    fs.mkdirSync(out4);
     const seen = [];
     await tree.downloadTree(fakeSftp(layout), { path: '/etc/app', local: out4 }, (p) => seen.push(p));
     assert.ok(seen.some((p) => p.phase === 'scanning'), 'the walk must announce itself');
@@ -199,7 +199,7 @@ function fakeSftp(layout, opts = {}) {
     assert.strictEqual(last.total, 3, 'the total is known up front because the walk finishes first');
 
     console.log('ok - sftp folder download (walk, traversal and symlink refusals, ' +
-        'concurrency, partial-file cleanup)');
+        'first-use destination creation, concurrency, partial-file cleanup)');
 })().then(
     () => { fs.rmSync(box, { recursive: true, force: true }); },
     (err) => { fs.rmSync(box, { recursive: true, force: true }); console.error(err); process.exit(1); },
