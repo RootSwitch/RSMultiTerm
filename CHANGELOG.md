@@ -2,6 +2,28 @@
 
 ## Unreleased
 
+- **Six more idle animations - the full set from the review, seventeen
+  in all:**
+  - **Defrag** - the Windows-95 defragmenter pastiche: scattered blocks
+    marching into one contiguous run, with the little legend and the
+    percent line. "Drive C: (no drives were harmed)".
+  - **Steam train** - a hand-drawn locomotive crosses the screen every
+    so often, smoke drifting off behind it. The `sl` moment, with
+    original art.
+  - **Aquarium** - fish in both directions in the theme's colors,
+    bubbles, and seaweed grown from whatever words your terminal was
+    showing.
+  - **Plasma** - the classic demoscene interference field through the
+    glyph ramp.
+  - **Big clock** - a seven-segment clock with the date, glanceable
+    across a room, drifting a little each minute so it cannot burn in.
+    "Surprise me" never picks it unless you tick it by name - a
+    surprise clock is just a clock.
+  - **DVD bounce** - the mark drifts, changes color on every wall, and
+    hitting a corner exactly gets the burst. It counts your corners.
+  All seventeen stay above 32fps; the heaviest (Plasma) spends 3.7ms of
+  the 33ms frame budget, and eleven of them under 0.6ms.
+
 - **Unread output badges on tabs.** Output arriving in a tab you are not
   looking at puts a dot on that tab; opening the tab clears it, and it
   re-arms if more arrives after you look away. The thing that tells you

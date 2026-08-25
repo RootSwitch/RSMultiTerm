@@ -213,7 +213,11 @@
         if (running) return;
         const all = Object.keys(STYLES);
         const chosen = settings.picks.filter((p) => STYLES[p]);
-        const pool = chosen.length ? chosen : all;
+        // No preference means "everything meant to be a surprise" - a style
+        // marked surprise:false (the clock) joins only when ticked by name,
+        // because a surprise clock is just a clock.
+        const pool = chosen.length ? chosen
+            : all.filter((id) => STYLES[id].surprise !== false);
         // On a rotation, do not draw the style that just finished - with two
         // or three ticked, chance alone repeats often enough to look stuck.
         const avoid = opts && opts.avoid;
@@ -1454,6 +1458,511 @@
         },
     };
 
+
+    // --- Defrag -------------------------------------------------------------
+    // A Windows-95 defragmenter pastiche: a block grid slowly reading its
+    // scattered clusters into one contiguous run, with the little legend.
+    // Nothing is actually defragmented, which is also true of how most
+    // people remember it - what mattered was watching the blocks march.
+    STYLES.defrag = {
+        label: 'Defrag', screen: false, mood: 'calm',
+        init(env) {
+            const cell = 12, gap = 2;
+            const cols = Math.max(10, Math.floor((env.w - 24) / cell));
+            const rows = Math.max(6, Math.floor((env.h - 90) / cell));
+            const total = cols * rows;
+            // 0 empty, 1 data (contiguous), 2 fragmented, 3 being read.
+            const cells = new Uint8Array(total);
+            const filled = Math.floor(total * (0.45 + Math.random() * 0.15));
+            let placed = 0;
+            while (placed < filled) {
+                const i = Math.floor(Math.random() * total);
+                if (!cells[i]) { cells[i] = 2; placed++; }
+            }
+            return {
+                cell, gap, cols, rows, cells, total, filled,
+                front: 0,          // everything below this index is compacted
+                moving: null,      // {from, to, phase, t}
+                step: 0, pass: 1, done: 0,
+            };
+        },
+        frame(ctx, env, s, dt) {
+            const c = env.colors;
+            ctx.fillStyle = c.ground;
+            ctx.fillRect(0, 0, env.w, env.h);
+
+            // One block move at a time, phased read -> write, on a timer
+            // slow enough to watch. That pacing IS the nostalgia.
+            s.step += dt;
+            if (s.step >= 0.05) {
+                s.step = 0;
+                if (s.moving) {
+                    s.moving.t++;
+                    if (s.moving.phase === 'read' && s.moving.t > 2) {
+                        s.cells[s.moving.from] = 0;
+                        s.moving.phase = 'write';
+                        s.moving.t = 0;
+                    } else if (s.moving.phase === 'write' && s.moving.t > 1) {
+                        s.cells[s.moving.to] = 1;
+                        s.done++;
+                        s.moving = null;
+                    }
+                } else {
+                    // Advance the front past blocks already in place, then
+                    // fetch the next fragment from beyond it.
+                    while (s.front < s.total && s.cells[s.front] === 1) s.front++;
+                    let src = -1;
+                    for (let i = Math.max(s.front, 0); i < s.total; i++) {
+                        if (s.cells[i] === 2) { src = i; break; }
+                    }
+                    if (src === -1) {
+                        // Pass complete: scatter again, the way it never
+                        // seemed to stay done.
+                        const again = STYLES.defrag.init(env);
+                        again.pass = s.pass + 1;
+                        Object.assign(s, again);
+                    } else if (src === s.front) {
+                        s.cells[src] = 1;   // already where it belongs
+                        s.done++;
+                    } else {
+                        s.cells[src] = 3;
+                        s.moving = { from: src, to: s.front, phase: 'read', t: 0 };
+                    }
+                }
+            }
+
+            const ox = Math.floor((env.w - s.cols * s.cell) / 2);
+            const oy = 18;
+            for (let i = 0; i < s.total; i++) {
+                const v = s.cells[i];
+                const x = ox + (i % s.cols) * s.cell;
+                const y = oy + Math.floor(i / s.cols) * s.cell;
+                if (v === 0) {
+                    ctx.strokeStyle = c.inkDim;
+                    ctx.globalAlpha = 0.25;
+                    ctx.strokeRect(x + 0.5, y + 0.5, s.cell - s.gap, s.cell - s.gap);
+                    ctx.globalAlpha = 1;
+                    continue;
+                }
+                ctx.fillStyle = v === 1 ? c.accent : v === 3 ? c.ink : c.warn;
+                ctx.fillRect(x, y, s.cell - s.gap, s.cell - s.gap);
+            }
+            if (s.moving && s.moving.phase === 'write') {
+                const x = ox + (s.moving.to % s.cols) * s.cell;
+                const y = oy + Math.floor(s.moving.to / s.cols) * s.cell;
+                ctx.fillStyle = c.ink;
+                ctx.fillRect(x, y, s.cell - s.gap, s.cell - s.gap);
+            }
+
+            // The legend and the percent line, faithful to the original's
+            // deadpan tone.
+            const ly = oy + s.rows * s.cell + 22;
+            ctx.font = `12px ${c.mono}`;
+            ctx.textBaseline = 'middle';
+            ctx.textAlign = 'left';
+            const key = (x, color, text) => {
+                ctx.fillStyle = color;
+                ctx.fillRect(x, ly - 5, 10, 10);
+                ctx.fillStyle = c.inkDim;
+                ctx.fillText(text, x + 16, ly);
+                return x + 16 + ctx.measureText(text).width + 22;
+            };
+            let kx = ox;
+            kx = key(kx, c.accent, 'optimized');
+            kx = key(kx, c.warn, 'fragmented');
+            kx = key(kx, c.ink, 'reading');
+            const pct = Math.min(100, Math.floor((s.done / s.filled) * 100));
+            ctx.fillStyle = c.ink;
+            ctx.fillText(`Pass ${s.pass}: ${pct}% complete`, kx + 12, ly);
+            ctx.fillStyle = c.inkDim;
+            ctx.fillText('Drive C: (no drives were harmed)', ox, ly + 20);
+        },
+    };
+
+    // --- Steam train --------------------------------------------------------
+    // The `sl` moment: a locomotive crosses the screen now and then, smoke
+    // drifting off behind it, and there is nothing to do but watch it go.
+    // Hand-drawn art rather than sl's (that engine belongs to its author);
+    // the wheels get two frames so it rolls instead of sliding.
+    STYLES.train = {
+        label: 'Steam train', screen: false, mood: 'calm',
+        art(frame) {
+            const w = frame ? 'O' : 'o';
+            const v = frame ? 'o' : 'O';
+            return [
+                '        ____                   ',
+                '     __/\\__\\_    ____ ____ ____',
+                '    | [] [] |]  |____|____|____|',
+                '  __|________|__|_.._|_.._|_.._|',
+                ` |__________ ${w}| |${v}..${w}| |${w}..${v}|`,
+                `    ${v}   ${w}        ${w}    ${v}   `,
+            ];
+        },
+        init(env) {
+            return {
+                x: env.w + 40, y: 0, speed: 110 + Math.random() * 50,
+                wheel: 0, wheelT: 0, wait: 0, smoke: [], puffT: 0, first: true,
+            };
+        },
+        frame(ctx, env, s, dt) {
+            const c = env.colors;
+            ctx.fillStyle = c.ground;
+            ctx.fillRect(0, 0, env.w, env.h);
+
+            const lineY = Math.floor(env.h * (0.55 + 0.001));
+            // The track is always there, so the pause reads as "between
+            // trains" rather than "broken".
+            ctx.fillStyle = c.inkDim;
+            ctx.globalAlpha = 0.5;
+            ctx.fillRect(0, lineY + 8, env.w, 2);
+            ctx.globalAlpha = 1;
+
+            if (s.wait > 0) {
+                s.wait -= dt;
+                if (s.wait <= 0) {
+                    s.x = env.w + 40;
+                    s.speed = 110 + Math.random() * 50;
+                }
+            } else {
+                s.x -= s.speed * dt;
+                s.wheelT += dt;
+                if (s.wheelT > 0.12) { s.wheelT = 0; s.wheel = 1 - s.wheel; }
+                s.puffT += dt;
+                if (s.puffT > 0.16) {
+                    s.puffT = 0;
+                    s.smoke.push({ x: s.x + 62, y: lineY - 86, vx: 14 + Math.random() * 12,
+                        vy: -22 - Math.random() * 14, age: 0 });
+                }
+                const art = STYLES.train.art(s.wheel);
+                const artWidth = 32 * 8.5;
+                if (s.x < -artWidth - 60) s.wait = 6 + Math.random() * 12;
+                ctx.font = `14px ${c.mono}`;
+                ctx.textBaseline = 'top';
+                ctx.fillStyle = c.ink;
+                art.forEach((line, i) => ctx.fillText(line, s.x, lineY - 74 + i * 15));
+            }
+
+            // Smoke outlives the train off-screen, drifting up and back.
+            ctx.textBaseline = 'middle';
+            for (let i = s.smoke.length - 1; i >= 0; i--) {
+                const p = s.smoke[i];
+                p.age += dt;
+                p.x += p.vx * dt;
+                p.y += p.vy * dt;
+                if (p.age > 3.2) { s.smoke.splice(i, 1); continue; }
+                const g = p.age < 0.9 ? '@' : p.age < 1.8 ? 'o' : '.';
+                ctx.font = `${13 + p.age * 4}px ${c.mono}`;
+                ctx.fillStyle = c.inkDim;
+                ctx.globalAlpha = Math.max(0, 1 - p.age / 3.2) * 0.7;
+                ctx.fillText(g, p.x, p.y);
+            }
+            ctx.globalAlpha = 1;
+        },
+    };
+
+    // --- Aquarium -----------------------------------------------------------
+    // asciiquarium's spirit: fish in both directions, bubbles, and - the
+    // screen-aware touch - the words the terminal was showing become the
+    // seaweed, swaying at the bottom in the theme's up-color.
+    STYLES.aquarium = {
+        label: 'Aquarium', screen: true, mood: 'calm',
+        init(env) {
+            const palette = ['accent', 'up', 'warn', 'txt', 'down'];
+            const fish = Array.from({ length: 9 + Math.floor(Math.random() * 5) }, () => {
+                const right = Math.random() < 0.5;
+                return {
+                    right,
+                    art: right ? '><((*>' : '<*))><',
+                    x: Math.random() * env.w,
+                    y: 30 + Math.random() * Math.max(60, env.h - 140),
+                    v: (18 + Math.random() * 55) * (right ? 1 : -1),
+                    bob: Math.random() * Math.PI * 2,
+                    tone: palette[Math.floor(Math.random() * palette.length)],
+                    bubbleT: Math.random() * 4,
+                };
+            });
+            // Seaweed anchored where words were; a blank screen grows its
+            // own kelp at random roots.
+            let roots = (env.screen ? env.screen.words : [])
+                .filter((w) => w.text.length >= 3).map((w) => ({ x: w.x, text: w.text }));
+            if (roots.length < 5) {
+                roots = Array.from({ length: 8 }, () => ({
+                    x: Math.random() * env.w, text: '(((((((' }));
+            }
+            const weeds = roots.slice(0, 16).map((r) => ({
+                x: Math.min(env.w - 12, Math.max(6, r.x)),
+                glyphs: [...r.text].filter((g) => g.trim()).slice(0, 8),
+                sway: Math.random() * Math.PI * 2,
+            }));
+            return { fish, weeds, bubbles: [], t: 0 };
+        },
+        frame(ctx, env, s, dt) {
+            const c = env.colors;
+            s.t += dt;
+            ctx.fillStyle = c.ground;
+            ctx.fillRect(0, 0, env.w, env.h);
+            ctx.textBaseline = 'middle';
+
+            // Seaweed first, behind everything.
+            ctx.font = `13px ${c.mono}`;
+            for (const w of s.weeds) {
+                for (let i = 0; i < w.glyphs.length; i++) {
+                    const lean = Math.sin(s.t * 0.9 + w.sway + i * 0.5) * (2 + i * 1.4);
+                    ctx.fillStyle = c.up;
+                    ctx.globalAlpha = 0.55 + (i / w.glyphs.length) * 0.35;
+                    ctx.fillText(w.glyphs[i], w.x + lean, env.h - 10 - i * 13);
+                }
+            }
+            ctx.globalAlpha = 1;
+
+            for (const f of s.fish) {
+                f.x += f.v * dt;
+                const y = f.y + Math.sin(s.t * 1.4 + f.bob) * 5;
+                if (f.v > 0 && f.x > env.w + 60) f.x = -60;
+                if (f.v < 0 && f.x < -60) f.x = env.w + 60;
+                ctx.font = `14px ${c.mono}`;
+                ctx.fillStyle = c[f.tone] || c.txt;
+                ctx.fillText(f.art, f.x, y);
+                f.bubbleT -= dt;
+                if (f.bubbleT <= 0) {
+                    f.bubbleT = 2.5 + Math.random() * 5;
+                    s.bubbles.push({ x: f.x + (f.v > 0 ? 44 : -6), y: y - 6, age: 0 });
+                }
+            }
+
+            for (let i = s.bubbles.length - 1; i >= 0; i--) {
+                const b = s.bubbles[i];
+                b.age += dt;
+                b.y -= 28 * dt;
+                b.x += Math.sin(s.t * 2 + i) * 8 * dt;
+                if (b.y < 8) { s.bubbles.splice(i, 1); continue; }
+                ctx.font = `${b.age < 1 ? 9 : 12}px ${c.mono}`;
+                ctx.fillStyle = c.inkDim;
+                ctx.fillText(b.age < 1 ? '.' : 'o', b.x, b.y);
+            }
+        },
+    };
+
+    // --- Plasma -------------------------------------------------------------
+    // The demoscene field: three sines and a distance term summed per cell,
+    // mapped through the glyph ramp and the theme's own colors. Row strings
+    // per color bucket keep it to a handful of fillText calls per row, the
+    // trick the donut uses.
+    STYLES.plasma = {
+        label: 'Plasma', screen: false, mood: 'lively',
+        init(env) {
+            const chh = 16;
+            return {
+                cw: 9, ch: chh, measured: false,
+                cols: Math.max(20, Math.floor(env.w / 9)),
+                rows: Math.max(10, Math.floor(env.h / chh)),
+                t: 0, ramp: ' .:-=+*#%@',
+            };
+        },
+        frame(ctx, env, s, dt) {
+            const c = env.colors;
+            if (!s.measured) {
+                ctx.font = `${s.ch - 2}px ${c.mono}`;
+                const adv = ctx.measureText('M').width;
+                if (adv > 1) { s.cw = adv; s.cols = Math.max(20, Math.floor(env.w / adv)); }
+                s.measured = true;
+            }
+            s.t += dt * 0.8;
+            ctx.fillStyle = c.ground;
+            ctx.fillRect(0, 0, env.w, env.h);
+            ctx.font = `${s.ch - 2}px ${c.mono}`;
+            ctx.textBaseline = 'top';
+            const t = s.t;
+            const tones = [c.inkDim, c.accent, c.ink];
+            for (let r = 0; r < s.rows; r++) {
+                const rowY = r * s.ch;
+                const bands = ['', '', ''];
+                for (let i = 0; i < s.cols; i++) {
+                    const x = i / 6, y = r / 3.2;
+                    const v = Math.sin(x + t) + Math.sin((y + t) / 1.4) +
+                        Math.sin((x + y + t) / 2) +
+                        Math.sin(Math.sqrt(x * x + y * y + 1) - t);
+                    const n = (v + 4) / 8;   // 0..1
+                    const g = s.ramp[Math.max(0, Math.min(s.ramp.length - 1,
+                        Math.floor(n * s.ramp.length)))];
+                    const bucket = n < 0.42 ? 0 : n < 0.68 ? 1 : 2;
+                    for (let b = 0; b < 3; b++) bands[b] += b === bucket ? g : ' ';
+                }
+                for (let b = 0; b < 3; b++) {
+                    if (!bands[b].trim()) continue;
+                    ctx.fillStyle = tones[b];
+                    ctx.fillText(bands[b], 0, rowY);
+                }
+            }
+        },
+    };
+
+    // --- Big clock ----------------------------------------------------------
+    // Seven-segment time and the date, glanceable across a room - the one
+    // style that is also a tool, which is why "Surprise me" never picks it
+    // unless it is ticked on purpose: a surprise clock is just a clock.
+    STYLES.clock = {
+        label: 'Big clock', screen: false, mood: 'calm', surprise: false,
+        // Segments per digit: [top, topL, topR, mid, botL, botR, bottom].
+        DIGITS: {
+            0: [1, 1, 1, 0, 1, 1, 1], 1: [0, 0, 1, 0, 0, 1, 0],
+            2: [1, 0, 1, 1, 1, 0, 1], 3: [1, 0, 1, 1, 0, 1, 1],
+            4: [0, 1, 1, 1, 0, 1, 0], 5: [1, 1, 0, 1, 0, 1, 1],
+            6: [1, 1, 0, 1, 1, 1, 1], 7: [1, 0, 1, 0, 0, 1, 0],
+            8: [1, 1, 1, 1, 1, 1, 1], 9: [1, 1, 1, 1, 0, 1, 1],
+        },
+        init(env) {
+            return { driftX: 0, driftY: 0, lastMinute: -1 };
+        },
+        drawDigit(ctx, seg, x, y, w, h, thick) {
+            const bar = (bx, by, bw, bh) => ctx.fillRect(bx, by, bw, bh);
+            if (seg[0]) bar(x + thick, y, w - 2 * thick, thick);
+            if (seg[1]) bar(x, y + thick * 0.6, thick, h / 2 - thick);
+            if (seg[2]) bar(x + w - thick, y + thick * 0.6, thick, h / 2 - thick);
+            if (seg[3]) bar(x + thick, y + h / 2 - thick / 2, w - 2 * thick, thick);
+            if (seg[4]) bar(x, y + h / 2 + thick * 0.4, thick, h / 2 - thick);
+            if (seg[5]) bar(x + w - thick, y + h / 2 + thick * 0.4, thick, h / 2 - thick);
+            if (seg[6]) bar(x + thick, y + h - thick, w - 2 * thick, thick);
+        },
+        frame(ctx, env, s) {
+            const c = env.colors;
+            ctx.fillStyle = c.ground;
+            ctx.fillRect(0, 0, env.w, env.h);
+
+            const now = new Date();
+            // Drift a little each minute so a bench display does not burn
+            // one spot into an OLED.
+            if (now.getMinutes() !== s.lastMinute) {
+                s.lastMinute = now.getMinutes();
+                s.driftX = (Math.random() - 0.5) * env.w * 0.08;
+                s.driftY = (Math.random() - 0.5) * env.h * 0.12;
+            }
+            const text = [now.getHours(), now.getMinutes(), now.getSeconds()]
+                .map((n) => String(n).padStart(2, '0'));
+            const dw = Math.min(env.w / 11, env.h / 4);
+            const dh = dw * 1.7;
+            const thick = Math.max(4, dw * 0.16);
+            const gap = dw * 0.35;
+            const colonW = dw * 0.5;
+            // Every digit advances dw+gap and every colon colonW+gap, so
+            // the span is 6 digits, 2 colons and 8 gaps - the first version
+            // undercounted the gaps and the seconds column rode off the
+            // right edge of the window.
+            const totalW = 6 * dw + 8 * gap + 2 * colonW;
+            const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+            let x = clamp((env.w - totalW) / 2 + s.driftX, 14, Math.max(14, env.w - totalW - 14));
+            const centreX = x + totalW / 2;
+            const y = clamp((env.h - dh) / 2 - 20 + s.driftY, 14, Math.max(14, env.h - dh - 60));
+
+            ctx.fillStyle = c.ink;
+            const blink = now.getMilliseconds() < 500;
+            for (let g = 0; g < 3; g++) {
+                for (const ch of text[g]) {
+                    STYLES.clock.drawDigit(ctx, STYLES.clock.DIGITS[ch], x, y, dw, dh, thick);
+                    x += dw + gap;
+                }
+                if (g < 2) {
+                    if (blink) {
+                        ctx.fillRect(x + colonW / 2 - thick / 2, y + dh * 0.28, thick, thick);
+                        ctx.fillRect(x + colonW / 2 - thick / 2, y + dh * 0.65, thick, thick);
+                    }
+                    x += colonW + gap;
+                }
+            }
+            ctx.font = `16px ${c.mono}`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'top';
+            ctx.fillStyle = c.inkDim;
+            ctx.fillText(now.toLocaleDateString(undefined,
+                { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }),
+            centreX, y + dh + 26);
+            ctx.textAlign = 'left';
+        },
+    };
+
+    // --- DVD bounce ---------------------------------------------------------
+    // The mark drifts, bounces, and changes color on every wall. Hitting a
+    // corner EXACTLY gets the burst everybody has waited a whole meeting
+    // for. The epsilon is honest - a near-miss is a near-miss.
+    STYLES.dvd = {
+        label: 'DVD bounce', screen: false, mood: 'calm',
+        init(env) {
+            return {
+                x: Math.random() * (env.w - 180) + 20,
+                y: Math.random() * (env.h - 80) + 20,
+                vx: 90 * (Math.random() < 0.5 ? 1 : -1),
+                vy: 72 * (Math.random() < 0.5 ? 1 : -1),
+                w: 150, h: 54, tone: 0, corners: 0,
+                burst: [], flash: 0,
+            };
+        },
+        frame(ctx, env, s, dt) {
+            const c = env.colors;
+            const palette = [c.accent, c.up, c.warn, c.down, c.ink];
+            ctx.fillStyle = c.ground;
+            ctx.fillRect(0, 0, env.w, env.h);
+
+            s.x += s.vx * dt;
+            s.y += s.vy * dt;
+            let hitX = false;
+            let hitY = false;
+            if (s.x <= 0) { s.x = 0; s.vx = Math.abs(s.vx); hitX = true; }
+            if (s.x + s.w >= env.w) { s.x = env.w - s.w; s.vx = -Math.abs(s.vx); hitX = true; }
+            if (s.y <= 0) { s.y = 0; s.vy = Math.abs(s.vy); hitY = true; }
+            if (s.y + s.h >= env.h) { s.y = env.h - s.h; s.vy = -Math.abs(s.vy); hitY = true; }
+            if (hitX || hitY) s.tone = (s.tone + 1) % palette.length;
+            if (hitX && hitY) {
+                s.corners++;
+                s.flash = 1;
+                const cx = s.x + s.w / 2;
+                const cy = s.y + s.h / 2;
+                for (let i = 0; i < 26; i++) {
+                    const a = (i / 26) * Math.PI * 2;
+                    s.burst.push({ x: cx, y: cy, vx: Math.cos(a) * (120 + Math.random() * 120),
+                        vy: Math.sin(a) * (120 + Math.random() * 120), age: 0 });
+                }
+            }
+
+            const tone = palette[s.tone];
+            if (s.flash > 0) {
+                s.flash -= dt * 1.4;
+                ctx.fillStyle = tone;
+                ctx.globalAlpha = Math.max(0, s.flash) * 0.18;
+                ctx.fillRect(0, 0, env.w, env.h);
+                ctx.globalAlpha = 1;
+            }
+
+            ctx.strokeStyle = tone;
+            ctx.lineWidth = 2;
+            ctx.strokeRect(s.x + 1, s.y + 1, s.w - 2, s.h - 2);
+            ctx.font = `bold 17px ${c.mono}`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillStyle = tone;
+            ctx.fillText('RSMultiTerm', s.x + s.w / 2, s.y + s.h / 2 - 6);
+            ctx.font = `10px ${c.mono}`;
+            ctx.fillStyle = c.inkDim;
+            ctx.fillText(s.corners === 0 ? 'waiting for the corner'
+                : `corners: ${s.corners}`, s.x + s.w / 2, s.y + s.h / 2 + 14);
+            ctx.textAlign = 'left';
+
+            ctx.textBaseline = 'middle';
+            for (let i = s.burst.length - 1; i >= 0; i--) {
+                const p = s.burst[i];
+                p.age += dt;
+                p.x += p.vx * dt;
+                p.y += p.vy * dt;
+                p.vy += 60 * dt;
+                if (p.age > 1.6) { s.burst.splice(i, 1); continue; }
+                ctx.font = `${13 - p.age * 5}px ${c.mono}`;
+                ctx.fillStyle = tone;
+                ctx.globalAlpha = Math.max(0, 1 - p.age / 1.6);
+                ctx.fillText('*', p.x, p.y);
+            }
+            ctx.globalAlpha = 1;
+        },
+    };
+
     window.Idle = {
         start, stop,
         isPlaying: () => !!(running && running.play),
@@ -1469,7 +1978,7 @@
         // Whether the OS is asking for reduced motion - shown in Settings,
         // never used to refuse an explicit opt-in.
         reducedMotion: () => reducedMotion,
-        styles: () => Object.entries(STYLES).map(([id, s]) => ({ id, label: s.label, mood: s.mood || 'calm' })),
+        styles: () => Object.entries(STYLES).map(([id, s]) => ({ id, label: s.label, mood: s.mood || 'calm', surprise: s.surprise !== false })),
         // For probes: which style is up, and whether it is clipped to the
         // terminal area or has taken the window.
         currentStyle: () => (running ? running.id : null),

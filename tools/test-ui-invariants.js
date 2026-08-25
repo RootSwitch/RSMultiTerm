@@ -429,7 +429,7 @@ assert.ok(!/'tree-health ok'/.test(treeSrc) && !/\? 'ok' :/.test(treeSrc),
 // deliberately made quiet.
 const idleSrc = fs.readFileSync(path.join(PUBLIC, 'idle.js'), 'utf8');
 const styleIds = [...idleSrc.matchAll(/STYLES\.(\w+) = \{/g)].map((m) => m[1]);
-assert.ok(styleIds.length >= 11, `expected the full style set, found ${styleIds.length}`);
+assert.ok(styleIds.length >= 17, `expected the full style set, found ${styleIds.length}`);
 const labelled = [...idleSrc.matchAll(/label: '[^']+', screen: (?:true|false), mood: '(calm|lively)'/g)];
 assert.strictEqual(labelled.length, styleIds.length,
     `every style needs a mood - ${styleIds.length} styles, ${labelled.length} moods`);
@@ -443,8 +443,13 @@ assert.ok(/frameCost: \(\) => \(\{ frames, ms: frameMs \}\)/.test(idleSrc),
 const settingsSrc = fs.readFileSync(path.join(PUBLIC, 'settings-ui.js'), 'utf8');
 assert.ok(/const MOODS = \[/.test(settingsSrc),
     'the Surprise me picker must group by mood');
-assert.ok(/on\.length === boxes\.length \|\| on\.length === 0/.test(settingsSrc),
-    'ticking none must store "no preference", not an empty rotation');
+assert.ok(/\(same \|\| on\.length === 0\) \? \[\]/.test(settingsSrc),
+    'ticking none, or exactly the default set, must store "no preference" - and the ' +
+    'default set is the surprise-eligible styles, or a ticked clock would silently vanish');
+// The clock is deliberate-only: the random pool must exclude surprise:false
+// styles when no picks are stored.
+assert.ok(/surprise !== false\)/.test(idleSrc),
+    "'Surprise me' must skip surprise:false styles unless picked by name");
 
 // 28. Unread output reaches the tab strip. Output landing in a
 // background tab must set the pane's unread flag ONCE (per burst, not per

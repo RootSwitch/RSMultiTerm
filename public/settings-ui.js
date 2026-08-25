@@ -209,7 +209,10 @@
                 const cb = document.createElement('input');
                 cb.type = 'checkbox';
                 cb.value = st.id;
-                cb.checked = picks.size === 0 || picks.has(st.id);
+                // "No preference" ticks the default surprise pool - which
+                // excludes the clock, so its box starts clear until picked
+                // by name, matching what the rotation will actually do.
+                cb.checked = picks.size === 0 ? st.surprise !== false : picks.has(st.id);
                 const sp = document.createElement('span');
                 sp.textContent = st.label;
                 lab.append(cb, sp);
@@ -242,11 +245,15 @@
         const readPicks = () => {
             const boxes = [...picksBox.querySelectorAll('input')];
             const on = boxes.filter((c) => c.checked).map((c) => c.value);
-            // All ticked is the same as no preference - stored empty so a
-            // style added later joins the rotation automatically. None
-            // ticked would mean "surprise me with nothing", so that stores
-            // empty too rather than silently disabling the feature.
-            return (on.length === boxes.length || on.length === 0) ? [] : on;
+            // The DEFAULT set is every surprise-eligible style, not every
+            // style: comparing against all boxes would store [] when the
+            // clock is ticked too, and [] excludes the clock at runtime -
+            // the ticked box would silently mean nothing. A selection equal
+            // to the default stores empty so styles added later join
+            // automatically; none ticked means "no preference" too.
+            const dflt = allStyles.filter((st) => st.surprise !== false).map((st) => st.id).sort();
+            const same = on.length === dflt.length && [...on].sort().every((v, i) => v === dflt[i]);
+            return (same || on.length === 0) ? [] : on;
         };
         void groupBoxes;
 
