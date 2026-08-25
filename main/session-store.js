@@ -14,7 +14,7 @@ const crypto = require('crypto');
 const store = require('./store');
 
 const INHERITABLE = ['credentialProfile', 'port', 'transport', 'jumpHost',
-    'logging', 'highlightSet', 'encoding'];
+    'logging', 'highlightSet', 'encoding', 'onConnect'];
 
 let tree = null;   // {schema, nodes: {id: node}}
 const listeners = [];
@@ -205,6 +205,7 @@ function resolveDescriptor(id, appDefaults) {
         logging: eff.logging.value === undefined ? null : eff.logging.value,
         highlightSet: eff.highlightSet.value || null,
         encoding: eff.encoding.value || null,
+        onConnect: eff.onConnect.value || null,
     };
 }
 

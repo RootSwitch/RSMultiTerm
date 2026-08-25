@@ -64,9 +64,23 @@
         fire();
     }
 
+    // Looking at a tab is what reads it: its sessions' unread flags clear
+    // the moment it becomes active, not when each pane is focused - the
+    // grid shows every pane at once.
+    function markRead(tab) {
+        let changed = false;
+        for (const sid of tab.sessionIds) {
+            const pane = window.TermPanes.panes.get(sid);
+            if (pane && pane.unread) { pane.unread = false; changed = true; }
+        }
+        return changed;
+    }
+
     function activate(tabId) {
         if (activeId === tabId) return;
         activeId = tabId;
+        const tab = byId(tabId);
+        if (tab) markRead(tab);
         fire();
     }
 
@@ -122,6 +136,13 @@
         return worst;
     }
 
+    function hasUnread(tab) {
+        return tab.sessionIds.some((sid) => {
+            const pane = window.TermPanes.panes.get(sid);
+            return pane && pane.unread;
+        });
+    }
+
     // Repaint just the labels. Deliberately not a full fire(): the grid
     // listens to that and would re-parent every pane on each status change.
     function updateStatus() {
@@ -129,6 +150,7 @@
             if (!tab.el) continue;
             const label = tab.el.querySelector('.tab-label');
             if (label) label.className = `tab-label ${tabStatus(tab)}`;
+            tab.el.classList.toggle('unread', tab.id !== activeId && hasUnread(tab));
         }
     }
 
@@ -290,6 +312,7 @@
             const label = document.createElement('span');
             label.className = `tab-label ${tabStatus(tab)}`;
             label.textContent = tab.title;
+            if (tab.id !== activeId && hasUnread(tab)) el.classList.add('unread');
             const close = document.createElement('button');
             close.className = 'close';
             close.textContent = '×';

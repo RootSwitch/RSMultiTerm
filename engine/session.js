@@ -60,6 +60,7 @@ class Session {
         this._connectSettled = false;
         this._closeHeld = null;
         this.transport.on('close', (c) => {
+            for (const t of this._onConnectTimers || []) clearTimeout(t);
             this.flow.close();   // deliver the tail before reporting death
             if (this.logger) this.logger.close();
             const msg = { t: 'closed', sessionId: this.id, code: c.code, reason: c.reason };
@@ -76,6 +77,27 @@ class Session {
             if (this.logger) this.logger.write(buf);
             this.flow.push(buf);
         });
+
+        // Commands on connect: the 'terminal length 0' / 'enable' /
+        // 'sudo -i' a hand types into every session anyway. Sent a beat
+        // after the shell opens, one line at a time with a breath between,
+        // because devices that are still painting their banner drop input.
+        // On telnet the login itself is in-band - these fire after the TCP
+        // connect, so they are for gear where that is the prompt.
+        this._onConnectTimers = [];
+        if (descriptor.onConnect && String(descriptor.onConnect).trim()) {
+            const lines = String(descriptor.onConnect)
+                .split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+            this.transport.on('status', (s) => {
+                if (s.state !== 'connected' || !lines.length) return;
+                // Every connect, including a redial - that is the point.
+                for (const t of this._onConnectTimers) clearTimeout(t);
+                this._onConnectTimers = lines.map((line, i) =>
+                    setTimeout(() => {
+                        try { this.transport.write(line + '\r'); } catch (_) { /* gone */ }
+                    }, 600 + i * 200));
+            });
+        }
     }
 
     attachPort(port) {

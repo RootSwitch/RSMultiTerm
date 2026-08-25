@@ -446,7 +446,30 @@ assert.ok(/const MOODS = \[/.test(settingsSrc),
 assert.ok(/on\.length === boxes\.length \|\| on\.length === 0/.test(settingsSrc),
     'ticking none must store "no preference", not an empty rotation');
 
-// 28. What Windows shows for the app. FileDescription is misnamed: it is
+// 28. Unread output reaches the tab strip. Output landing in a
+// background tab must set the pane's unread flag ONCE (per burst, not per
+// chunk), the strip must show it, and ACTIVATING the tab - not focusing
+// each pane - must clear it, because the grid shows every pane at once.
+assert.ok(/if \(!pane\.unread && window\.Tabs\)/.test(termPane),
+    'the data path must mark unread only on the transition, not per chunk');
+assert.ok(/unread: false,/.test(termPane), 'the pane record carries the unread flag');
+assert.ok(/function markRead\(/.test(tabsSrc) && /if \(tab\) markRead\(tab\);/.test(tabsSrc),
+    'activating a tab must mark its sessions read');
+assert.ok(/classList\.toggle\('unread'/.test(tabsSrc),
+    'updateStatus must paint the unread badge');
+assert.ok(/\.tab\.unread \.tab-label::before/.test(css),
+    'style.css must draw the unread dot');
+// Commands-on-connect: the serializer must strip it from folder defaults -
+// a shared file that can type into every reader's devices is an injection
+// channel - and the engine must cancel its timers when the session dies.
+const serializerSrc = fs.readFileSync(path.join(__dirname, '..', 'main', 'team-serializer.js'), 'utf8');
+assert.ok(/'onConnect' in clean\.defaults/.test(serializerSrc),
+    'team-serializer must strip defaults.onConnect - it is auto-typed into live sessions');
+const sessionSrc = fs.readFileSync(path.join(__dirname, '..', 'engine', 'session.js'), 'utf8');
+assert.ok(/for \(const t of this\._onConnectTimers \|\| \[\]\) clearTimeout\(t\);/.test(sessionSrc),
+    'a dying session must cancel pending on-connect sends');
+
+// 29. What Windows shows for the app. FileDescription is misnamed: it is
 // the label Windows puts on the taskbar jump list, in Task Manager and in
 // Explorer's Description column, so it has to be the app's NAME. Shipping
 // package.json's description there made right-clicking the taskbar button
@@ -471,5 +494,5 @@ console.log(`ok - ui invariants (hidden rule, outside-click menus, clipboard per
     `no default menu, wheel zoom, remote-name sanitizing, gated dev hooks, idle overlay-only, ` +
     `exe metadata, shared menus, focus handback, contrast floor, broadcast truth, no orphan sessions, ` +
     `armed-tab growth, focus trap, scp discipline, low-batch pins, shape guards, failure surfacing, ` +
-    `${styleIds.length} idle styles mooded, ` +
+    `${styleIds.length} idle styles mooded, unread badges, on-connect discipline, ` +
     `${scripts.length} scripts, ${wired.size} wired ids)`);

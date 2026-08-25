@@ -113,6 +113,23 @@ try {
     assert.deepStrictEqual(store.loadCritical('profiles', null), { schema: 1, profiles: [] },
         'loadCritical must tolerate a BOM too - it throws on bad JSON by design');
 
+    // 9b. Commands-on-connect inherit from folder defaults, and a
+    // session's own value wins. This is the review's top feature gap; the
+    // inheritance is what makes "terminal length 0 for this whole site"
+    // one edit instead of thirty.
+    const cmdFolder = sessions.upsert({
+        type: 'folder', name: 'Cisco', defaults: { onConnect: 'terminal length 0' } });
+    const inheritor = sessions.upsert({
+        type: 'session', name: 'sw-a', parentId: cmdFolder.id, host: '192.0.2.40' });
+    const overrider = sessions.upsert({
+        type: 'session', name: 'sw-b', parentId: cmdFolder.id, host: '192.0.2.41',
+        onConnect: 'enable' });
+    assert.strictEqual(sessions.resolveDescriptor(inheritor.id).onConnect, 'terminal length 0',
+        'a session with no commands of its own must take the folder default');
+    assert.strictEqual(sessions.resolveDescriptor(overrider.id).onConnect, 'enable',
+        'a session with its own commands must override the folder');
+    sessions.remove([cmdFolder.id]);
+
     // 10. Folder delete takes the subtree.
     const removed = sessions.remove([site.id]);
     assert.ok(removed.length >= 4, `expected subtree removal, got ${removed.length}`);

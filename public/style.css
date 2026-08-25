@@ -440,6 +440,14 @@ label { color: var(--se-txt-dim); }
 /* The label carries session status, so a dead pane is visible from the strip
    even when its tab is not the active one. Colors come from the theme, so
    this stays legible on light palettes. */
+/* Output arrived while this tab was in the background - the MobaXterm
+   orange-dot moment. The dot sits before the label and vanishes the
+   instant the tab is activated, so it can only ever mean "unread". */
+.tab.unread .tab-label::before {
+    content: '● ';
+    color: var(--se-accent);
+    font-style: normal;
+}
 .tab-label.ok { color: var(--se-up); }
 .tab-label.busy { color: var(--se-warn); }
 .tab-label.dead { color: var(--se-down); font-style: italic; }

@@ -271,4 +271,20 @@ const tree = (...nodes) => Object.fromEntries(nodes.map((n) => [n.id, n]));
     validateTeamFile({ ...base, nodes: { n1: { id: 'n1', type: 'session', name: 'sw' } } });
 }
 
+// defaults.onConnect is auto-typed into live sessions on every connect;
+// a shared file that carried it would let anyone who can write the share
+// type commands into every reader's devices. It never travels, same as
+// logging.folder.
+{
+    const { serializeNodes } = require('../main/team-serializer');
+    const out = serializeNodes({
+        f1: { id: 'f1', type: 'folder', name: 'Site', parentId: null, order: 1,
+            defaults: { credentialProfile: 'AD', onConnect: 'terminal length 0' } },
+    }, []);
+    assert.ok(out.f1.defaults && out.f1.defaults.credentialProfile === 'AD',
+        'other defaults still publish');
+    assert.ok(!('onConnect' in out.f1.defaults),
+        'defaults.onConnect must never be published to a shared file');
+}
+
 console.log('ok - team merge + serializer (18 scenarios: matrix, whitelist, cycle repair, field validation, id-field guard, snippets)');

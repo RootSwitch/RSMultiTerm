@@ -47,6 +47,14 @@ function serializeNodes(nodes, usernames = []) {
             const { folder, ...rest } = clean.logging;
             clean.logging = rest;
         }
+        // onConnect is AUTO-TYPED into a live session on every connect.
+        // Adopting it from a shared file would let anyone who can write
+        // the share type commands into every reader's devices - the same
+        // reasoning that keeps logging.folder local, with more teeth.
+        if (clean.defaults && typeof clean.defaults === 'object' && 'onConnect' in clean.defaults) {
+            const { onConnect, ...rest } = clean.defaults;
+            clean.defaults = rest;
+        }
         // Belt and braces on top of the whitelist: refuse to publish a node
         // whose free-text notes contain one of the local profile usernames.
         if (clean.notes && usernames.some((u) => u && clean.notes.includes(u))) {

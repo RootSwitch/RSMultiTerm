@@ -147,8 +147,36 @@ function waitFor(emitter, event, ms = 8000) {
         assert.ok(!statuses.includes('closed'),
             'the error status must not be overwritten by a clean-exit status');
 
+        // --- commands on connect actually arrive ---------------------------
+        // A raw TCP server stands in for a telnet device; the Session is
+        // the real one. The lines must arrive after the connect, in order,
+        // each accepted with a carriage return.
+        const { Session } = require('../engine/session');
+        const received = [];
+        const cmdServer = require('net').createServer((sock) => {
+            sock.write('user access verification' + String.fromCharCode(13, 10));
+            sock.on('data', (d) => received.push(d.toString()));
+        });
+        await new Promise((r) => cmdServer.listen(0, '127.0.0.1', r));
+        const sess = new Session('s-onconnect', {
+            transport: 'telnet', host: '127.0.0.1',
+            port: cmdServer.address().port, cols: 80, rows: 24,
+            onConnect: 'terminal length 0\nshow clock\n\n   ',
+        }, () => {}, { verifyHostkey: () => Promise.resolve(true) });
+        await sess.connect({}, {});
+        await new Promise((r) => setTimeout(r, 1800));
+        const typed = received.join('');
+        const at = (needle) => typed.indexOf(needle);
+        assert.ok(at('terminal length 0\r') !== -1, `first command must arrive, got: ${JSON.stringify(typed)}`);
+        assert.ok(at('show clock\r') !== -1, 'second command must arrive');
+        assert.ok(at('terminal length 0') < at('show clock'), 'in order');
+        assert.strictEqual((typed.match(/\r/g) || []).length, 2,
+            'exactly two accept-lines: the blank and whitespace lines must not be sent');
+        await sess.close();
+        cmdServer.close();
+
         console.log('ok - reconnect (write-after-close is safe on ssh and telnet, ' +
-            'redial works, telnet reset reports as an error)');
+            'redial works, telnet reset reports as an error, on-connect commands arrive in order)');
     } finally {
         sshFixture.kill();
         telnetFixture.kill();

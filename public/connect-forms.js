@@ -87,11 +87,20 @@
         };
         fTransport.addEventListener('change', syncSerial);
 
+        const fOnConnect = document.createElement('textarea');
+        fOnConnect.rows = 3;
+        fOnConnect.className = 'grow-box';
+        fOnConnect.style.minHeight = '4.5em';
+        fOnConnect.value = node.onConnect || '';
+        fOnConnect.placeholder = 'terminal length 0';
         body.append(
             row('Name', fName), row('Host', fHost), row('Transport', fTransport),
             row('Port', fPort), row('Credentials', fProfile), row('Jump host', fJump),
             row('Logging', fLogging),
-            serialRows, row('Notes', fNotes));
+            serialRows, row('Notes', fNotes),
+            window.Modals.stacked('Commands on connect', fOnConnect,
+                'Typed into the session a moment after it connects, one line at a ' +
+                'time - every connect, reconnects included. Inherits from the folder.'));
         syncSerial();
 
         open(isNew ? 'New session' : `Edit ${node.name}`, body, [
@@ -113,6 +122,7 @@
                             ? { device: fDevice.value, baud: Number(fBaud.value) } : node.serial || null,
                         logging: fLogging.value === '' ? null : fLogging.value === 'on',
                         notes: fNotes.value,
+                        onConnect: fOnConnect.value.trim() || null,
                     });
                 },
             },
@@ -138,10 +148,19 @@
             { value: 'on', label: 'Log sessions in this folder' },
             { value: 'off', label: 'No logs for this folder' },
         ], d.logging === true ? 'on' : d.logging === false ? 'off' : '');
+        const fDefOnConnect = document.createElement('textarea');
+        fDefOnConnect.rows = 2;
+        fDefOnConnect.className = 'grow-box';
+        fDefOnConnect.style.minHeight = '3.5em';
+        fDefOnConnect.value = d.onConnect || '';
+        fDefOnConnect.placeholder = 'terminal length 0';
         body.append(row('Name', fName),
             row('Default credentials', fProfile),
             row('Default port', fPort),
-            row('Logging', fLogging));
+            row('Logging', fLogging),
+            window.Modals.stacked('Commands on connect (default)', fDefOnConnect,
+                'Typed into every session in this folder a moment after it connects. ' +
+                'A session with its own commands overrides this. Never published to a sync file.'));
 
         open(isNew ? 'New folder' : `Edit ${node.name}`, body, [
             { label: 'Cancel' },
@@ -157,6 +176,7 @@
                             credentialProfile: fProfile.value || null,
                             port: fPort.value ? Number(fPort.value) : null,
                             logging: fLogging.value === '' ? null : fLogging.value === 'on',
+                            onConnect: fDefOnConnect.value.trim() || null,
                         },
                     });
                 },

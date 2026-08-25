@@ -214,6 +214,8 @@
             // The tree node this pane came from, when it came from one -
             // how a rename in the tree reaches an open pane's title.
             nodeId: null,
+            // Output arrived while this pane's tab was in the background.
+            unread: false,
             port: null,
             state: 'connecting',
             el: null,          // grid cell wrapper, set by layout
@@ -340,6 +342,20 @@
             const m = e.data;
             if (!m || typeof m !== 'object') return;
             if (m.t === 'data') {
+                // Output landing in a BACKGROUND tab is news the user has
+                // not seen; the tab strip says so until they look. Only the
+                // transition is reported - data arrives in bursts, and the
+                // strip does not need repainting per chunk. Panes in the
+                // active tab are all visible in the grid, so their output
+                // is by definition being seen.
+                if (!pane.unread && window.Tabs) {
+                    const owner = window.Tabs.tabOf(pane.sessionId);
+                    const active = window.Tabs.active();
+                    if (owner && (!active || owner.id !== active.id)) {
+                        pane.unread = true;
+                        window.Tabs.updateStatus();
+                    }
+                }
                 // Credit returns only after xterm has parsed the bytes, so
                 // the engine's window measures true end-to-end absorption.
                 const bytes = m.buf.byteLength;

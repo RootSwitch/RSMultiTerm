@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+- **Unread output badges on tabs.** Output arriving in a tab you are not
+  looking at puts a dot on that tab; opening the tab clears it, and it
+  re-arms if more arrives after you look away. The thing that tells you
+  a background session just said something.
+- **Commands on connect.** A per-session (and per-folder, inherited)
+  list of commands typed into the session a moment after it connects -
+  every connect, reconnects included. 'terminal length 0' for a whole
+  site is one folder edit. One line at a time with a breath between, so
+  gear still painting its banner does not drop input. Never published
+  to a sync file: a shared file that could type into every reader's
+  devices would be an injection channel, so this stays local, like the
+  log folder.
+
 - **Four new idle animations**, taking the set to eleven:
   - **Donut** - the rotating `donut.c` torus, shaded through a character
     ramp in the theme's own ink.
