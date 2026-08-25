@@ -334,6 +334,11 @@
     }
 
     let frames = 0;
+    // Cumulative time spent INSIDE the styles' own drawing, for
+    // tools/bench-idle.js. Two clock reads at 30fps is not a cost worth
+    // gating behind a flag, and a number nobody can measure is a number
+    // nobody can defend.
+    let frameMs = 0;
     function frame(now) {
         if (!running) return;
         running.raf = requestAnimationFrame(frame);
@@ -356,7 +361,9 @@
             ctx.clip();
             ctx.translate(region.x, region.y);
         }
+        const t0 = performance.now();
         running.style.frame(ctx, running.env, running.state, dt);
+        frameMs += performance.now() - t0;
         if (region) ctx.restore();
     }
 
@@ -390,6 +397,7 @@
         const items = [
             { label: 'Play Bricks', onClick: () => start('bricks', { play: true, area: settings.area }) },
             { label: 'Play Aliens', onClick: () => start('aliens', { play: true, area: settings.area }) },
+            { label: 'Play Snake', onClick: () => start('snake', { play: true, area: settings.area }) },
             null,
         ];
         for (const [id, st] of Object.entries(STYLES)) {
@@ -425,7 +433,7 @@
     // whatever the terminals were showing - your own hostnames and IPs
     // coming down, which is the whole reason it does not look like a film.
     STYLES.rain = {
-        label: 'Rain', screen: true,
+        label: 'Rain', screen: true, mood: 'calm',
         init(env) {
             const cw = 14, ch = 18;
             const cols = Math.ceil(env.w / cw);
@@ -470,7 +478,7 @@
     // Bricks: every word on screen is a brick, where it is. An automatic
     // paddle plays until the screen is clear, then the screen is re-read.
     STYLES.bricks = {
-        label: 'Bricks', screen: true,
+        label: 'Bricks', screen: true, mood: 'lively',
         init(env) {
             const words = (env.screen ? env.screen.words : []).filter((w) => w.text.length > 0);
             const bricks = words.map((w, i) => ({ ...w, alive: true, tone: i % 3 }));
@@ -581,7 +589,7 @@
     // are the terminal's own cell size, so the first generation IS the
     // screen, and then it starts to move.
     STYLES.life = {
-        label: 'Life', screen: true,
+        label: 'Life', screen: true, mood: 'calm',
         init(env) {
             const sample = env.screen || { lines: [] };
             const cw = Math.max(6, Math.round((sample.lines[0] || { cw: 9 }).cw));
@@ -654,7 +662,7 @@
     // Starfield: the warp. Depth picks the glyph, so far stars are dots and
     // near ones are hashes streaking past.
     STYLES.starfield = {
-        label: 'Starfield', screen: false,
+        label: 'Starfield', screen: false, mood: 'calm',
         init(env) {
             const mk = () => ({ x: (Math.random() - 0.5) * 2, y: (Math.random() - 0.5) * 2, z: Math.random() });
             return { stars: Array.from({ length: 420 }, mk), mk, speed: 0.35 };
@@ -685,7 +693,7 @@
     // Snow: the chill one. Flakes drift, sway, and settle into a drift along
     // the bottom edge that slowly grows.
     STYLES.snow = {
-        label: 'Snow', screen: false,
+        label: 'Snow', screen: false, mood: 'calm',
         init(env) {
             const mk = () => ({
                 x: Math.random() * env.w, y: -Math.random() * env.h,
@@ -727,7 +735,7 @@
     // picks both the glyph and the color - the theme's own colors, so Ember
     // burns orange, Phosphor green, and Classic is a blue flame.
     STYLES.fire = {
-        label: 'Fire', screen: false,
+        label: 'Fire', screen: false, mood: 'lively',
         init(env) {
             const cw = 10, ch = 16;
             const cols = Math.ceil(env.w / cw), rows = Math.ceil(env.h / ch);
@@ -786,7 +794,7 @@
     // a flawless bot is boring to watch. Lives are infinite; this is a
     // screensaver, not a game.
     STYLES.aliens = {
-        label: 'Aliens', screen: true,
+        label: 'Aliens', screen: true, mood: 'lively',
         init(env) {
             return STYLES.aliens.wave(env, { waves: 0, ship: null, bombs: [], lasers: [], bursts: [] });
         },
@@ -1018,19 +1026,450 @@
         },
     };
 
+
+    // --- Gravity ------------------------------------------------------------
+    // The screen lets go. Words lose their grip one at a time, tumble, and
+    // pile along the bottom; every so often the whole thing gives way at
+    // once. Uses the same word sample Bricks does - your own hostnames and
+    // interface names are what fall - so it reads as YOUR terminal melting
+    // rather than a generic particle toy.
+    STYLES.gravity = {
+        label: 'Gravity', screen: true, mood: 'lively',
+        init(env) {
+            const words = (env.screen ? env.screen.words : [])
+                .filter((w) => w.text.length > 0)
+                .slice(0, 400)
+                .map((w) => ({
+                    text: w.text, x: w.x, y: w.y, w: w.w, h: w.h,
+                    vx: 0, vy: 0, rot: 0, spin: 0, held: true, rest: false,
+                }));
+            // A blank screen still gets something to drop.
+            if (words.length < 8) {
+                const filler = ['no', 'output', 'yet', 'still', 'idle', 'waiting',
+                    'nothing', 'here', 'quiet', 'listening'];
+                for (let i = 0; i < 40; i++) {
+                    const t = filler[i % filler.length];
+                    words.push({
+                        text: t, x: Math.random() * env.w * 0.85, y: Math.random() * env.h * 0.7,
+                        w: t.length * 9, h: 17, vx: 0, vy: 0, rot: 0, spin: 0, held: true, rest: false,
+                    });
+                }
+            }
+            return { words, t: 0, next: 0.25, collapse: 6 + Math.random() * 6, first: true };
+        },
+        frame(ctx, env, s, dt) {
+            const c = env.colors;
+            if (s.first) { ctx.fillStyle = c.bg; ctx.fillRect(0, 0, env.w, env.h); s.first = false; }
+            // Short trails: the fall reads as motion rather than teleporting.
+            ctx.globalAlpha = 0.22;
+            ctx.fillStyle = c.bg;
+            ctx.fillRect(0, 0, env.w, env.h);
+            ctx.globalAlpha = 1;
+
+            s.t += dt;
+            // One at a time, then all at once.
+            s.next -= dt;
+            s.collapse -= dt;
+            const held = s.words.filter((w) => w.held);
+            if (s.collapse <= 0 && held.length) {
+                for (const w of held) { w.held = false; w.spin = (Math.random() - 0.5) * 5; }
+                s.collapse = 9 + Math.random() * 8;
+            } else if (s.next <= 0 && held.length) {
+                const w = held[Math.floor(Math.random() * held.length)];
+                w.held = false;
+                w.spin = (Math.random() - 0.5) * 4;
+                s.next = 0.12 + Math.random() * 0.35;
+            }
+            // Everything down and settled: let the screen re-form and fall
+            // again, so a long idle is not one dead heap.
+            if (!held.length && s.words.every((w) => w.rest)) {
+                Object.assign(s, STYLES.gravity.init(env));
+                return;
+            }
+
+            ctx.textBaseline = 'top';
+            ctx.font = `14px ${c.mono}`;
+            const floor = env.h - 6;
+            for (const w of s.words) {
+                if (!w.held && !w.rest) {
+                    w.vy += 900 * dt;
+                    w.y += w.vy * dt;
+                    w.x += w.vx * dt;
+                    w.rot += w.spin * dt;
+                    if (w.y + w.h >= floor) {
+                        w.y = floor - w.h;
+                        // A little bounce, then it stays put - a heap, not a
+                        // trampoline.
+                        if (w.vy > 260) { w.vy *= -0.28; w.vx = (Math.random() - 0.5) * 40; w.spin *= 0.4; }
+                        else { w.vy = 0; w.vx = 0; w.spin = 0; w.rest = true; w.rot = w.rot * 0.35; }
+                    }
+                }
+                ctx.save();
+                ctx.translate(w.x, w.y);
+                if (w.rot) { ctx.translate(w.w / 2, w.h / 2); ctx.rotate(w.rot); ctx.translate(-w.w / 2, -w.h / 2); }
+                ctx.fillStyle = w.held ? c.dim : (w.rest ? c.accent : c.txt);
+                ctx.fillText(w.text, 0, 0);
+                ctx.restore();
+            }
+        },
+    };
+
+    // --- Pipes --------------------------------------------------------------
+    // pipes.sh, in box-drawing characters on the theme's palette. Each pipe
+    // walks a cell grid, turns at random, and when the screen fills the
+    // whole thing clears and starts over - which is exactly the rhythm of
+    // the original, and the reason it is hypnotic rather than busy.
+    STYLES.pipes = {
+        label: 'Pipes', screen: false, mood: 'calm',
+        init(env) {
+            // cw and ch are corrected on the first frame from the font's
+            // real metrics. Box-drawing glyphs only join into continuous
+            // pipes when the grid pitch IS the glyph pitch: guess it and
+            // every horizontal run comes out dashed.
+            const cw = 12, chh = 18;
+            const cols = Math.max(4, Math.floor(env.w / cw));
+            const rows = Math.max(4, Math.floor(env.h / chh));
+            const palette = [env.colors.accent, env.colors.up, env.colors.warn,
+                env.colors.txt, env.colors.down];
+            const mk = () => ({
+                x: Math.floor(Math.random() * cols), y: Math.floor(Math.random() * rows),
+                dir: Math.floor(Math.random() * 4),
+                color: palette[Math.floor(Math.random() * palette.length)],
+            });
+            return {
+                cw, ch: chh, cols, rows, palette, mk,
+                pipes: Array.from({ length: 4 }, mk),
+                drawn: 0, budget: cols * rows * 0.75, step: 0, first: true,
+            };
+        },
+        frame(ctx, env, s, dt) {
+            const c = env.colors;
+            if (s.first) {
+                // The font size IS the row pitch so vertical bars meet top
+                // to bottom, and the measured advance IS the column pitch
+                // so horizontals meet end to end.
+                ctx.font = `${s.ch}px ${c.mono}`;
+                const adv = ctx.measureText('─').width;
+                if (adv > 1) {
+                    s.cw = adv;
+                    s.cols = Math.max(4, Math.floor(env.w / adv));
+                }
+                ctx.fillStyle = c.ground;
+                ctx.fillRect(0, 0, env.w, env.h);
+                s.first = false;
+                s.budget = s.cols * s.rows * 0.75;
+            }
+            // Fixed cadence: pipes advance on a clock, not per frame, or
+            // they scribble the screen full in a second on a fast machine.
+            s.step += dt;
+            const stepEvery = 0.055;
+            if (s.step < stepEvery) return;
+            s.step = 0;
+
+            ctx.font = `${s.ch}px ${c.mono}`;
+            ctx.textBaseline = 'top';
+            // 0=up 1=right 2=down 3=left. The glyph is chosen by the turn:
+            // straight runs get a line, turns get the matching corner.
+            const STRAIGHT = ['│', '─', '│', '─'];
+            const CORNER = {
+                '0,1': '┌', '3,2': '┌',
+                '0,3': '┐', '1,2': '┐',
+                '2,1': '└', '3,0': '└',
+                '1,0': '┘', '2,3': '┘',
+            };
+            for (const p of s.pipes) {
+                const was = p.dir;
+                // Mostly straight, sometimes a right angle - never a
+                // reversal, which would draw over itself.
+                if (Math.random() < 0.18) {
+                    p.dir = Math.random() < 0.5 ? (p.dir + 1) % 4 : (p.dir + 3) % 4;
+                }
+                const glyph = was === p.dir ? STRAIGHT[p.dir] : (CORNER[`${was},${p.dir}`] || STRAIGHT[p.dir]);
+                ctx.fillStyle = p.color;
+                ctx.fillText(glyph, p.x * s.cw, p.y * s.ch);
+                s.drawn++;
+                if (p.dir === 0) p.y--;
+                else if (p.dir === 1) p.x++;
+                else if (p.dir === 2) p.y++;
+                else p.x--;
+                // Off the edge: respawn somewhere else rather than wrapping,
+                // which would leave a pipe crossing the whole screen.
+                if (p.x < 0 || p.y < 0 || p.x >= s.cols || p.y >= s.rows) {
+                    Object.assign(p, s.mk());
+                }
+            }
+            if (s.drawn > s.budget) {
+                ctx.fillStyle = c.ground;
+                ctx.fillRect(0, 0, env.w, env.h);
+                s.drawn = 0;
+                s.pipes = Array.from({ length: 3 + Math.floor(Math.random() * 3) }, s.mk);
+            }
+        },
+    };
+
+    // --- Donut --------------------------------------------------------------
+    // donut.c, the one every programmer has seen: a torus sampled in two
+    // angles, projected, z-buffered, and shaded through a character ramp by
+    // the dot product of the surface normal with a fixed light. Rendered in
+    // the theme's own ink so it belongs to the app rather than to 1998.
+    STYLES.donut = {
+        label: 'Donut', screen: false, mood: 'calm',
+        init(env) {
+            // cw is replaced on the first frame with the font's measured
+            // advance; the estimate here only has to be close enough to
+            // survive one frame.
+            const chh = 15;
+            return {
+                cw: 8, ch: chh, measured: false,
+                cols: Math.max(20, Math.floor(env.w / 8)),
+                rows: Math.max(12, Math.floor(env.h / chh)),
+                // Not 0,0: the hole reads immediately from here rather
+                // than after a few seconds of rotation.
+                a: 1.0, b: 0.5,
+                ramp: '.,-~:;=!*#$@',
+            };
+        },
+        frame(ctx, env, s, dt) {
+            const c = env.colors;
+            ctx.fillStyle = c.ground;
+            ctx.fillRect(0, 0, env.w, env.h);
+
+            if (!s.measured) {
+                ctx.font = `${s.ch - 2}px ${c.mono}`;
+                const adv = ctx.measureText('M').width;
+                if (adv > 1) {
+                    s.cw = adv;
+                    s.cols = Math.max(20, Math.floor(env.w / adv));
+                }
+                s.measured = true;
+            }
+            const { cols, rows } = s;
+            const out = new Array(cols * rows).fill(' ');
+            const zbuf = new Float32Array(cols * rows);
+            s.a += dt * 0.9;
+            s.b += dt * 0.45;
+            const cA = Math.cos(s.a), sA = Math.sin(s.a);
+            const cB = Math.cos(s.b), sB = Math.sin(s.b);
+            // K1 scales the torus to the smaller screen axis, so it fills a
+            // wide pane and a tall one equally well.
+            const K2 = 5;
+            const K1 = Math.min(cols * 0.55, rows * 1.1);
+            for (let theta = 0; theta < 6.283; theta += 0.07) {
+                const ct = Math.cos(theta), st = Math.sin(theta);
+                for (let phi = 0; phi < 6.283; phi += 0.02) {
+                    const cp = Math.cos(phi), sp = Math.sin(phi);
+                    const circleX = 2 + ct;
+                    const circleY = st;
+                    const x = circleX * (cB * cp + sA * sB * sp) - circleY * cA * sB;
+                    const y = circleX * (sB * cp - sA * cB * sp) + circleY * cA * cB;
+                    const z = K2 + cA * circleX * sp + circleY * sA;
+                    const ooz = 1 / z;
+                    const xp = Math.floor(cols / 2 + K1 * ooz * x);
+                    const yp = Math.floor(rows / 2 - (K1 / 2) * ooz * y);
+                    if (xp < 0 || xp >= cols || yp < 0 || yp >= rows) continue;
+                    const lum = cp * ct * sB - cA * ct * sp - sA * st + cB * (cA * st - ct * sA * sp);
+                    if (lum <= 0) continue;
+                    const idx = xp + yp * cols;
+                    if (ooz <= zbuf[idx]) continue;
+                    zbuf[idx] = ooz;
+                    out[idx] = s.ramp[Math.min(s.ramp.length - 1, Math.floor(lum * 8))];
+                }
+            }
+            ctx.font = `${s.ch - 2}px ${c.mono}`;
+            ctx.textBaseline = 'top';
+            // Both passes draw a WHOLE row string of the same length, with
+            // the other pass's cells blanked to spaces. Positioning the
+            // highlight per character instead needs the font's real advance
+            // width, and guessing it ghosts the lit side half a cell off the
+            // body - which is exactly what the first version did.
+            const LIT = '#$@';
+            for (let r = 0; r < rows; r++) {
+                let body = '';
+                let lit = '';
+                let any = false;
+                for (let i = 0; i < cols; i++) {
+                    const g = out[i + r * cols];
+                    if (g !== ' ') any = true;
+                    const isLit = LIT.includes(g);
+                    body += isLit ? ' ' : g;
+                    lit += isLit ? g : ' ';
+                }
+                if (!any) continue;
+                const y = r * s.ch;
+                ctx.fillStyle = c.inkDim;
+                ctx.fillText(body, 0, y);
+                ctx.fillStyle = c.ink;
+                ctx.fillText(lit, 0, y);
+            }
+        },
+    };
+
+    // --- Snake --------------------------------------------------------------
+    // Eats the glyphs of your own output. Plays itself when idle - a
+    // deliberately simple greedy chase, which is more watchable than a
+    // perfect solver - and takes the keyboard when started from Extras.
+    STYLES.snake = {
+        label: 'Snake', screen: true, mood: 'lively',
+        init(env) {
+            const cw = 14, chh = 18;
+            const cols = Math.max(10, Math.floor(env.w / cw));
+            const rows = Math.max(8, Math.floor(env.h / chh));
+            const glyphs = env.screen && env.screen.glyphs.size > 6
+                ? [...env.screen.glyphs].filter((g) => g.trim())
+                : [...'$#@%&*+=?!0123456789abcdef'];
+            // Food sits WHERE THE TEXT IS. Scattering the right glyphs at
+            // random positions looked like confetti; placing them on the
+            // real character cells means the snake eats your last command's
+            // output, in place, which is the whole idea. One cell per
+            // character, thinned so the board is playable rather than solid.
+            const food = [];
+            const taken = new Set();
+            for (const line of (env.screen ? env.screen.lines : [])) {
+                if (!line.cw || !line.ch) continue;
+                for (let i = 0; i < line.text.length; i++) {
+                    const g = line.text[i];
+                    if (!g.trim()) continue;
+                    if (Math.random() > 0.45) continue;   // thin it out
+                    const gx = Math.floor((line.x + i * line.cw) / cw);
+                    const gy = Math.floor(line.y / chh);
+                    if (gx < 0 || gy < 0 || gx >= cols || gy >= rows) continue;
+                    const key = `${gx},${gy}`;
+                    if (taken.has(key)) continue;
+                    taken.add(key);
+                    food.push({ x: gx, y: gy, g });
+                }
+            }
+            // A blank screen still gets something to chase.
+            const want = Math.max(14, Math.floor(cols * rows * 0.02));
+            while (food.length < want) {
+                const gx = Math.floor(Math.random() * cols);
+                const gy = Math.floor(Math.random() * rows);
+                const key = `${gx},${gy}`;
+                if (taken.has(key)) continue;
+                taken.add(key);
+                food.push({ x: gx, y: gy, g: glyphs[Math.floor(Math.random() * glyphs.length)] || '*' });
+            }
+            const head = { x: Math.floor(cols / 2), y: Math.floor(rows / 2) };
+            return {
+                cw, ch: chh, cols, rows, glyphs, food,
+                body: [head], dir: { x: 1, y: 0 }, grow: 4,
+                step: 0, every: 0.085, dead: 0, eaten: 0,
+            };
+        },
+        frame(ctx, env, s, dt) {
+            const c = env.colors;
+            ctx.fillStyle = c.bg;
+            ctx.fillRect(0, 0, env.w, env.h);
+
+            s.step += dt;
+            if (s.step >= s.every) {
+                s.step = 0;
+                if (s.dead > 0) {
+                    // A beat on the crash, then start over.
+                    s.dead--;
+                    if (s.dead === 0) Object.assign(s, STYLES.snake.init(env));
+                } else {
+                    STYLES.snake.advance(env, s);
+                }
+            }
+
+            ctx.font = `${s.ch - 3}px ${c.mono}`;
+            ctx.textBaseline = 'top';
+            for (const f of s.food) {
+                ctx.fillStyle = c.dim;
+                ctx.fillText(f.g, f.x * s.cw, f.y * s.ch);
+            }
+            s.body.forEach((seg, i) => {
+                ctx.fillStyle = i === 0 ? c.up : c.accent;
+                ctx.fillText(i === 0 ? '■' : '▪', seg.x * s.cw, seg.y * s.ch);
+            });
+            if (env.play) {
+                ctx.font = `13px ${c.mono}`;
+                ctx.fillStyle = c.dim;
+                ctx.textAlign = 'left';
+                ctx.fillText(`eaten ${s.eaten}`, 12, 10);
+                ctx.textAlign = 'left';
+            }
+            drawHud(ctx, env);
+        },
+        // One grid step. Player input steers when playing; otherwise a
+        // greedy chase toward the nearest food, refusing only the moves
+        // that would eat its own neck.
+        advance(env, s) {
+            const p = env.play;
+            if (p) {
+                // Arrows/A-D turn; Space is unused, so it does not reverse
+                // into the neck by accident.
+                if (p.left && s.dir.x === 0) s.dir = { x: -1, y: 0 };
+                else if (p.right && s.dir.x === 0) s.dir = { x: 1, y: 0 };
+                else if (p.fired) { p.fired = false; s.dir = { x: s.dir.y, y: -s.dir.x }; }
+            } else {
+                const head = s.body[0];
+                let best = null;
+                let bestD = Infinity;
+                for (const f of s.food) {
+                    const d = Math.abs(f.x - head.x) + Math.abs(f.y - head.y);
+                    if (d < bestD) { bestD = d; best = f; }
+                }
+                if (best) {
+                    const occupied = new Set(s.body.map((b) => `${b.x},${b.y}`));
+                    const options = [
+                        { x: Math.sign(best.x - head.x), y: 0 },
+                        { x: 0, y: Math.sign(best.y - head.y) },
+                        s.dir, { x: 0, y: -1 }, { x: 0, y: 1 }, { x: -1, y: 0 }, { x: 1, y: 0 },
+                    ].filter((d) => d.x || d.y);
+                    for (const d of options) {
+                        const nx = head.x + d.x;
+                        const ny = head.y + d.y;
+                        if (nx < 0 || ny < 0 || nx >= s.cols || ny >= s.rows) continue;
+                        if (occupied.has(`${nx},${ny}`)) continue;
+                        s.dir = d;
+                        break;
+                    }
+                }
+            }
+
+            const head = s.body[0];
+            const next = { x: head.x + s.dir.x, y: head.y + s.dir.y };
+            if (next.x < 0 || next.y < 0 || next.x >= s.cols || next.y >= s.rows ||
+                s.body.some((b) => b.x === next.x && b.y === next.y)) {
+                s.dead = 8;
+                return;
+            }
+            s.body.unshift(next);
+            const hit = s.food.findIndex((f) => f.x === next.x && f.y === next.y);
+            if (hit >= 0) {
+                s.food.splice(hit, 1);
+                s.grow += 2;
+                s.eaten++;
+                if (env.play) env.play.score += 10;
+                // Keep the board stocked, from the same glyph pool.
+                s.food.push({
+                    x: Math.floor(Math.random() * s.cols), y: Math.floor(Math.random() * s.rows),
+                    g: s.glyphs[Math.floor(Math.random() * s.glyphs.length)] || '*',
+                });
+            }
+            if (s.grow > 0) s.grow--;
+            else s.body.pop();
+        },
+    };
+
     window.Idle = {
         start, stop,
         isPlaying: () => !!(running && running.play),
         isRunning: () => !!running,
         // Frames drawn since load - the honest way to measure the loop.
         frameCount: () => frames,
+        // {frames, ms} since load - the draw cost, independent of whatever
+        // the compositor or a remote-desktop session does with the result.
+        frameCost: () => ({ frames, ms: frameMs }),
         // The running style's state, for probes that want to assert on
         // behavior (a wave thinned, a diver launched) rather than pixels.
         debugState: () => (running ? running.state : null),
         // Whether the OS is asking for reduced motion - shown in Settings,
         // never used to refuse an explicit opt-in.
         reducedMotion: () => reducedMotion,
-        styles: () => Object.entries(STYLES).map(([id, s]) => ({ id, label: s.label })),
+        styles: () => Object.entries(STYLES).map(([id, s]) => ({ id, label: s.label, mood: s.mood || 'calm' })),
         // For probes: which style is up, and whether it is clipped to the
         // terminal area or has taken the window.
         currentStyle: () => (running ? running.id : null),

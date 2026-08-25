@@ -2,6 +2,27 @@
 
 ## Unreleased
 
+- **Four new idle animations**, taking the set to eleven:
+  - **Donut** - the rotating `donut.c` torus, shaded through a character
+    ramp in the theme's own ink.
+  - **Pipes** - the `pipes.sh` screensaver in box-drawing characters,
+    growing and turning until the screen fills, then starting over.
+  - **Gravity** - the words on your screen lose their grip one at a
+    time, tumble, and pile along the bottom; every so often the whole
+    thing lets go at once.
+  - **Snake** - eats the glyphs of your own output, in place, where the
+    text actually is. Plays itself when idle; **Extras > Play Snake**
+    hands you the arrow keys.
+- **Settings groups the "Surprise me" list by mood**, Calm and Lively,
+  each with a one-click toggle - so "surprise me, but keep it quiet" is
+  two clicks rather than eleven. Every option stays visible; ticking
+  none now means "no preference" instead of an empty rotation.
+- **`npm run bench:idle` measures what the animations cost.** Per style:
+  achieved frame rate, milliseconds of drawing per frame, and that as a
+  share of the 33ms budget the 30fps cap allows. Also reports whole-app
+  processor time, which unlike the draw column includes compositing and,
+  over a remote desktop, the session encoding every frame.
+
 - **A failed connection now says WHY, in the pane.** A session refused
   before it ever dialed - a fenced credential, a halted profile - used
   to leave an orange dot and nothing else, because the refusal fired

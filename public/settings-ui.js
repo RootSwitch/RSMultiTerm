@@ -163,35 +163,92 @@
         };
         fIdleStyle.addEventListener('change', syncRotate);
         syncRotate();
-        // Which styles "Surprise me" may pick. Some are calm and some are
-        // chaotic, and which is which is a matter of taste - so the choice
-        // is a list rather than a "calm/energetic" guess.
+        // Which styles "Surprise me" may pick. Grouped by mood with a
+        // toggle per group, because the flat checkbox row stopped scanning
+        // once there were eleven of them - and because "give me the calm
+        // ones" is the request people actually have. Every option stays
+        // visible: a dropdown would hide exactly the list being chosen.
         const picks = new Set(Array.isArray(idle.picks) ? idle.picks : []);
+        const allStyles = window.Idle ? window.Idle.styles() : [];
         const picksWrap = document.createElement('div');
-        picksWrap.className = 'field-row';
+        picksWrap.className = 'field-stack';
         const picksLabel = document.createElement('label');
         picksLabel.textContent = 'Surprise me uses';
         const picksBox = document.createElement('div');
-        picksBox.style.cssText = 'flex:1;display:flex;flex-wrap:wrap;gap:4px 14px;';
-        for (const st of (window.Idle ? window.Idle.styles() : [])) {
-            const lab = document.createElement('label');
-            lab.style.cssText = 'display:flex;align-items:center;gap:5px;font-size:12px;';
-            const cb = document.createElement('input');
-            cb.type = 'checkbox';
-            cb.value = st.id;
-            cb.checked = picks.size === 0 || picks.has(st.id);
-            const sp = document.createElement('span');
-            sp.textContent = st.label;
-            lab.append(cb, sp);
-            picksBox.appendChild(lab);
+        picksBox.style.cssText = 'display:flex;flex-direction:column;gap:8px;';
+
+        const MOODS = [
+            { key: 'calm', title: 'Calm', note: 'ambient, slow, easy to look up at' },
+            { key: 'lively', title: 'Lively', note: 'busy, fast, or playing a game at you' },
+        ];
+        const groupBoxes = new Map();
+        for (const mood of MOODS) {
+            const inThis = allStyles.filter((st) => (st.mood || 'calm') === mood.key);
+            if (!inThis.length) continue;
+            const group = document.createElement('div');
+            group.style.cssText = 'display:flex;flex-direction:column;gap:4px;';
+
+            const head = document.createElement('div');
+            head.style.cssText = 'display:flex;align-items:center;gap:8px;';
+            const all = document.createElement('button');
+            all.type = 'button';
+            all.style.cssText = 'font-size:11px;padding:1px 8px;';
+            const title = document.createElement('span');
+            title.style.cssText = 'font-size:12px;font-weight:600;';
+            title.textContent = mood.title;
+            const note = document.createElement('span');
+            note.style.cssText = 'font-size:11px;color:var(--se-txt-dim);';
+            note.textContent = mood.note;
+            head.append(title, note, all);
+
+            const box = document.createElement('div');
+            box.style.cssText = 'display:flex;flex-wrap:wrap;gap:4px 14px;padding-left:2px;';
+            for (const st of inThis) {
+                const lab = document.createElement('label');
+                lab.style.cssText = 'display:flex;align-items:center;gap:5px;font-size:12px;';
+                const cb = document.createElement('input');
+                cb.type = 'checkbox';
+                cb.value = st.id;
+                cb.checked = picks.size === 0 || picks.has(st.id);
+                const sp = document.createElement('span');
+                sp.textContent = st.label;
+                lab.append(cb, sp);
+                box.appendChild(lab);
+            }
+            groupBoxes.set(mood.key, box);
+
+            // One button that means both "only these" and "none of these",
+            // which is the whole point of grouping: "Surprise me (Calm)" is
+            // two clicks - Only calm, then Lively off.
+            const sync = () => {
+                const boxes = [...box.querySelectorAll('input')];
+                const on = boxes.filter((c) => c.checked).length;
+                all.textContent = on === boxes.length ? `Turn ${mood.title.toLowerCase()} off`
+                    : `Turn ${mood.title.toLowerCase()} on`;
+            };
+            all.addEventListener('click', () => {
+                const boxes = [...box.querySelectorAll('input')];
+                const turnOn = boxes.some((c) => !c.checked);
+                for (const c of boxes) c.checked = turnOn;
+                sync();
+            });
+            box.addEventListener('change', sync);
+            sync();
+
+            group.append(head, box);
+            picksBox.appendChild(group);
         }
         picksWrap.append(picksLabel, picksBox);
         const readPicks = () => {
-            const on = [...picksBox.querySelectorAll('input')].filter((c) => c.checked).map((c) => c.value);
+            const boxes = [...picksBox.querySelectorAll('input')];
+            const on = boxes.filter((c) => c.checked).map((c) => c.value);
             // All ticked is the same as no preference - stored empty so a
-            // style added later joins the rotation automatically.
-            return on.length === picksBox.querySelectorAll('input').length ? [] : on;
+            // style added later joins the rotation automatically. None
+            // ticked would mean "surprise me with nothing", so that stores
+            // empty too rather than silently disabling the feature.
+            return (on.length === boxes.length || on.length === 0) ? [] : on;
         };
+        void groupBoxes;
 
         const idleHint = document.createElement('p');
         idleHint.style.cssText = 'margin:2px 0 10px;color:var(--se-txt-dim);font-size:11px;';

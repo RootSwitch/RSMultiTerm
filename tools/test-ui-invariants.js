@@ -424,7 +424,29 @@ assert.ok(/function blankMenu\(/.test(treeSrc) &&
 assert.ok(!/'tree-health ok'/.test(treeSrc) && !/\? 'ok' :/.test(treeSrc),
     'the tree must not paint a green audit dot - green is reserved for live sessions');
 
-// 27. What Windows shows for the app. FileDescription is misnamed: it is
+// 27. Every idle style declares a mood, or the Settings picker silently
+// files it under Calm and a new lively animation joins a rotation somebody
+// deliberately made quiet.
+const idleSrc = fs.readFileSync(path.join(PUBLIC, 'idle.js'), 'utf8');
+const styleIds = [...idleSrc.matchAll(/STYLES\.(\w+) = \{/g)].map((m) => m[1]);
+assert.ok(styleIds.length >= 11, `expected the full style set, found ${styleIds.length}`);
+const labelled = [...idleSrc.matchAll(/label: '[^']+', screen: (?:true|false), mood: '(calm|lively)'/g)];
+assert.strictEqual(labelled.length, styleIds.length,
+    `every style needs a mood - ${styleIds.length} styles, ${labelled.length} moods`);
+assert.ok(/mood: s\.mood \|\| 'calm'/.test(idleSrc),
+    'Idle.styles() must expose the mood so Settings can group without a second list');
+// The draw-cost meter tools/bench-idle.js reads.
+assert.ok(/frameCost: \(\) => \(\{ frames, ms: frameMs \}\)/.test(idleSrc),
+    'idle.js must expose frameCost - an animation nobody can measure is one nobody can defend');
+// The grouped picker: a select-all per mood, and "none ticked" must mean
+// "no preference" rather than silently disabling Surprise me.
+const settingsSrc = fs.readFileSync(path.join(PUBLIC, 'settings-ui.js'), 'utf8');
+assert.ok(/const MOODS = \[/.test(settingsSrc),
+    'the Surprise me picker must group by mood');
+assert.ok(/on\.length === boxes\.length \|\| on\.length === 0/.test(settingsSrc),
+    'ticking none must store "no preference", not an empty rotation');
+
+// 28. What Windows shows for the app. FileDescription is misnamed: it is
 // the label Windows puts on the taskbar jump list, in Task Manager and in
 // Explorer's Description column, so it has to be the app's NAME. Shipping
 // package.json's description there made right-clicking the taskbar button
@@ -449,4 +471,5 @@ console.log(`ok - ui invariants (hidden rule, outside-click menus, clipboard per
     `no default menu, wheel zoom, remote-name sanitizing, gated dev hooks, idle overlay-only, ` +
     `exe metadata, shared menus, focus handback, contrast floor, broadcast truth, no orphan sessions, ` +
     `armed-tab growth, focus trap, scp discipline, low-batch pins, shape guards, failure surfacing, ` +
+    `${styleIds.length} idle styles mooded, ` +
     `${scripts.length} scripts, ${wired.size} wired ids)`);
