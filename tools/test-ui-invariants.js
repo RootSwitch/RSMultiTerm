@@ -392,7 +392,39 @@ const teamSrc = fs.readFileSync(path.join(__dirname, '..', 'main', 'team-seriali
 assert.ok(/disagrees with its own id field/.test(teamSrc),
     "the team file's node id field must be checked, not only its map key");
 
-// 26. What Windows shows for the app. FileDescription is misnamed: it is
+// 26. Failures reach the PANE, even the ones main decides before the
+// engine ever hears about the session (credential scope, tripped
+// profiles). Those travel the broadcast event, not the per-session port -
+// and they can fire before the pane exists, so app.js holds them and
+// term-pane collects on create. Without this chain the first scope refusal
+// in real use was an orange dot that sat there forever, wordless.
+assert.ok(/earlyStatus\.set\(m\.sessionId/.test(appSrc),
+    'app.js must hold status events that arrive before their pane exists');
+assert.ok(/takeEarlyStatus/.test(termPane),
+    'term-pane must collect held status on create, or pre-pane refusals are lost');
+const deadWrite = termPane.slice(termPane.indexOf('DEAD.has(state) && !wasDead'));
+assert.ok(/plainText\(detail\)/.test(deadWrite.slice(0, 600)),
+    'a dead pane must say WHY in the terminal, not only in a dot color');
+// "Paste to all panes" means all panes whether or not broadcast is armed -
+// arming is for keystrokes; this action IS a one-shot broadcast.
+const pasteAllBody = multiExec.slice(multiExec.indexOf('async function pasteAll('),
+    multiExec.indexOf('function confirmPaste('));
+assert.ok(!/s\.enabled \?/.test(pasteAllBody),
+    'pasteAll must not gate its targets on broadcast being armed');
+assert.ok(/participants\(tab\)/.test(pasteAllBody),
+    'pasteAll targets the participants - connected, not excluded');
+// The tree offers Duplicate on a session and a menu on the blank space.
+assert.ok(/Duplicate session\.\.\./.test(treeSrc),
+    'the session context menu must offer Duplicate');
+assert.ok(/function blankMenu\(/.test(treeSrc) &&
+    /closest\('\.tree-row, \.tree-details'\)/.test(treeSrc),
+    'the blank space below the tree must have its own menu, without stealing row clicks');
+// Green means connected NOW, and nothing else: the "answered a while ago"
+// dot is gone, so an imported list cannot look half-connected.
+assert.ok(!/'tree-health ok'/.test(treeSrc) && !/\? 'ok' :/.test(treeSrc),
+    'the tree must not paint a green audit dot - green is reserved for live sessions');
+
+// 27. What Windows shows for the app. FileDescription is misnamed: it is
 // the label Windows puts on the taskbar jump list, in Task Manager and in
 // Explorer's Description column, so it has to be the app's NAME. Shipping
 // package.json's description there made right-clicking the taskbar button
@@ -416,5 +448,5 @@ assert.ok(!/\bteam\b/i.test(pkg.description),
 console.log(`ok - ui invariants (hidden rule, outside-click menus, clipboard perms, ` +
     `no default menu, wheel zoom, remote-name sanitizing, gated dev hooks, idle overlay-only, ` +
     `exe metadata, shared menus, focus handback, contrast floor, broadcast truth, no orphan sessions, ` +
-    `armed-tab growth, focus trap, scp discipline, low-batch pins, shape guards, ` +
+    `armed-tab growth, focus trap, scp discipline, low-batch pins, shape guards, failure surfacing, ` +
     `${scripts.length} scripts, ${wired.size} wired ids)`);

@@ -231,6 +231,12 @@
             if (text && window.ContextMenu) window.ContextMenu.pasteInto(pane, text);
         }, true);
         panes.set(sessionId, pane);
+        // A refusal that raced this pane's creation was held by app.js;
+        // deliver it now or it is lost and the pane dials forever.
+        if (window.App && window.App.takeEarlyStatus) {
+            const held = window.App.takeEarlyStatus(sessionId);
+            if (held) setTimeout(() => setState(pane, held.state, held.detail), 0);
+        }
         wireSemantics(pane);
         if (window.Highlight) window.Highlight.attach(pane, highlightSet);
         if (window.ContextMenu) window.ContextMenu.armCopyOnSelect(pane);
@@ -399,9 +405,14 @@
         if (state === 'connected' && mayTakeFocus(pane)) pane.term.focus();
 
         // Say so in the pane itself: a status dot in a six-pane grid is easy
-        // to miss, and the whole point is to catch a switch as it comes back.
+        // to miss, and the whole point is to catch a switch as it comes
+        // back. The REASON goes in too - an orange-then-red dot with no
+        // words left "wrong password?" and "credential out of scope" and
+        // "host down" all looking identical.
         if (DEAD.has(state) && !wasDead) {
-            pane.term.write('\r\n\x1b[2m[disconnected - press R to reconnect]\x1b[0m\r\n');
+            const why = detail
+                ? `\x1b[31m[${window.App.plainText(detail)}]\x1b[0m\r\n` : '';
+            pane.term.write(`\r\n${why}\x1b[2m[disconnected - press R to reconnect]\x1b[0m\r\n`);
         }
         // And in the tab strip, so a background tab can show it too.
         if (window.Tabs) window.Tabs.updateStatus();

@@ -157,22 +157,28 @@
                 el.appendChild(host);
             }
 
-            // Open right now, or - failing that - the last reading taken.
+            // Open right now, or - failing that - the last PROBLEM found.
+            // The green "answered a while ago" dot is gone on purpose:
+            // beside a freshly imported list it read as "I have a session
+            // open to that box", which is the one thing a reachability
+            // memory must never suggest. Green now means exactly one thing
+            // - connected at this moment - and a clean audit shows as no
+            // dot at all (the reading still lives in the expanded row).
             const h = healthByNode[node.id];
             const open = node.type === 'session' && liveNodes.has(node.id);
+            const down = h && (h.streak || 0) > 0;
             if (open) {
                 const dot = document.createElement('span');
                 dot.className = 'tree-health live';
                 dot.title = 'Connected now - this session is open in this window. ' +
                     'It clears the moment the connection drops.';
                 el.appendChild(dot);
-            } else if (node.type === 'session' && h) {
+            } else if (node.type === 'session' && down) {
                 const dot = document.createElement('span');
-                const unreachable = (h.streak || 0) > 0;
                 // Amber for refused: something answered at that address but
                 // not on this port, which is a different problem from a
                 // device that has gone away entirely.
-                const kind = !unreachable ? 'ok' : (h.lastState === 'refused' ? 'warn' : 'bad');
+                const kind = h.lastState === 'refused' ? 'warn' : 'bad';
                 dot.className = `tree-health ${kind}`;
                 // These dots are a SNAPSHOT, not a monitor: nothing probes
                 // in the background, so a two-week-old red circle at full
@@ -183,14 +189,12 @@
                 const measured = Math.max(Date.parse(h.lastOk) || 0, Date.parse(h.lastFail) || 0);
                 const ageDays = measured ? (Date.now() - measured) / 86400000 : 99;
                 dot.style.opacity = String(Math.max(0.22, Math.min(1, 1 - (ageDays / 14) * 0.78)));
-                dot.title = (!unreachable
-                    ? `Answered ${new Date(h.lastOk).toLocaleString()}`
-                    : (h.lastState === 'refused'
-                        ? `Connection refused on this port ${new Date(h.lastFail).toLocaleString()}` +
-                          ' - the address is in use, but not by this service'
-                        : `No answer since ${new Date(h.lastFail).toLocaleString()}`) +
-                      (h.lastOk ? ` - last answered ${new Date(h.lastOk).toLocaleString()}`
-                                : ' - has never answered')) +
+                dot.title = (h.lastState === 'refused'
+                    ? `Connection refused on this port ${new Date(h.lastFail).toLocaleString()}` +
+                      ' - the address is in use, but not by this service'
+                    : `No answer since ${new Date(h.lastFail).toLocaleString()}`) +
+                    (h.lastOk ? ` - last answered ${new Date(h.lastOk).toLocaleString()}`
+                              : ' - has never answered') +
                     `
 
 ${describeAge(ageDays)}. Nothing is probed in the background: ` +
@@ -486,6 +490,25 @@ ${describeAge(ageDays)}. Nothing is probed in the background: ` +
             { label: multi ? 'Bulk edit...' : 'Edit...', onClick: editSelection },
             { label: 'Set credential profile...', disabled: !sessionCount, onClick: assignProfile },
         ];
+        if (!isFolder && !multi) {
+            items.push(null, {
+                label: 'Duplicate session...',
+                onClick: async () => {
+                    // A copy beside the original, sharing everything but the
+                    // name - the MobaXterm workflow for building out a new
+                    // device from a known-good template. Created first, then
+                    // opened for editing, so what you see is already saved.
+                    const copy = { ...node };
+                    delete copy.id;
+                    delete copy.order;
+                    delete copy.modifiedAt;
+                    copy.name = `${node.name} (copy)`;
+                    const made = await rsterm.invoke('rs:tree.upsert', copy);
+                    await refresh();
+                    window.Forms.editSession(made);
+                },
+            });
+        }
         if (isFolder && !multi) {
             items.push(null,
                 { label: 'New session here', onClick: () => window.Forms.editSession(null, node.id) },
@@ -496,7 +519,48 @@ ${describeAge(ageDays)}. Nothing is probed in the background: ` +
         window.Modals.menu(e.clientX, e.clientY, items);
     }
 
+    // Right-click on the EMPTY part of the list: the actions that are
+    // about the tree as a whole rather than any node in it.
+    function blankMenu(e) {
+        window.Modals.menu(e.clientX, e.clientY, [
+            { label: 'New session...', onClick: () => window.Forms.editSession(null, selectionParent()) },
+            { label: 'New folder...', onClick: () => window.Forms.editFolder(null, selectionParent()) },
+            null,
+            { label: 'Import MobaXTerm sessions...', onClick: () => window.TeamUI.mobaWizard() },
+            { label: 'Import spreadsheet (CSV)...', onClick: () => window.CsvUI.importCsv(selectedFolder(), null) },
+            {
+                label: 'Import exported session file...',
+                onClick: async () => {
+                    const plan = await rsterm.invoke('rs:team.importPick');
+                    if (plan) window.TeamUI.mergeDialog(plan, 'rs:team.applyImport', 'Import sessions');
+                },
+            },
+            null,
+            { label: 'Export to CSV...', onClick: () => window.CsvUI.exportCsv(selectedFolder()) },
+            {
+                label: 'Export sessions to a file...',
+                onClick: async () => {
+                    const r = await rsterm.invoke('rs:team.export');
+                    if (r) window.Forms.showBanner('warn',
+                        `Exported ${r.count} entries (no usernames, no secrets).`);
+                },
+            },
+            null,
+            {
+                label: 'Collapse all folders',
+                onClick: () => { expanded.clear(); render(); },
+            },
+        ]);
+    }
+
     function wireToolbar() {
+        document.getElementById('tree').addEventListener('contextmenu', (e) => {
+            // Rows have their own menu and their handler runs first; this
+            // one is for the blank space beneath them.
+            if (e.target.closest && e.target.closest('.tree-row, .tree-details')) return;
+            e.preventDefault();
+            blankMenu(e);
+        });
         document.getElementById('tree-new-session').addEventListener('click',
             () => window.Forms.editSession(null, selectionParent()));
         document.getElementById('tree-new-folder').addEventListener('click',

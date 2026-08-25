@@ -263,6 +263,10 @@
             : null;
         prof = prof || { name: '', username: '', storage: 'prompt', authMethod: defaultMethod };
         const body = document.createElement('div');
+        // A fixed width, or the dialog resizes itself every time a hint
+        // paragraph changes length - it visibly jumped when the scope note
+        // swapped between its two texts.
+        body.style.width = 'min(560px, 85vw)';
         const fName = input(prof.name, 'lab-key');
         if (!isNew) fName.disabled = true;   // the name is the shared contract
         const fUser = input(prof.username, 'your username');
@@ -395,10 +399,11 @@
         const syncScopeNote = () => {
             scopeNote.style.color = 'var(--se-txt-dim)';
             scopeNote.textContent = fScope.value.trim()
-                ? 'Addresses, names, 10.50.0.0/16 ranges or *.wildcards, separated by spaces. ' +
-                  'This credential is refused anywhere else, before it is decrypted.'
-                : 'Empty means no restriction: this credential may be sent to any host you ' +
-                  'connect to. Naming your management ranges here keeps it off everyone else.';
+                ? "Matched against each session's HOST field - the address or DNS name " +
+                  'you dial, never the display name. Refused anywhere else, before decryption.'
+                : "Empty means no restriction. Patterns match the session's host field " +
+                  '(IP or DNS name, not its display name): 10.50.0.0/16 ranges, ' +
+                  '*.wildcards, exact addresses.';
         };
         fScope.addEventListener('input', syncScopeNote);
         syncScopeNote();

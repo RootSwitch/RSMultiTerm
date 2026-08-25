@@ -2,6 +2,32 @@
 
 ## Unreleased
 
+- **A failed connection now says WHY, in the pane.** A session refused
+  before it ever dialed - a fenced credential, a halted profile - used
+  to leave an orange dot and nothing else, because the refusal fired
+  while the pane was still being created and was simply lost. The
+  reason is now written into the terminal ("credential profile X is not
+  allowed on HOST...") above the press-R hint, for every kind of
+  failure.
+- **"Paste to all panes" pastes to all panes.** With broadcast off it
+  quietly fell back to just the focused pane. It is a one-shot
+  broadcast now, always confirming, always honoring per-pane opt-outs -
+  arming is for keystrokes.
+- **Right-click a session: Duplicate session.** Creates a copy beside
+  the original sharing every setting, then opens it for editing - the
+  build-from-a-template workflow.
+- **Right-click the blank space under the session list** for New
+  session, New folder, the importers, the exporters, and Collapse all
+  folders.
+- **The green audit dot is gone.** Green now means exactly one thing:
+  connected at this moment. A clean audit reading shows no dot (it
+  still lives in the session's expanded row); amber and red still mark
+  refused and unreachable, fading with age. An imported list can no
+  longer look half-connected when you open the app.
+- The credential-scope hint now says what it matches (the session's
+  host field - IP or DNS name, not its display name), and the profile
+  editor no longer changes width as you type.
+
 - **Credential profiles can say which hosts they may be used with.**
   A new "May be used with" field on each profile takes addresses,
   names, `10.50.0.0/16` ranges and `*.wildcards`. The app refuses to

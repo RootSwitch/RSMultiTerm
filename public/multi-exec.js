@@ -78,9 +78,13 @@
         const tab = window.Tabs.active();
         if (!tab) return;
         const s = forTab(tab.id);
-        const targets = s.enabled ? participants(tab)
-            : (tab.focusedSessionId ? [tab.focusedSessionId] : []);
-        if (!targets.length) return;
+        // All panes, whether or not broadcast is ARMED - this action IS a
+        // one-shot broadcast, arming is for keystrokes. It used to fall
+        // back to just the focused pane when unarmed, which made the menu
+        // item a lie. Exclusions still apply: a pane opted out of broadcast
+        // is opted out of this too, and only connected panes count.
+        const targets = participants(tab);
+        if (!targets.length) return setStatus('no connected panes to paste to');
 
         let text;
         try {

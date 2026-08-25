@@ -50,10 +50,36 @@
     rsterm.on('rs:evt.connect-failed', (m) => {
         const pane = window.TermPanes.panes.get(m.sessionId);
         if (pane) {
+            // setState writes the reason into the pane now; no second line.
             window.TermPanes.setState(pane, m.isAuthFailure ? 'auth-blocked' : 'error', m.message);
-            pane.term.write(`\r\n\x1b[31mconnect failed: ${plain(m.message)}\x1b[0m\r\n`);
         } else dropWaitingPort(m.sessionId);
     });
+
+    // Pane state from MAIN, not the engine. A session refused before it
+    // ever reaches the engine - credential out of scope, tripped profile -
+    // has no per-session port to speak through, so this broadcast is the
+    // only way the pane learns its fate. And it can fire while openNodes is
+    // still returning, BEFORE the pane exists: those are held and applied
+    // the moment the pane is created, or the refusal is invisible and the
+    // pane sits on an orange dot forever - which is exactly how the first
+    // credential-scope refusal looked in real use.
+    const earlyStatus = new Map();   // sessionId -> {state, detail}
+    rsterm.on('rs:evt.session-status', (m) => {
+        if (!m || !m.sessionId || !m.state) return;
+        const pane = window.TermPanes.panes.get(m.sessionId);
+        if (!pane) {
+            earlyStatus.set(m.sessionId, { state: m.state, detail: m.detail });
+            return;
+        }
+        if (pane.state !== m.state) {
+            window.TermPanes.setState(pane, m.state, m.detail);
+        }
+    });
+    window.App.takeEarlyStatus = (sessionId) => {
+        const held = earlyStatus.get(sessionId);
+        earlyStatus.delete(sessionId);
+        return held || null;
+    };
     rsterm.on('rs:evt.session-closed', (m) => {
         const pane = window.TermPanes.panes.get(m.sessionId);
         if (pane && pane.state !== 'error' && pane.state !== 'auth-blocked') {
