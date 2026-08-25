@@ -211,6 +211,16 @@
     // Offers the previous layout back, and starts snapshotting this one.
     window.Workspace.init();
 
+    // A session that connected while its destination disappeared - the
+    // pane closed mid-reconnect, the tab closed mid-open - is hung up, not
+    // parked: a live authenticated connection nobody can see or close is
+    // worse than redialing.
+    function disposeOrphan(sessionId) {
+        rsterm.invoke('rs:session.disconnect', { sessionId }).catch(() => { /* engine gone */ });
+        window.TermPanes.destroy(sessionId);
+    }
+    window.App.disposeOrphan = disposeOrphan;
+
     // --- reconnect --------------------------------------------------------
     // Dial the same target again into the same grid slot. Saved sessions
     // re-resolve from the tree, so an edited host or profile is picked up.
@@ -239,7 +249,13 @@
         }
         window.TermPanes.create(res.sessionId, res.title || pane.title, res.highlightSet, res.transport);
         adoptWaitingPort(res.sessionId);
-        window.Tabs.replaceSession(oldSessionId, res.sessionId);
+        // The dial and the credential prompt above both await; the pane
+        // being reconnected can be closed during either. If it is gone,
+        // the fresh session has no slot to take over - hang it up.
+        if (!window.Tabs.replaceSession(oldSessionId, res.sessionId)) {
+            disposeOrphan(res.sessionId);
+            return;
+        }
         window.TermPanes.destroy(oldSessionId);
         const fresh = window.TermPanes.panes.get(res.sessionId);
         if (fresh) fresh.term.focus();
@@ -265,7 +281,12 @@
         }
         window.TermPanes.create(res.sessionId, res.title || pane.title, res.highlightSet, res.transport);
         adoptWaitingPort(res.sessionId);
-        window.Tabs.addSession(tab.id, res.sessionId);
+        // The tab was captured before the await; a duplicate whose tab was
+        // closed while dialing has nowhere to go, and "beside the
+        // original" cannot mean "invisible".
+        if (!window.Tabs.addSession(tab.id, res.sessionId)) {
+            disposeOrphan(res.sessionId);
+        }
     }
     window.App.duplicatePane = duplicatePane;
 

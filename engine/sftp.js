@@ -195,6 +195,23 @@ async function run(session, req, onProgress) {
     }
 }
 
+// Both directions work on a temporary name and move it into place only on
+// success. This is one fix for two different data-loss bugs:
+//
+//   Download: the old cleanup deleted req.local on ANY failure - but ssh2
+//   opens the REMOTE side first, so a remote open that fails (EACCES on a
+//   root-owned file, a file deleted between listing and click) deleted a
+//   pre-existing local file this code never wrote. A user overwriting
+//   yesterday's good backup lost it to a failed download of today's.
+//
+//   Upload: fastPut opened the remote with 'w', truncating an existing
+//   remote file the instant the transfer STARTED - so an upload that died
+//   midway (dropped link, full flash) left a truncated remote file that
+//   looks complete. Downloads had cleanup; uploads had nothing.
+//
+// SFTP RENAME is core protocol (not an extension), but its v3 semantics
+// refuse an existing target - hence unlink-then-rename on the remote, with
+// a failure there reported as exactly what it is.
 function transfer(sftp, dir, req, onProgress) {
     return new Promise((resolve, reject) => {
         let total = 0;
@@ -211,18 +228,44 @@ function transfer(sftp, dir, req, onProgress) {
             onProgress({ bytes: transferred, total: totalBytes || total });
         };
 
-        const done = (err) => {
-            if (!err) return resolve({ ok: true });
-            // A truncated startup-config that LOOKS complete is dangerous in
-            // this domain; a failed download must not leave one behind.
-            if (dir === 'get') {
-                try { fs.unlinkSync(req.local); } catch (_) { /* never written */ }
+        if (dir === 'get') {
+            const tmp = `${req.local}.part`;
+            sftp.fastGet(req.path, tmp, { step }, (err) => {
+                if (err) {
+                    // Only ever the temp file: whatever was at req.local
+                    // before this download stays exactly as it was.
+                    try { fs.unlinkSync(tmp); } catch (_) { /* never written */ }
+                    return reject(err);
+                }
+                try {
+                    fs.renameSync(tmp, req.local);
+                } catch (e) {
+                    try { fs.unlinkSync(tmp); } catch (_) { /* best effort */ }
+                    return reject(new Error(`downloaded, but could not replace ${req.local}: ${e.message}`));
+                }
+                resolve({ ok: true });
+            });
+            return;
+        }
+
+        const remoteTmp = `${req.path}.part`;
+        sftp.fastPut(req.local, remoteTmp, { step }, (err) => {
+            if (err) {
+                // Best effort: remove the partial temp so the device is not
+                // left holding a half-file under any name.
+                sftp.unlink(remoteTmp, () => reject(err));
+                return;
             }
-            reject(err);
-        };
-        if (dir === 'get') sftp.fastGet(req.path, req.local, { step }, done);
-        else sftp.fastPut(req.local, req.path, { step }, done);
+            const finalize = () => sftp.rename(remoteTmp, req.path, (renameErr) => {
+                if (!renameErr) return resolve({ ok: true });
+                reject(new Error(`uploaded to ${remoteTmp} but could not move it into place: ` +
+                    `${renameErr.message} - the file is complete under that name`));
+            });
+            // v3 rename refuses an existing target; clear it first. ENOENT
+            // (nothing there) is the common case and not an error.
+            sftp.unlink(req.path, () => finalize());
+        });
     });
 }
 
-module.exports = { run, forSession, drop, resolveMode, formatMode, ownerGroup };
+module.exports = { run, forSession, drop, resolveMode, formatMode, ownerGroup, transfer };

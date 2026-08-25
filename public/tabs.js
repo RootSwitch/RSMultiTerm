@@ -26,12 +26,18 @@
         return tab;
     }
 
+    // Returns whether the session actually landed in a tab. Callers pass a
+    // tab captured BEFORE an await (a dial, a credential prompt), and the
+    // user may close it during that await; a silent no-op here turned the
+    // freshly opened session into a live, authenticated connection with no
+    // pane, no close button, and no way out short of quitting the app.
     function addSession(tabId, sessionId) {
         const tab = byId(tabId);
-        if (!tab) return;
+        if (!tab) return false;
         tab.sessionIds.push(sessionId);
         tab.focusedSessionId = sessionId;
         fire();
+        return true;
     }
 
     // Find whichever tab holds the session; a session lives in exactly one.
@@ -62,13 +68,16 @@
 
     // Swap a session for its replacement in place, so a reconnected pane
     // keeps its position in the grid instead of jumping to the end.
+    // Same contract as addSession: false means the old session is in no
+    // tab any more, so the replacement has nowhere to appear.
     function replaceSession(oldId, newId) {
         const tab = tabOf(oldId);
-        if (!tab) return;
+        if (!tab) return false;
         const at = tab.sessionIds.indexOf(oldId);
         tab.sessionIds[at] = newId;
         if (tab.focusedSessionId === oldId) tab.focusedSessionId = newId;
         fire();
+        return true;
     }
 
     function setFocused(sessionId) {

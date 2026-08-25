@@ -2,6 +2,37 @@
 
 ## Unreleased
 
+- **The code review's follow-up batch: transfer safety and hardening.**
+  - **Downloads and uploads never leave a half-file behind, or delete a
+    good one.** Every transfer - single file, folder tree, and SCP -
+    now lands on a temporary name and moves into place only on success.
+    A failed download deletes only what it wrote, so overwriting
+    yesterday's backup with a download that then fails no longer loses
+    the backup; a failed upload leaves no truncated file on the device
+    under the real name.
+  - **Field servers stop when you tell them to.** Stop and the time
+    limit now close transfers in progress, not just the listening
+    socket - a TFTP transfer no longer outlives the button or the
+    deadline. A stalled upload no longer holds a file open forever.
+  - **A TFTP upload can't truncate a file it never finishes writing, or
+    fill the disk.** A write request opens a temp file, not the target,
+    so an empty or abandoned request leaves the existing file intact; a
+    declared or actual size past 4 GiB is refused.
+  - **Symlinks and junctions can't escape a served folder.** Both field
+    servers now resolve the real path and re-check it against the served
+    root, so a link inside the folder pointing outside it is refused for
+    reads and writes alike.
+  - **Folder download handles hostile and awkward trees.** Windows
+    reserved names (nul, con...) and illegal characters are refused
+    rather than silently vanishing or aborting the batch; names that
+    collide on a case-insensitive disk take the first and skip the rest;
+    the walk is bounded in breadth as well as depth; and one bad
+    directory name loses its subtree, not the whole download.
+  - **A connection can't end up invisible.** A session that finishes
+    connecting after its pane or tab was closed - a slow dial, a
+    credential prompt left open - is now hung up or given a fresh tab,
+    never left as a live login with no window and no close button.
+
 - **Nine fixes from an external code review**, the ones it flagged as
   worth fixing before anything called 2.0:
   - A jump host with an SSH agent configured spent TWO authentication

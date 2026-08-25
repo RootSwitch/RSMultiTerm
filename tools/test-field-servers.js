@@ -170,6 +170,22 @@ const get = (port, p) => new Promise((resolve, reject) => {
         const missing = await tftpGet(tftp.port, 'nope.bin');
         assert.strictEqual(missing.code, 1, 'a missing file is "file not found", not a crash');
 
+        // A link INSIDE the folder pointing OUTSIDE it defeats every string
+        // check - the lexical path is squeaky clean and open() follows the
+        // link. Junction on Windows (no privilege needed), symlink
+        // elsewhere. TFTP has no auth, so this is a full read primitive if
+        // it works.
+        fs.writeFileSync(path.join(outside, 'loot.txt'), 'never serve this either');
+        try {
+            fs.symlinkSync(outside, path.join(root, 'jump'),
+                process.platform === 'win32' ? 'junction' : 'dir');
+        } catch (err) {
+            throw new Error(`could not create the escape link for the test: ${err.message}`);
+        }
+        const viaLink = await tftpGet(tftp.port, 'jump/loot.txt');
+        assert.ok(viaLink.error, 'TFTP must refuse a path that resolves through a link to outside');
+        assert.ok(!viaLink.data, 'and must not return its content');
+
         // Read-only by default: an upload is refused rather than accepted.
         const denied = await tftpPut(tftp.port, 'planted.txt', Buffer.from('should not land'));
         assert.ok(denied.error && /read-only/.test(denied.error), 'uploads are refused by default');
@@ -189,7 +205,77 @@ const get = (port, p) => new Promise((resolve, reject) => {
         assert.ok(escapeWrite.error, 'an upload outside the folder is refused');
         assert.ok(!fs.existsSync(path.join(box, 'escaped.cfg')),
             'and nothing was written outside the folder');
+        const writeViaLink = await tftpPut(rw.port, 'jump/dropped.cfg', Buffer.from('nope'));
+        assert.ok(writeViaLink.error, 'an upload through the junction is refused');
+        assert.ok(!fs.existsSync(path.join(outside, 'dropped.cfg')),
+            'and nothing landed outside the folder');
+
+        // A WRQ alone must not clobber the file it names. The old code
+        // opened the FINAL name with 'w' the instant the request arrived,
+        // so a request carrying zero bytes of data truncated an existing
+        // served file - startup-config, say - to nothing.
+        fs.writeFileSync(path.join(root, 'precious.cfg'), 'the good config\n');
+        await new Promise((resolve) => {
+            const s = dgram.createSocket('udp4');
+            s.on('message', () => { /* the ACK; send nothing back, ever */ });
+            s.send(reqPacket(WRQ, 'precious.cfg', {}), rw.port, '127.0.0.1',
+                () => setTimeout(() => { s.close(); resolve(); }, 400));
+        });
+        assert.strictEqual(fs.readFileSync(path.join(root, 'precious.cfg'), 'utf8'),
+            'the good config\n',
+            'a data-less WRQ must not truncate the file it names');
+
+        // A declared size beyond the cap is refused before a byte moves -
+        // TFTP has no auth, and "writes allowed" must not mean "can fill
+        // the disk".
+        const huge = await new Promise((resolve, reject) => {
+            const s = dgram.createSocket('udp4');
+            const timer = setTimeout(() => { s.close(); reject(new Error('no answer to huge tsize')); }, 4000);
+            s.on('message', (msg) => {
+                clearTimeout(timer); s.close();
+                resolve(msg.readUInt16BE(0) === ERROR
+                    ? { error: msg.toString('utf8', 4, msg.length - 1) } : { accepted: true });
+            });
+            s.send(reqPacket(WRQ, 'toolarge.bin', { tsize: '99999999999999' }), rw.port, '127.0.0.1');
+        });
+        assert.ok(huge.error && /too large/.test(huge.error),
+            'a declared size beyond the cap is refused up front');
         field.stop('tftp');
+
+        // Stop means stop, transfers included. Start a read, take the first
+        // block, never ACK - the server retransmits on its timer. Stop the
+        // server mid-transfer: the retransmits must cease, because the old
+        // code closed only the LISTENING socket and the transfer outlived
+        // both the button and the deadline.
+        const rd = await field.start({
+            id: 'tftp', kind: 'tftp', root, bind: '127.0.0.1', port: 0,
+            allowWrites: false, stopAfterMinutes: 5,
+        });
+        const packetsAfterStop = await new Promise((resolve, reject) => {
+            const s = dgram.createSocket('udp4');
+            let sawData = false;
+            let stopped = false;
+            let after = 0;
+            const guard = setTimeout(() => { s.close(); reject(new Error('transfer never started')); }, 5000);
+            s.on('message', () => {
+                if (!sawData) {
+                    sawData = true;
+                    clearTimeout(guard);
+                    // First DATA in hand; stop the server and count what
+                    // still arrives after a full retransmit interval.
+                    setTimeout(() => {
+                        field.stop('tftp');
+                        stopped = true;
+                        setTimeout(() => { s.close(); resolve(after); }, 2600);
+                    }, 100);
+                } else if (stopped) {
+                    after++;
+                }
+            });
+            s.send(reqPacket(RRQ, 'image.bin', {}), rd.port, '127.0.0.1');
+        });
+        assert.strictEqual(packetsAfterStop, 0,
+            `stop must end in-flight transfers - saw ${packetsAfterStop} retransmits after stop`);
 
         // --- HTTP -------------------------------------------------------
         const web = await field.start({
@@ -206,6 +292,10 @@ const get = (port, p) => new Promise((resolve, reject) => {
             assert.ok(r.status === 403 || r.status === 404, `HTTP must refuse ${escape}, got ${r.status}`);
             assert.ok(!r.body.toString().includes('never serve'), `HTTP leaked ${escape}`);
         }
+        const viaHttpLink = await get(web.port, '/jump/loot.txt');
+        assert.ok(viaHttpLink.status === 403 || viaHttpLink.status === 404,
+            `HTTP must refuse the junction escape, got ${viaHttpLink.status}`);
+        assert.ok(!viaHttpLink.body.toString().includes('never serve'), 'HTTP leaked through the link');
         field.stop('http');
 
         const listed = await field.start({
@@ -247,7 +337,8 @@ const get = (port, p) => new Promise((resolve, reject) => {
         assert.deepStrictEqual(field.list(), [], 'stopAll stops all');
         void t;
 
-        console.log('ok - field servers (tftp read/write + blksize/tsize, http, wol packet, ' +
+        console.log('ok - field servers (tftp read/write + blksize/tsize + junction escape + ' +
+            'WRQ truncate guard + size cap + stop-kills-transfers, http, wol packet, ' +
             'and every path outside the folder refused)');
         process.exit(0);
     } catch (err) {

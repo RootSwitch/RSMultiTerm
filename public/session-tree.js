@@ -353,7 +353,14 @@ ${describeAge(ageDays)}. Nothing is probed in the background: ` +
                 window.Tabs.addSession(window.Tabs.newTab(r.title).id, r.sessionId);
             } else {
                 if (!tab) tab = window.Tabs.newTab(r.title);
-                window.Tabs.addSession(tab.id, r.sessionId);
+                // The user asked for these sessions, so a tab that closed
+                // during the dial gets replaced rather than the session
+                // being thrown away - unlike a reconnect, where the closed
+                // pane WAS the request.
+                if (!window.Tabs.addSession(tab.id, r.sessionId)) {
+                    tab = window.Tabs.newTab(r.title);
+                    window.Tabs.addSession(tab.id, r.sessionId);
+                }
             }
         }
     }

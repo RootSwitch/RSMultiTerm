@@ -37,8 +37,23 @@ const DEFAULT_BLKSIZE = 512;
 const MAX_BLKSIZE = 65464;      // RFC 2348 ceiling
 const RETRIES = 5;
 const RETRY_MS = 1200;
+// Upload ceiling. TFTP is unauthenticated, so "writes allowed" must not
+// mean "can fill the disk"; 4 GiB is beyond any firmware image and far
+// below any disk this app serves from.
+const MAX_UPLOAD_BYTES = 4 * 1024 * 1024 * 1024;
 
 const servers = new Map();      // id -> {kind, close(), info}
+// Live per-transfer sockets, by server id. Stop and the deadline used to
+// close only the LISTENING socket, so a transfer in progress - and, worse,
+// a stalled upload holding a file handle - outlived the button and the
+// time limit the module makes a point of enforcing.
+const transfers = new Map();    // id -> Set of cancel()
+function trackTransfer(id, cancel) {
+    let set = transfers.get(id);
+    if (!set) { set = new Set(); transfers.set(id, set); }
+    set.add(cancel);
+    return () => set.delete(cancel);
+}
 let onEvent = () => {};
 
 function setNotifier(fn) { onEvent = fn; }
@@ -55,7 +70,27 @@ function inside(root, name) {
     const full = path.resolve(root, clean);
     const base = path.resolve(root);
     if (full !== base && !full.startsWith(base + path.sep)) return null;
-    return full;
+    // The check above is lexical; symlinks and junctions defeat it. A link
+    // inside the served folder pointing outside it passes every string
+    // test and then openSync follows it - so resolve what actually exists
+    // and re-check. For a path that does not exist yet (an upload), the
+    // deepest existing ancestor is what a link could hide in.
+    let realBase;
+    try { realBase = fs.realpathSync.native(base); } catch (_) { return null; }
+    let real = null;
+    try {
+        real = fs.realpathSync.native(full);
+    } catch (_) {
+        try {
+            real = path.join(fs.realpathSync.native(path.dirname(full)), path.basename(full));
+        } catch (_) {
+            // Nothing on the path exists, so nothing can be a link; the
+            // lexical answer stands and open() will say "not found".
+            return full;
+        }
+    }
+    if (real !== realBase && !real.startsWith(realBase + path.sep)) return null;
+    return real;
 }
 
 // --- TFTP -------------------------------------------------------------------
@@ -128,11 +163,14 @@ function tftpRead(id, root, req, rinfo, bind) {
     let sent = 0;
 
     const finish = (text, detail) => {
+        untrack();
         clearTimeout(timer);
         try { fs.closeSync(fd); } catch (_) { /* already closed */ }
         try { sock.close(); } catch (_) { /* already closed */ }
         note(id, text, detail);
     };
+    const untrack = trackTransfer(id, () =>
+        finish(`tftp: ${req.filename} stopped`, 'server stopped'));
 
     const sendCurrent = () => {
         sock.send(current, rinfo.port, rinfo.address);
@@ -206,9 +244,19 @@ function tftpRead(id, root, req, rinfo, bind) {
 function tftpWrite(id, root, req, rinfo, bind, allowWrites) {
     const sock = dgram.createSocket('udp4');
     let openHandle = null;
+    let tmpFile = null;
+    let idleTimer = null;
+    let untrack = () => {};
     const done = (text, detail) => {
+        untrack();
+        clearTimeout(idleTimer);
         if (openHandle !== null) { try { fs.closeSync(openHandle); } catch (_) { /* closed */ } }
         openHandle = null;
+        // An upload that did not finish leaves NOTHING behind: a truncated
+        // image with the right name is exactly what a device will happily
+        // flash. The temp file is the only thing we ever wrote.
+        if (tmpFile) { try { fs.unlinkSync(tmpFile); } catch (_) { /* never written */ } }
+        tmpFile = null;
         try { sock.close(); } catch (_) { /* closed */ }
         note(id, text, detail);
     };
@@ -218,6 +266,15 @@ function tftpWrite(id, root, req, rinfo, bind, allowWrites) {
     // engine and every SSH session with it, from any host that could reach
     // an upload-enabled port.
     sock.on('error', () => done(`tftp: upload of ${req.filename} failed`, 'socket error'));
+    // The read path self-terminates through its retransmit budget; a writer
+    // that goes silent after WRQ used to hold the socket and file handle
+    // open forever. Same budget, same policy.
+    const armIdle = () => {
+        clearTimeout(idleTimer);
+        idleTimer = setTimeout(() =>
+            done(`tftp: upload of ${req.filename} timed out`, rinfo.address),
+        RETRY_MS * (RETRIES + 1));
+    };
     sock.bind(0, bind, () => {
         if (!allowWrites) {
             return tftpError(sock, rinfo.port, rinfo.address, 2, 'server is read-only',
@@ -228,14 +285,34 @@ function tftpWrite(id, root, req, rinfo, bind, allowWrites) {
             return tftpError(sock, rinfo.port, rinfo.address, 2, 'access violation',
                 () => done(`tftp: refused upload of ${req.filename}`, `${rinfo.address} - outside the folder`));
         }
+        // A declared size beyond the cap is refused before a byte moves.
+        // The cap exists because TFTP has no authentication: anything that
+        // can reach the port can write, and "can write" must not include
+        // "can fill the disk".
+        if (req.options.tsize !== undefined) {
+            const declared = Number(req.options.tsize);
+            if (Number.isFinite(declared) && declared > MAX_UPLOAD_BYTES) {
+                return tftpError(sock, rinfo.port, rinfo.address, 3, 'file too large',
+                    () => done(`tftp: refused upload of ${req.filename}`,
+                        `${rinfo.address} - declared ${declared} bytes`));
+            }
+        }
+        // Written under a temp name and renamed into place on completion.
+        // The old code opened the FINAL name with 'w' the instant the WRQ
+        // arrived - so a single request carrying no data at all truncated
+        // an existing served file to zero. startup-config, say.
+        tmpFile = `${file}.part`;
         let handle;
         try {
-            handle = fs.openSync(file, 'w');
+            handle = fs.openSync(tmpFile, 'w');
             openHandle = handle;
         } catch (err) {
+            tmpFile = null;
             return tftpError(sock, rinfo.port, rinfo.address, 3, 'cannot write there',
                 () => done(`tftp: cannot write ${req.filename}`, err.message));
         }
+        untrack = trackTransfer(id, () =>
+            done(`tftp: upload of ${req.filename} stopped`, 'server stopped'));
 
         let blksize = DEFAULT_BLKSIZE;
         const accepted = {};
@@ -258,19 +335,21 @@ function tftpWrite(id, root, req, rinfo, bind, allowWrites) {
             if (from.address !== rinfo.address) return;
             const op = msg.readUInt16BE(0);
             if (op === ERROR) {
-                openHandle = null;
-                try { fs.closeSync(handle); } catch (_) { /* closed */ }
                 return done(`tftp: upload of ${req.filename} cancelled`, rinfo.address);
             }
             if (op !== DATA) return;
+            armIdle();
             const n = msg.readUInt16BE(2);
             if (n !== (expect & 0xffff)) { ack(n); return; }   // duplicate: re-ack
             const body = msg.subarray(4);
+            if (received + body.length > MAX_UPLOAD_BYTES) {
+                return tftpError(sock, rinfo.port, rinfo.address, 3, 'file too large',
+                    () => done(`tftp: refused upload of ${req.filename}`,
+                        `${rinfo.address} - exceeded ${MAX_UPLOAD_BYTES} bytes`));
+            }
             try {
                 fs.writeSync(handle, body);
             } catch (err) {
-                openHandle = null;
-                try { fs.closeSync(handle); } catch (_) { /* closed */ }
                 return tftpError(sock, rinfo.port, rinfo.address, 3, 'write failed',
                     () => done(`tftp: write failed for ${req.filename}`, err.message));
             }
@@ -278,11 +357,21 @@ function tftpWrite(id, root, req, rinfo, bind, allowWrites) {
             ack(n);
             expect++;
             if (body.length < blksize) {
+                // Complete: close, move into place, and only then report.
+                untrack();
+                clearTimeout(idleTimer);
                 openHandle = null;
                 try { fs.closeSync(handle); } catch (_) { /* closed */ }
+                try {
+                    fs.renameSync(tmpFile, file);
+                    tmpFile = null;
+                } catch (err) {
+                    return done(`tftp: could not finalize ${req.filename}`, err.message);
+                }
                 done(`tftp: received ${req.filename} (${received} bytes)`, rinfo.address);
             }
         });
+        armIdle();
         if (Object.keys(accepted).length) sock.send(oackPacket(accepted), rinfo.port, rinfo.address);
         else ack(0);
         note(id, `tftp: receiving ${req.filename}`, rinfo.address);
@@ -430,6 +519,11 @@ function stop(id) {
     clearTimeout(s.timer);
     s.close();
     servers.delete(id);
+    // Stop means STOP: transfers in flight close with the listener, or
+    // "stop after N minutes" is a promise about the front door only.
+    const live = transfers.get(id);
+    transfers.delete(id);
+    if (live) for (const cancel of [...live]) cancel();
     return { stopped: true };
 }
 

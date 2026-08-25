@@ -30,19 +30,35 @@ const path = require('path');
 // half-million-file tree out of a switch by accident.
 const MAX_FILES = 20000;
 const MAX_DEPTH = 32;
+// Breadth needs its own caps: depth alone does not bound a walk against a
+// server that answers every readdir with a thousand fresh subdirectories.
+// Files were capped from the start; the QUEUE was not, so a hostile tree
+// could still grow it - and the local mkdir list - without limit.
+const MAX_DIRS = 5000;
+const MAX_READDIRS = 10000;
 const CONCURRENCY = 6;
 
 // One path component, made safe to put on a local filesystem. Same rules as
 // the renderer's localName, applied to every level of the tree instead of
 // just the leaf: null means "this name cannot be written safely".
+// Names Windows reserves for devices, with or without an extension:
+// 'nul' and 'con.txt' both resolve to the device, so a remote file called
+// nul would "download" into nothingness while being counted a success.
+const RESERVED = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\.|$)/i;
+
 function safeComponent(name) {
     const last = String(name == null ? '' : name).split(/[/\\]/).pop();
     if (!last || last === '.' || last === '..' || last.includes(':')) return null;
+    // Characters Win32 refuses in names, plus control bytes. A remote
+    // directory named 'a|b' used to reach mkdirSync, which threw and took
+    // the whole batch with it.
+    if (/[<>"|?*\x00-\x1f]/.test(last)) return null;
     // Win32 strips trailing dots and spaces when creating the file, so
     // 'evil.exe. ' and 'evil.exe' are the same file - and that is also how
     // '..' would sneak past the check above as '.. '.
     const trimmed = last.replace(/[. ]+$/, '');
     if (!trimmed || trimmed === '.' || trimmed === '..') return null;
+    if (RESERVED.test(trimmed)) return null;
     return trimmed;
 }
 
@@ -74,11 +90,23 @@ async function walk(sftp, remoteRoot, localRoot, onNote) {
     const dirs = [];
     const skipped = { links: 0, unsafe: 0 };
     let truncated = false;
+    let readdirs = 0;
+    // Distinct remote names can collide on ONE local path: 'a' and 'a. '
+    // both clean to 'a', and README vs readme collide on a case-insensitive
+    // filesystem - which is most of the machines this app runs on. With six
+    // transfers in flight, two fastGets holding the same local path open
+    // interleave their writes and both count as successes. First name wins;
+    // the collision is skipped, counted, and said out loud.
+    const claimed = new Set();
 
     const queue = [{ remote: remoteRoot, parts: [] }];
     while (queue.length) {
+        // Once ANY cap is hit the walk is a lie either way - stop taking
+        // readdirs from the server rather than continuing to grow state.
+        if (truncated) break;
         const here = queue.shift();
         if (here.parts.length > MAX_DEPTH) { truncated = true; continue; }
+        if (++readdirs > MAX_READDIRS) { truncated = true; break; }
         let list;
         try {
             list = await readdir(sftp, here.remote);
@@ -96,8 +124,16 @@ async function walk(sftp, remoteRoot, localRoot, onNote) {
             const parts = here.parts.concat([it.filename]);
             const local = localFor(localRoot, parts);
             if (!local) { skipped.unsafe++; continue; }
+            const fold = local.toLowerCase();
+            if (claimed.has(fold)) {
+                skipped.unsafe++;
+                onNote(`skipped ${it.filename}: its name collides with another entry on this filesystem`);
+                continue;
+            }
+            claimed.add(fold);
             const remote = `${here.remote.replace(/\/+$/, '')}/${it.filename}`;
             if (isDir) {
+                if (dirs.length >= MAX_DIRS) { truncated = true; continue; }
                 dirs.push(local);
                 queue.push({ remote, parts });
             } else {
@@ -122,14 +158,17 @@ async function fetchAll(sftp, files, onEach) {
             const i = next++;
             if (i >= files.length) return;
             const f = files[i];
+            // Fetched under a temp name and renamed on success, so a
+            // failure deletes only what THIS transfer wrote - never a file
+            // that was already there - and a half-written config can never
+            // sit on disk looking complete.
+            const tmp = `${f.local}.part`;
             try {
                 await new Promise((res, rej) =>
-                    sftp.fastGet(f.remote, f.local, {}, (e) => (e ? rej(e) : res())));
+                    sftp.fastGet(f.remote, tmp, {}, (e) => (e ? rej(e) : res())));
+                fs.renameSync(tmp, f.local);
             } catch (err) {
-                // A half-written file is worse than a missing one: a
-                // truncated config that looks complete is the failure mode
-                // this whole app is careful about.
-                try { fs.unlinkSync(f.local); } catch (_) { /* never created */ }
+                try { fs.unlinkSync(tmp); } catch (_) { /* never created */ }
                 failures.push({ remote: f.remote, error: err.message });
             }
             onEach(++done, files.length, f);
@@ -157,7 +196,16 @@ async function downloadTree(sftp, req, onProgress) {
     const { files, dirs, skipped, truncated } =
         await walk(sftp, req.path, localRoot, (n) => notes.push(n));
 
-    for (const d of dirs) fs.mkdirSync(d, { recursive: true });
+    // One undecipherable directory loses that subtree, not the batch: its
+    // mkdir failure is noted here, and the files beneath it fail per-file
+    // in fetchAll exactly as an unreadable remote file would.
+    for (const d of dirs) {
+        try {
+            fs.mkdirSync(d, { recursive: true });
+        } catch (err) {
+            notes.push(`could not create ${path.basename(d)}: ${err.message}`);
+        }
+    }
 
     let last = 0;
     const failures = await fetchAll(sftp, files, (done, total, f) => {
@@ -181,4 +229,4 @@ async function downloadTree(sftp, req, onProgress) {
     };
 }
 
-module.exports = { downloadTree, safeComponent, localFor, walk, MAX_FILES, MAX_DEPTH };
+module.exports = { downloadTree, safeComponent, localFor, walk, MAX_FILES, MAX_DEPTH, MAX_DIRS, MAX_READDIRS };

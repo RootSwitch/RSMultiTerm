@@ -256,7 +256,29 @@ const refuseBody = fieldSrc.slice(fieldSrc.indexOf('function refuse('),
 assert.ok(refuseBody.includes(".on('error'"),
     'the refuse sub-socket must handle errors too');
 
-// 20. What Windows shows for the app. FileDescription is misnamed: it is
+// 20. A session created after an await must land in a tab or be hung up.
+// reconnect, duplicate and open-into-current-tab all capture their target
+// before awaiting a dial the user can outlast; addSession/replaceSession
+// used to no-op silently when the target was gone, leaving a live,
+// authenticated, INVISIBLE connection with no close button. The tab
+// helpers now report success, and every after-await caller must check.
+const tabsSrc = fs.readFileSync(path.join(PUBLIC, 'tabs.js'), 'utf8');
+assert.ok(/function addSession\(tabId, sessionId\) \{[\s\S]{0,220}?if \(!tab\) return false;/.test(tabsSrc),
+    'addSession must return false when the tab is gone, not silently no-op');
+assert.ok(/function replaceSession\(oldId, newId\) \{[\s\S]{0,120}?if \(!tab\) return false;/.test(tabsSrc),
+    'replaceSession must return false when the old session is in no tab');
+const appSrc = fs.readFileSync(path.join(PUBLIC, 'app.js'), 'utf8');
+assert.ok(/function disposeOrphan\(/.test(appSrc),
+    'app.js must keep disposeOrphan - the hang-up for sessions with nowhere to appear');
+assert.ok(/if \(!window\.Tabs\.replaceSession\(oldSessionId, res\.sessionId\)\) \{[\s\S]{0,40}disposeOrphan/.test(appSrc),
+    'reconnectPane must dispose the fresh session when its pane closed mid-dial');
+assert.ok(/if \(!window\.Tabs\.addSession\(tab\.id, res\.sessionId\)\) \{[\s\S]{0,40}disposeOrphan/.test(appSrc),
+    'duplicatePane must dispose the duplicate when its tab closed mid-dial');
+const treeSrc = fs.readFileSync(path.join(PUBLIC, 'session-tree.js'), 'utf8');
+assert.ok(/if \(!window\.Tabs\.addSession\(tab\.id, r\.sessionId\)\) \{[\s\S]{0,80}newTab\(r\.title\)/.test(treeSrc),
+    'openSessions must give the session a fresh tab when the current tab closed mid-dial');
+
+// 21. What Windows shows for the app. FileDescription is misnamed: it is
 // the label Windows puts on the taskbar jump list, in Task Manager and in
 // Explorer's Description column, so it has to be the app's NAME. Shipping
 // package.json's description there made right-clicking the taskbar button
@@ -279,5 +301,5 @@ assert.ok(!/\bteam\b/i.test(pkg.description),
 
 console.log(`ok - ui invariants (hidden rule, outside-click menus, clipboard perms, ` +
     `no default menu, wheel zoom, remote-name sanitizing, gated dev hooks, idle overlay-only, ` +
-    `exe metadata, shared menus, focus handback, contrast floor, broadcast truth, ` +
+    `exe metadata, shared menus, focus handback, contrast floor, broadcast truth, no orphan sessions, ` +
     `${scripts.length} scripts, ${wired.size} wired ids)`);

@@ -44,10 +44,15 @@ function download(client, remotePath, localPath, onProgress) {
             let settled = false;
             let errText = '';
 
+            // All writes land on a temp name; localPath is only ever
+            // touched by the final rename. A refused transfer (wrong path,
+            // permissions) must not delete a pre-existing local file it
+            // never wrote.
+            const tmpPath = `${localPath}.part`;
             const fail = (message) => {
                 if (settled) return;
                 settled = true;
-                if (out) { out.destroy(); try { fs.unlinkSync(localPath); } catch (_) { /* nothing written */ } }
+                if (out) { out.destroy(); try { fs.unlinkSync(tmpPath); } catch (_) { /* nothing written */ } }
                 stream.close();
                 reject(new Error(message));
             };
@@ -73,7 +78,7 @@ function download(client, remotePath, localPath, onProgress) {
                             if (!m) return fail(`unexpected SCP response: ${header.slice(0, 60)}`);
                             total = Number(m[2]);
                             remaining = total;
-                            out = fs.createWriteStream(localPath);
+                            out = fs.createWriteStream(tmpPath);
                             out.on('error', (e) => fail(e.message));
                             stage = remaining === 0 ? 'trailer' : 'data';
                             header = '';
@@ -123,8 +128,14 @@ function download(client, remotePath, localPath, onProgress) {
                         out.end((endErr) => {
                             stream.close();
                             if (endErr) {
-                                try { fs.unlinkSync(localPath); } catch (_) { /* best effort */ }
+                                try { fs.unlinkSync(tmpPath); } catch (_) { /* best effort */ }
                                 return reject(new Error(`local write failed: ${endErr.message}`));
+                            }
+                            try {
+                                fs.renameSync(tmpPath, localPath);
+                            } catch (e) {
+                                try { fs.unlinkSync(tmpPath); } catch (_) { /* best effort */ }
+                                return reject(new Error(`downloaded, but could not replace ${localPath}: ${e.message}`));
                             }
                             resolve({ ok: true, bytes: written });
                         });
