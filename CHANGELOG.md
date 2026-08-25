@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+- **Output triggers.** Highlight rules gain a "watch" checkbox: when a
+  watched pattern matches in a background tab, the tab wears an amber
+  dot (louder than the unread dot), the status line names the match,
+  and - if the window is not focused - a system notification is raised.
+  Opening the tab clears it. Matches run against completed lines, so
+  tokens split across packets still match, and a chatty match alerts
+  once per burst rather than flooding. "%LINK-3-UPDOWN to notify" is
+  now one checkbox on the rule you already have.
+- **The session list shows a circle for every session** - the owner's
+  four-state design: green = connected right now; red or amber = the
+  last attempt failed (amber when the address answered but refused this
+  port), fading with age; a quiet filled dot = it has answered before;
+  an empty ring = never connected from this app. Every state has a
+  mouseover with the dates, so the "when did I last reach this?" hover
+  from the old green dots is back - without the old ambiguity.
+
 - **Import from OpenSSH config and PuTTY.** Two new entries in the
   Import menu (and the tree's right-click):
   - **OpenSSH config** reads ~/.ssh/config (or a file you pick):

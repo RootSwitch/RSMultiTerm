@@ -377,6 +377,17 @@ label { color: var(--se-txt-dim); }
     background: var(--se-up);
     box-shadow: 0 0 0 2px color-mix(in srgb, var(--se-up) 30%, transparent);
 }
+/* The four-state session circle: green = connected now, red/amber = the
+   last attempt failed, a filled themed dot = it has answered before, an
+   empty ring = never connected from this app. Every state has a tooltip
+   with the dates, so mouseover history survives the taxonomy. */
+.tree-health.seen { background: var(--se-txt-dim); opacity: 0.55; }
+.tree-health.never {
+    background: transparent;
+    border: 1px solid var(--se-txt-dim);
+    opacity: 0.5;
+    box-sizing: border-box;
+}
 .tree-health.ok { background: var(--se-up); }
 .tree-health.warn { background: var(--se-warn); }
 .tree-health.bad { background: var(--se-down); }
@@ -443,9 +454,17 @@ label { color: var(--se-txt-dim); }
 /* Output arrived while this tab was in the background - the MobaXterm
    orange-dot moment. The dot sits before the label and vanishes the
    instant the tab is activated, so it can only ever mean "unread". */
+/* A watched rule matched in a background tab: the warn-colored dot
+   outranks the accent unread dot (declared after, so it wins when both
+   classes are present). Same cure - look at the tab. */
 .tab.unread .tab-label::before {
     content: '● ';
     color: var(--se-accent);
+    font-style: normal;
+}
+.tab.alert .tab-label::before {
+    content: '● ';
+    color: var(--se-warn);
     font-style: normal;
 }
 .tab-label.ok { color: var(--se-up); }
@@ -917,7 +936,7 @@ label { color: var(--se-txt-dim); }
 
 .hl-row {
     display: grid;
-    grid-template-columns: 24px 1fr 24px 34px 46px 46px 24px 34px 24px 24px 24px;
+    grid-template-columns: 24px 1fr 24px 34px 46px 46px 24px 34px 38px 24px 24px 24px;
     gap: 4px;
     align-items: center;
     padding: 2px 0;

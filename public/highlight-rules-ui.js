@@ -59,7 +59,7 @@
             table.replaceChildren();
             const head = document.createElement('div');
             head.className = 'hl-row hl-head';
-            for (const h of ['on', 'pattern', 're', 'word', 'text', 'back', 'B', 'blink', '', '', '']) {
+            for (const h of ['on', 'pattern', 're', 'word', 'text', 'back', 'B', 'blink', 'watch', '', '', '']) {
                 const c = document.createElement('span');
                 c.textContent = h;
                 head.appendChild(c);
@@ -83,6 +83,9 @@
                 const bg = colorCell(rule.bg, (v) => { rule.bg = v; });
                 const bold = check(rule.bold, (v) => { rule.bold = v; });
                 const blink = check(rule.blink, (v) => { rule.blink = v; });
+                const watch = check(rule.watch, (v) => { rule.watch = v; });
+                watch.title = 'Alert when this matches: badge the tab, note it in the ' +
+                    'status line, and raise a system notification if the window is not focused';
 
                 const up = smallBtn('↑', () => {
                     if (i > 0) {
@@ -98,7 +101,7 @@
                 });
                 const del = smallBtn('×', () => { current.rules.splice(i, 1); renderRules(); });
 
-                row.append(on, pattern, re, word, fg, bg, bold, blink, up, down, del);
+                row.append(on, pattern, re, word, fg, bg, bold, blink, watch, up, down, del);
                 table.appendChild(row);
             });
 
@@ -108,7 +111,8 @@
             add.addEventListener('click', () => {
                 current.rules.push({
                     pattern: '', isRegex: false, wholeWord: true, caseSensitive: false,
-                    fg: '#ff5252', bg: null, bold: false, blink: false, enabled: true,
+                    fg: '#ff5252', bg: null, bold: false, blink: false, watch: false,
+                    enabled: true,
                 });
                 renderRules();
             });

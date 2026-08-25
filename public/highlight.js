@@ -48,6 +48,38 @@
         return out;
     }
 
+    // --- watch: output triggers -------------------------------------------
+    // Matching happens on COMPLETED buffer lines via onLineFeed, not on the
+    // write stream (tokens split across chunks) and not in the viewport
+    // scan (a background tab's pane may never render). The buffer line is
+    // already parsed, so escape sequences are gone by the time we look.
+    // A chatty match is rate-limited per pane and rule: the badge is
+    // idempotent anyway, and one notification per burst is a feature.
+    const WATCH_COOLDOWN_MS = 5000;
+    const lastWatchAlert = new Map();   // `${sessionId}:${pattern}` -> ts
+
+    function fireWatch(pane, rule, lineText) {
+        const key = `${pane.sessionId}:${rule.pattern}`;
+        const now = Date.now();
+        if (now - (lastWatchAlert.get(key) || 0) < WATCH_COOLDOWN_MS) return;
+        lastWatchAlert.set(key, now);
+        if (window.Tabs) window.Tabs.markAlert(pane.sessionId);
+        const st = document.getElementById('status-text');
+        if (st) st.textContent = `${pane.title}: "${rule.pattern}" matched`;
+        // A system notification only when the app is NOT focused: if you
+        // are looking at the window, the badge and the colored match are
+        // already doing the job.
+        if (!document.hasFocus() && typeof Notification !== 'undefined' &&
+            Notification.permission !== 'denied') {
+            try {
+                new Notification(pane.title, {
+                    body: `${rule.pattern}: ${window.App.plainText(lineText).slice(0, 140)}`,
+                    silent: true,
+                });
+            } catch (_) { /* notifications unavailable: the badge stands */ }
+        }
+    }
+
     class Highlighter {
         constructor(pane, setId) {
             this.pane = pane;
@@ -66,6 +98,23 @@
                 this.term.onRender(() => this.schedule()),
                 this.term.onScroll(() => this.schedule()),
                 this.term.onResize(() => { this.lineCache.clear(); this.schedule(); }),
+                // Watch rules check each line as it completes; by the time
+                // onLineFeed fires the cursor has moved on, so the finished
+                // line is the row above it.
+                this.term.onLineFeed(() => {
+                    const watch = compile(this.setId).filter((r) => r.rule.watch);
+                    if (!watch.length) return;
+                    const buf = this.term.buffer.active;
+                    const row = buf.baseY + buf.cursorY - 1;
+                    const line = row >= 0 ? buf.getLine(row) : null;
+                    if (!line) return;
+                    const text = line.translateToString(true);
+                    if (!text) return;
+                    for (const { rule, regex } of watch) {
+                        regex.lastIndex = 0;
+                        if (regex.test(text)) fireWatch(this.pane, rule, text);
+                    }
+                }),
             ];
             this.schedule();
         }

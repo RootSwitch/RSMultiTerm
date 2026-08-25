@@ -216,6 +216,8 @@
             nodeId: null,
             // Output arrived while this pane's tab was in the background.
             unread: false,
+            // A watched highlight rule matched while backgrounded.
+            alert: false,
             port: null,
             state: 'connecting',
             el: null,          // grid cell wrapper, set by layout

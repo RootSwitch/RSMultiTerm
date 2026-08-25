@@ -71,7 +71,11 @@
         let changed = false;
         for (const sid of tab.sessionIds) {
             const pane = window.TermPanes.panes.get(sid);
-            if (pane && pane.unread) { pane.unread = false; changed = true; }
+            if (pane && (pane.unread || pane.alert)) {
+                pane.unread = false;
+                pane.alert = false;
+                changed = true;
+            }
         }
         return changed;
     }
@@ -136,6 +140,28 @@
         return worst;
     }
 
+    // A watched rule matched in this tab. Louder than unread - warn
+    // color - and cleared by the same act of looking.
+    function markAlert(sessionId) {
+        const pane = window.TermPanes.panes.get(sessionId);
+        const tab = tabOf(sessionId);
+        if (!pane || !tab) return;
+        // In the ACTIVE tab the colored match on screen is the alert.
+        const active = byId(activeId);
+        if (active && active.id === tab.id) return;
+        if (!pane.alert) {
+            pane.alert = true;
+            updateStatus();
+        }
+    }
+
+    function hasAlert(tab) {
+        return tab.sessionIds.some((sid) => {
+            const pane = window.TermPanes.panes.get(sid);
+            return pane && pane.alert;
+        });
+    }
+
     function hasUnread(tab) {
         return tab.sessionIds.some((sid) => {
             const pane = window.TermPanes.panes.get(sid);
@@ -151,6 +177,7 @@
             const label = tab.el.querySelector('.tab-label');
             if (label) label.className = `tab-label ${tabStatus(tab)}`;
             tab.el.classList.toggle('unread', tab.id !== activeId && hasUnread(tab));
+            tab.el.classList.toggle('alert', tab.id !== activeId && hasAlert(tab));
         }
     }
 
@@ -340,6 +367,6 @@
 
     window.Tabs = {
         onChange, newTab, addSession, removeSession, activate, setFocused,
-        replaceSession, closeTab, tabOf, active, tabs, updateStatus, mergeAll,
+        replaceSession, closeTab, tabOf, active, tabs, updateStatus, mergeAll, markAlert,
     };
 })();

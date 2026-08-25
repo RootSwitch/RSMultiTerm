@@ -474,7 +474,36 @@ const sessionSrc = fs.readFileSync(path.join(__dirname, '..', 'engine', 'session
 assert.ok(/for \(const t of this\._onConnectTimers \|\| \[\]\) clearTimeout\(t\);/.test(sessionSrc),
     'a dying session must cancel pending on-connect sends');
 
-// 29. What Windows shows for the app. FileDescription is misnamed: it is
+// 29. Output triggers: a watch rule matches COMPLETED buffer lines (the
+// write stream splits tokens across chunks; the viewport scan never runs
+// for a background pane), rate-limits per pane and rule, badges through
+// Tabs.markAlert, and only notifies the OS when the window is unfocused.
+const hlEngineSrc = fs.readFileSync(path.join(PUBLIC, 'highlight.js'), 'utf8');
+assert.ok(/onLineFeed/.test(hlEngineSrc),
+    'watch must match on completed lines via onLineFeed, not the write stream');
+assert.ok(/WATCH_COOLDOWN_MS/.test(hlEngineSrc),
+    'watch alerts must rate-limit - a chatty match is one alert, not a flood');
+assert.ok(/document\.hasFocus\(\)/.test(hlEngineSrc),
+    'system notifications only when the window is not focused');
+assert.ok(/function markAlert\(/.test(tabsSrc) && /hasAlert\(/.test(tabsSrc),
+    'tabs must carry the alert badge');
+assert.ok(/pane\.unread \|\| pane\.alert/.test(tabsSrc),
+    'activating a tab must clear alerts along with unread');
+assert.ok(/'notifications'/.test(windows),
+    'windows.js must allow the notifications permission or every alert is silent');
+assert.ok(/'watch'/.test(fs.readFileSync(path.join(PUBLIC, 'highlight-rules-ui.js'), 'utf8')),
+    'the rules editor must expose the watch column');
+// The four-state session circle: live, failed (aged), seen, never - each
+// with a tooltip, so the mouseover history the green dots used to carry
+// survives the taxonomy.
+assert.ok(/tree-health seen/.test(treeSrc) && /tree-health never/.test(treeSrc),
+    'the tree must render seen and never states, not just problems');
+assert.ok(/Never connected from this app/.test(treeSrc),
+    'the never state must explain itself on hover');
+assert.ok(/\.tree-health\.never/.test(css) && /\.tree-health\.seen/.test(css),
+    'style.css must draw the seen dot and the never ring');
+
+// 30. What Windows shows for the app. FileDescription is misnamed: it is
 // the label Windows puts on the taskbar jump list, in Task Manager and in
 // Explorer's Description column, so it has to be the app's NAME. Shipping
 // package.json's description there made right-clicking the taskbar button
@@ -499,5 +528,5 @@ console.log(`ok - ui invariants (hidden rule, outside-click menus, clipboard per
     `no default menu, wheel zoom, remote-name sanitizing, gated dev hooks, idle overlay-only, ` +
     `exe metadata, shared menus, focus handback, contrast floor, broadcast truth, no orphan sessions, ` +
     `armed-tab growth, focus trap, scp discipline, low-batch pins, shape guards, failure surfacing, ` +
-    `${styleIds.length} idle styles mooded, unread badges, on-connect discipline, ` +
+    `${styleIds.length} idle styles mooded, unread badges, on-connect discipline, watch triggers, four-state dots, ` +
     `${scripts.length} scripts, ${wired.size} wired ids)`);

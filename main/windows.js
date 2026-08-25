@@ -89,7 +89,7 @@ function createMainWindow() {
     // were broken rather than the permission.
     // local-fonts powers the settings dialog's font suggestions
     // (queryLocalFonts) - list-only, no file access.
-    const ALLOWED_PERMISSIONS = new Set(['clipboard-read', 'clipboard-sanitized-write', 'local-fonts']);
+    const ALLOWED_PERMISSIONS = new Set(['notifications', 'clipboard-read', 'clipboard-sanitized-write', 'local-fonts']);
     win.webContents.session.setPermissionRequestHandler((_wc, permission, cb) => {
         cb(ALLOWED_PERMISSIONS.has(permission));
     });

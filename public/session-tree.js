@@ -157,48 +157,55 @@
                 el.appendChild(host);
             }
 
-            // Open right now, or - failing that - the last PROBLEM found.
-            // The green "answered a while ago" dot is gone on purpose:
-            // beside a freshly imported list it read as "I have a session
-            // open to that box", which is the one thing a reachability
-            // memory must never suggest. Green now means exactly one thing
-            // - connected at this moment - and a clean audit shows as no
-            // dot at all (the reading still lives in the expanded row).
-            const h = healthByNode[node.id];
-            const open = node.type === 'session' && liveNodes.has(node.id);
-            const down = h && (h.streak || 0) > 0;
-            if (open) {
+            // The four-state circle, owner's design: every session gets
+            // one, so the column reads as a column instead of scattered
+            // meanings. Green = connected at this moment. Red/amber = the
+            // last attempt failed (amber when something answered the
+            // address but refused this port). A filled themed dot = it has
+            // answered before - the mouseover keeps the WHEN, which is the
+            // part worth keeping from the old green dots. An empty ring =
+            // this app has never reached it.
+            if (node.type === 'session') {
+                const h = healthByNode[node.id];
+                const open = liveNodes.has(node.id);
+                const down = h && (h.streak || 0) > 0;
                 const dot = document.createElement('span');
-                dot.className = 'tree-health live';
-                dot.title = 'Connected now - this session is open in this window. ' +
-                    'It clears the moment the connection drops.';
-                el.appendChild(dot);
-            } else if (node.type === 'session' && down) {
-                const dot = document.createElement('span');
-                // Amber for refused: something answered at that address but
-                // not on this port, which is a different problem from a
-                // device that has gone away entirely.
-                const kind = h.lastState === 'refused' ? 'warn' : 'bad';
-                dot.className = `tree-health ${kind}`;
-                // These dots are a SNAPSHOT, not a monitor: nothing probes
-                // in the background, so a two-week-old red circle at full
-                // strength reads as "this device is down right now" when it
-                // means "it was down a fortnight ago". Fade with age -
-                // fresh is solid, and by the 14-day staleness mark it is a
-                // ghost - and say so on hover.
-                const measured = Math.max(Date.parse(h.lastOk) || 0, Date.parse(h.lastFail) || 0);
-                const ageDays = measured ? (Date.now() - measured) / 86400000 : 99;
-                dot.style.opacity = String(Math.max(0.22, Math.min(1, 1 - (ageDays / 14) * 0.78)));
-                dot.title = (h.lastState === 'refused'
-                    ? `Connection refused on this port ${new Date(h.lastFail).toLocaleString()}` +
-                      ' - the address is in use, but not by this service'
-                    : `No answer since ${new Date(h.lastFail).toLocaleString()}`) +
-                    (h.lastOk ? ` - last answered ${new Date(h.lastOk).toLocaleString()}`
-                              : ' - has never answered') +
-                    `
-
-${describeAge(ageDays)}. Nothing is probed in the background: ` +
+                const NOT_PROBED = ' Nothing is probed in the background: ' +
                     'this is from the last Audit, or from a session you opened.';
+                if (open) {
+                    dot.className = 'tree-health live';
+                    dot.title = 'Connected now - this session is open in this window. ' +
+                        'It clears the moment the connection drops.';
+                } else if (down) {
+                    const kind = h.lastState === 'refused' ? 'warn' : 'bad';
+                    dot.className = `tree-health ${kind}`;
+                    // A SNAPSHOT, not a monitor: fade with age so a
+                    // two-week-old red does not read as "down right now".
+                    const measured = Math.max(Date.parse(h.lastOk) || 0, Date.parse(h.lastFail) || 0);
+                    const ageDays = measured ? (Date.now() - measured) / 86400000 : 99;
+                    dot.style.opacity = String(Math.max(0.22, Math.min(1, 1 - (ageDays / 14) * 0.78)));
+                    dot.title = (h.lastState === 'refused'
+                        ? `Connection refused on this port ${new Date(h.lastFail).toLocaleString()}` +
+                          ' - the address is in use, but not by this service'
+                        : `No answer since ${new Date(h.lastFail).toLocaleString()}`) +
+                        (h.lastOk ? ` - last answered ${new Date(h.lastOk).toLocaleString()}`
+                                  : ' - has never answered') +
+                        `
+
+${describeAge(ageDays)}.` + NOT_PROBED;
+                } else if (h && h.lastOk) {
+                    dot.className = 'tree-health seen';
+                    const ageDays = (Date.now() - (Date.parse(h.lastOk) || Date.now())) / 86400000;
+                    dot.title = `Answered ${new Date(h.lastOk).toLocaleString()} - ` +
+                        'an Audit reached it, or a session connected.' +
+                        `
+
+${describeAge(ageDays)}.` + NOT_PROBED;
+                } else {
+                    dot.className = 'tree-health never';
+                    dot.title = 'Never connected from this app. Open the session, or ' +
+                        'Audit its folder, to record reachability here.';
+                }
                 el.appendChild(dot);
             }
 
