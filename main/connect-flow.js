@@ -55,17 +55,23 @@ function reset(profileName) {
 // Attach per-hop auth to a resolved descriptor. Returns null if any needed
 // profile is prompt-mode-uncached (prompt flow required) or missing.
 function resolveAuth(descriptor) {
-    const profs = new Set();
+    // profile -> the host it will actually authenticate to. A jump chain
+    // uses one profile per HOP, and each hop is a different machine, so the
+    // scope check has to be per pairing rather than per profile.
+    const profs = new Map();
     if (descriptor.credentialProfile && descriptor.transport === 'ssh') {
-        profs.add(descriptor.credentialProfile);
+        profs.set(descriptor.credentialProfile, descriptor.host);
     }
     for (const hop of descriptor.jumpChain || []) {
-        if (hop.credentialProfile) profs.add(hop.credentialProfile);
+        if (hop.credentialProfile && !profs.has(hop.credentialProfile)) {
+            profs.set(hop.credentialProfile, hop.host);
+        }
     }
     const authByProfile = {};
-    for (const name of profs) {
-        const auth = secrets.getAuth(name);
+    for (const [name, host] of profs) {
+        const auth = secrets.getAuth(name, host);
         if (auth && auth.missing) return { missingProfile: name };
+        if (auth && auth.outOfScope) return { outOfScope: name, host: auth.host };
         if (!auth) return { needsPrompt: name };
         // SSH sends the username in the auth request, so an empty one is not
         // something the device can prompt for later - it fails the handshake
@@ -127,6 +133,18 @@ function requestConnect(sessionId, descriptor, launch, skipCanary = false) {
             host: descriptor.host || null,
             title: descriptor.name || descriptor.host || null,
             missing: res.missingProfile,
+        });
+        return;
+    }
+    if (res.outOfScope) {
+        // Refused in main, before anything was decrypted and with no
+        // network attempt. This is the whole point of the scope: the answer
+        // does not depend on anything the renderer says, and there is no
+        // dialog for a compromised one to answer on the user's behalf.
+        notify('rs:evt.session-status', {
+            sessionId, state: 'error',
+            detail: `credential profile '${res.outOfScope}' is not allowed on ${res.host} - ` +
+                "add it to the profile's host scope to use it there",
         });
         return;
     }

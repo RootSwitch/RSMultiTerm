@@ -384,11 +384,31 @@
         fStorage.addEventListener('change', syncRows);
         fKeyStore.addEventListener('change', syncRows);
 
+        // Which hosts this credential may be sent to. Main enforces it
+        // before decrypting anything, so it holds even if this window is
+        // not the one asking - and it stops the everyday mistake of
+        // picking the wrong profile for someone else's device.
+        const fScope = input((prof.hostScope || []).join(' '),
+            '10.50.0.0/16  *.corp.local  10.50.1.7');
+        const scopeNote = document.createElement('p');
+        scopeNote.style.cssText = 'margin:2px 0 8px;color:var(--se-txt-dim);font-size:11px;';
+        const syncScopeNote = () => {
+            scopeNote.style.color = 'var(--se-txt-dim)';
+            scopeNote.textContent = fScope.value.trim()
+                ? 'Addresses, names, 10.50.0.0/16 ranges or *.wildcards, separated by spaces. ' +
+                  'This credential is refused anywhere else, before it is decrypted.'
+                : 'Empty means no restriction: this credential may be sent to any host you ' +
+                  'connect to. Naming your management ranges here keeps it off everyone else.';
+        };
+        fScope.addEventListener('input', syncScopeNote);
+        syncScopeNote();
+
         body.append(row('Profile name', fName), row('Username', fUser),
             row('Authenticate with', fMethod),
             keyRow, keyNote, keyPassRow, keyStoreRow,
             agentNote,
-            storageRow, storeNote, passRow);
+            storageRow, storeNote, passRow,
+            row('May be used with', fScope), scopeNote);
         await describeKey();
         syncRows();
 
@@ -418,6 +438,7 @@
                     const patch = {
                         name: fName.value.trim(),
                         username: fUser.value.trim(),
+                        hostScope: fScope.value,
                         authMethod: m,
                         storage: m === 'password' ? fStorage.value : 'prompt',
                         keyPath: m === 'key' ? fKey.value : undefined,
@@ -440,8 +461,16 @@
                         }
                         if (wantsKeyPass) patch.keyPassphrase = fKeyPass.value;
                         if (m === 'key' && fKeyStore.value !== 'dpapi') patch.clearKeyPassphrase = true;
-                        rsterm.invoke('rs:profiles.upsert', patch).then(done);
-                        m2.close();
+                        rsterm.invoke('rs:profiles.upsert', patch).then(() => {
+                            done();
+                            m2.close();
+                        }, (err) => {
+                            // A malformed host pattern is refused in main;
+                            // say so next to the field rather than closing
+                            // the dialog on a save that did not happen.
+                            scopeNote.style.color = 'var(--se-down)';
+                            scopeNote.textContent = err.message.replace(/^Error invoking.*?: /, '');
+                        });
                     });
                     return false;   // closed by hand once the check passes
                 },

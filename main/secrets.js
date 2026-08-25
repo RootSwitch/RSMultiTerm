@@ -113,8 +113,18 @@ function secretStorageAvailable() {
     return storageInfo().available;
 }
 
+const credScope = require('./cred-scope');
+
 function byName(name) {
     return profiles.find((p) => p.name === name) || null;
+}
+
+// Whether this profile may be used against this host. Exported so the
+// caller can say WHICH host was refused without re-deriving the rule.
+function scopeAllows(name, host) {
+    const p = byName(name);
+    if (!p) return true;                 // missing profile is its own error
+    return credScope.allows(p.hostScope, host);
 }
 
 // Renderer-facing view: never includes secret material, only whether it exists.
@@ -125,6 +135,7 @@ function list() {
         authMethod: p.authMethod || 'password',
         storage: p.storage,
         keyPath: p.keyPath || null,
+        hostScope: p.hostScope || [],
         hasSecret: !!p.secretDpapi,
         hasKeyPassphrase: !!p.keyPassphraseDpapi,
         cached: promptCache.has(p.name),
@@ -145,6 +156,14 @@ function upsert(input) {
     p.authMethod = input.authMethod || p.authMethod;
     p.storage = input.storage || p.storage;
     p.keyPath = input.keyPath !== undefined ? input.keyPath : p.keyPath;
+    // Which hosts this credential may be sent to. Parsed here so a bad
+    // pattern is refused at the point of typing rather than becoming a rule
+    // that quietly matches nothing.
+    if (input.hostScope !== undefined) {
+        p.hostScope = Array.isArray(input.hostScope)
+            ? credScope.parse(input.hostScope.join(' '))
+            : credScope.parse(input.hostScope);
+    }
 
     // Switching away from key auth drops the passphrase with it: a stored
     // secret for a key this profile no longer uses is nothing but risk.
@@ -182,9 +201,17 @@ function removeProfile(name) {
 
 // Resolve auth material for the engine. Returns null when the profile is
 // prompt-mode with nothing cached - the caller runs the prompt flow first.
-function getAuth(name) {
+// host is REQUIRED, not optional: this function decrypts a stored network
+// credential, and it used to do so knowing only a profile name - so a
+// renderer that could name a host could have that credential delivered
+// wherever it liked. A caller with no host to declare is a caller that
+// should not be releasing a secret.
+function getAuth(name, host) {
     const p = byName(name);
     if (!p) return { missing: true, name };
+    if (!credScope.allows(p.hostScope, host)) {
+        return { outOfScope: true, name, host: host || '(no host)' };
+    }
     const auth = { username: p.username, profileName: p.name };
 
     // The agent holds the key and does the signing; this app never handles
@@ -309,5 +336,6 @@ function passphraseForKey(keyPath) {
 module.exports = {
     init, onChange, list, upsert, removeProfile, passphraseForKey,
     storageInfo, classifyBackend,
-    getAuth, promptResult, promptKind, commitSaved, setUsername, clearCached, secretStorageAvailable, byName,
+    getAuth, scopeAllows,
+    promptResult, promptKind, commitSaved, setUsername, clearCached, secretStorageAvailable, byName,
 };

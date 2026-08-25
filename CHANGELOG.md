@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+- **Credential profiles can say which hosts they may be used with.**
+  A new "May be used with" field on each profile takes addresses,
+  names, `10.50.0.0/16` ranges and `*.wildcards`. The app refuses to
+  release that credential anywhere else - and refuses it before
+  decrypting anything, with no prompt involved.
+  Two reasons it is worth setting. The everyday one: it stops the
+  ordinary mistake of picking the wrong profile and sending one
+  customer's domain password to another customer's device. The other:
+  until now nothing tied a stored credential to a destination at all,
+  so anything able to name a host could have your saved AD password
+  delivered to it. Leaving the field empty keeps today's behavior, so
+  nothing breaks on upgrade.
+
 - **Security amendments from the review (S3, S4, S5).**
   - **A corrupt settings file can no longer stop the app from starting.**
     A highlights.json that was valid JSON but the wrong shape threw

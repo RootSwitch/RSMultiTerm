@@ -437,13 +437,24 @@ function wireIpc(engineRef, getWindow, bootConfig) {
         // the same guard sessions use: a tripped profile fails here too,
         // network-untouched, and a prompt-mode profile with nothing cached
         // says so instead of dialing with a blank password.
-        const profiles = new Set(chain.map((h) => h.credentialProfile).filter(Boolean));
+        // Per hop, not per profile: each hop is a different machine, and
+        // the scope check is about the pairing.
+        const byProfile = new Map();
+        for (const h of chain) {
+            if (h.credentialProfile && !byProfile.has(h.credentialProfile)) {
+                byProfile.set(h.credentialProfile, h.host);
+            }
+        }
         const authByProfile = {};
-        for (const name of profiles) {
+        for (const [name, host] of byProfile) {
             if (connectFlow.tripped(name)) {
                 throw new Error(`credential profile '${name}' is halted after an auth failure`);
             }
-            const auth = secrets.getAuth(name);
+            const auth = secrets.getAuth(name, host);
+            if (auth && auth.outOfScope) {
+                throw new Error(`credential profile '${name}' is not allowed on ${auth.host} - ` +
+                    "add it to the profile's host scope to use it there");
+            }
             if (!auth || auth.missing || !auth.username) {
                 throw new Error(`credential profile '${name}' needs a password - open a session to it first`);
             }
