@@ -30,7 +30,14 @@ const DEFAULTS = {
     // Terminal palette: 'theme' follows the app theme (so Parchment does not
     // frame a near-black terminal), 'dark' pins the original dark surface,
     // 'custom' uses `background` verbatim.
-    terminalColors: { mode: 'theme', background: null },
+    // minContrast: the floor xterm holds every foreground to against the
+    // current background, including the colors a REMOTE program picked -
+    // which is the whole point, because bright green from a device's own
+    // escape codes is not something a theme can fix. 1 disables it. The
+    // default is deliberately gentle: xterm only touches colors that fail
+    // the ratio, so 3 rescues what is unreadable and leaves alone what is
+    // merely stylish.
+    terminalColors: { mode: 'theme', background: null, minContrast: 3 },
     defaultLogFolder: null,    // null = alongside the app
     logTimestamps: true,
     teamSync: { filePath: null, pollSeconds: 60, checkOnFocus: true },
@@ -96,6 +103,12 @@ function sanitize(patch) {
             if (key in out.field && out.field[key] !== null &&
                 typeof out.field[key] !== 'string') delete out.field[key];
         }
+    }
+    if (out.terminalColors && 'minContrast' in out.terminalColors) {
+        // 1 is "off" and 21 is black on white; anything outside that is not
+        // a ratio, and xterm would divide by it.
+        const n = Number(out.terminalColors.minContrast);
+        out.terminalColors.minContrast = Number.isFinite(n) ? Math.max(1, Math.min(21, n)) : 3;
     }
     for (const key of ['scrollbackLines', 'sidebarWidth']) {
         if (key in out) {

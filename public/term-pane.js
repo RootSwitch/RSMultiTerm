@@ -125,6 +125,17 @@
         };
     }
 
+    // The contrast floor xterm holds every foreground to, including the
+    // ones a remote program chose for itself. xterm only adjusts colors
+    // that FAIL the ratio, so this leaves a legible palette untouched and
+    // rescues the combinations that are not - bright green on a light
+    // theme's background being the one that prompted it.
+    function minContrast() {
+        const cfg = appSettings.terminalColors || {};
+        const n = Number(cfg.minContrast);
+        return Number.isFinite(n) && n >= 1 ? Math.min(21, n) : 3;
+    }
+
     // Current terminal background, so the highlight engine can keep rule
     // colors legible against it.
     function currentBackground() {
@@ -135,8 +146,12 @@
     function refreshTheme() {
         window.Colors.clearCache();
         const theme = terminalTheme();
+        const floor = minContrast();
         for (const pane of panes.values()) {
             pane.term.options.theme = theme;
+            // Live, not just for the next session opened: changing this and
+            // seeing nothing happen is how a setting becomes decorative.
+            pane.term.options.minimumContrastRatio = floor;
             if (pane.highlighter) pane.highlighter.rescan();
         }
     }
@@ -153,6 +168,7 @@
                 `'DejaVu Sans Mono', 'Ubuntu Mono', Menlo, monospace`,
             fontSize: effectiveFontSize(),
             theme: terminalTheme(),
+            minimumContrastRatio: minContrast(),
             allowProposedApi: true,
         });
         const fit = new FitAddon.FitAddon();

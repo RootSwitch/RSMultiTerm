@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+- **A minimum contrast setting for the terminal.** Settings > Minimum
+  contrast puts a floor under text-against-background legibility, and
+  it applies to the colors a REMOTE program picks as well as the
+  theme's own - which is the point, and the reason no amount of theme
+  tuning fixes it. A switch emitting bright green does not know what it
+  is being drawn on.
+  On Sakura's background, bright green sits at a contrast ratio of
+  1.54, which is why it disappears. The shipped default lifts it to
+  3.60 and the strong setting to 7.19, keeping the hue both times: it
+  gets darker, not grey. Only colors that FAIL the ratio are touched,
+  so a palette that already reads is left exactly as it was, and the
+  setting applies to sessions that are already open.
+
 - **Download a folder from the file browser**, with everything under it.
   Right-click a folder (or several) and the whole tree comes down.
   The walk and the transfers happen inside the engine rather than as a

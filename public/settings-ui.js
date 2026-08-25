@@ -39,6 +39,22 @@
         termRow.append(termLabel, fTermMode, fTermBg);
         const syncTermBg = () => { fTermBg.style.display = fTermMode.value === 'custom' ? '' : 'none'; };
         fTermMode.addEventListener('change', syncTermBg);
+        // A floor on text-against-background contrast, applied by xterm to
+        // every foreground including the ones a remote program picks for
+        // itself. That last part is why this exists and a theme cannot
+        // replace it: a device emitting bright green does not know what it
+        // is being drawn on.
+        const fContrast = select([
+            { value: '1', label: 'Off - draw exactly what the device asks for' },
+            { value: '3', label: 'Gentle - fix only what is unreadable' },
+            { value: '4.5', label: 'Standard - readable body text (WCAG AA)' },
+            { value: '7', label: 'Strong - high contrast (WCAG AAA)' },
+        ], String(tc.minContrast === undefined ? 3 : tc.minContrast));
+        const contrastHint = document.createElement('p');
+        contrastHint.style.cssText = 'margin:2px 0 10px;color:var(--se-txt-dim);font-size:11px;';
+        contrastHint.textContent = 'Only colors that fail the ratio are adjusted, and the ' +
+            'hue is kept - bright green on a light background gets darker, not grey. ' +
+            'Applies to open sessions straight away.';
         syncTermBg();
 
         const fPasteConfirm = select([
@@ -202,7 +218,7 @@
             row('Mouse mode', fMouse), hint,
             row('Middle click', fMiddle),
             row('Multiline paste', fPasteConfirm),
-            termRow,
+            termRow, row('Minimum contrast', fContrast), contrastHint,
             row('File browser', fAutoFiles),
             row('Remote clipboard', fOsc52), osc52Hint,
             row('Font', fFontFamily), row('Font size', fFontSize),
@@ -227,6 +243,7 @@
             autoOpenFileBrowser: fAutoFiles.value === 'yes',
             terminalColors: {
                 mode: fTermMode.value,
+                minContrast: Number(fContrast.value),
                 background: fTermMode.value === 'custom' ? fTermBg.value : null,
             },
             // Blank means "whatever this machine's default is";

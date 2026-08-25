@@ -198,7 +198,19 @@ const restoreBody = modals.slice(modals.indexOf('function restoreFocus('));
 assert.ok(/now !== document\.body/.test(restoreBody),
     'restoreFocus must stand down when something else already holds focus');
 
-// 15. What Windows shows for the app. FileDescription is misnamed: it is
+// 15. The contrast floor must reach xterm at BOTH ends: new terminals get
+// it at construction, and open ones get it when the setting changes. A
+// setting that only applies to the next session opened is the "decorative
+// control" failure this codebase keeps finding.
+assert.ok(/minimumContrastRatio: minContrast\(\)/.test(termPane),
+    'a terminal must be constructed with the configured contrast floor');
+const refresh = termPane.slice(termPane.indexOf('function refreshTheme()'),
+    termPane.indexOf('function create('));
+assert.ok(/minimumContrastRatio = floor/.test(refresh),
+    'refreshTheme must push the contrast floor to open panes, or the setting ' +
+    'does nothing until the next session');
+
+// 16. What Windows shows for the app. FileDescription is misnamed: it is
 // the label Windows puts on the taskbar jump list, in Task Manager and in
 // Explorer's Description column, so it has to be the app's NAME. Shipping
 // package.json's description there made right-clicking the taskbar button
@@ -221,5 +233,5 @@ assert.ok(!/\bteam\b/i.test(pkg.description),
 
 console.log(`ok - ui invariants (hidden rule, outside-click menus, clipboard perms, ` +
     `no default menu, wheel zoom, remote-name sanitizing, gated dev hooks, idle overlay-only, ` +
-    `exe metadata, shared menus, focus handback, ` +
+    `exe metadata, shared menus, focus handback, contrast floor, ` +
     `${scripts.length} scripts, ${wired.size} wired ids)`);

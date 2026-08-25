@@ -152,11 +152,27 @@ try {
     assert.strictEqual(settings.get().field.root, 'C:/images',
         'a non-string folder must be dropped, leaving the last good one');
 
+    // The terminal contrast floor is a ratio, so it is clamped to one. 0
+    // would have xterm dividing by it; 99 is not a contrast.
+    assert.strictEqual(settings.get().terminalColors.minContrast, 3,
+        'the shipped default rescues unreadable colors without repainting legible ones');
+    settings.update({ terminalColors: { minContrast: 0 } });
+    assert.strictEqual(settings.get().terminalColors.minContrast, 1, '1 is the floor, meaning off');
+    settings.update({ terminalColors: { minContrast: 99 } });
+    assert.strictEqual(settings.get().terminalColors.minContrast, 21,
+        '21 is black on white - there is no higher ratio');
+    settings.update({ terminalColors: { minContrast: 'lots' } });
+    assert.strictEqual(settings.get().terminalColors.minContrast, 3);
+    // ...and setting it must not wipe the mode beside it.
+    settings.update({ terminalColors: { mode: 'custom', background: '#101010' } });
+    settings.update({ terminalColors: { minContrast: 7 } });
+    assert.strictEqual(settings.get().terminalColors.mode, 'custom');
+
     // A key that is not a setting is not stored, whatever it claims.
     settings.update({ notASetting: 'hello' });
     assert.strictEqual('notASetting' in settings.get(), false, 'unknown keys must be refused');
 
-    console.log('ok - store + session tree (11 scenarios incl. logging tri-state, BOM, settings clamps)');
+    console.log('ok - store + session tree (11 scenarios incl. logging tri-state, BOM, settings and contrast clamps)');
 } finally {
     fs.rmSync(dir, { recursive: true, force: true });
 }
