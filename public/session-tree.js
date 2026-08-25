@@ -527,6 +527,8 @@ ${describeAge(ageDays)}. Nothing is probed in the background: ` +
             { label: 'New folder...', onClick: () => window.Forms.editFolder(null, selectionParent()) },
             null,
             { label: 'Import MobaXTerm sessions...', onClick: () => window.TeamUI.mobaWizard() },
+            { label: 'Import OpenSSH config...', onClick: () => window.TeamUI.sshImportWizard('sshconfig') },
+            { label: 'Import PuTTY sessions...', onClick: () => window.TeamUI.sshImportWizard('putty') },
             { label: 'Import spreadsheet (CSV)...', onClick: () => window.CsvUI.importCsv(selectedFolder(), null) },
             {
                 label: 'Import exported session file...',
@@ -594,6 +596,14 @@ ${describeAge(ageDays)}. Nothing is probed in the background: ` +
                 {
                     label: 'MobaXTerm sessions (.mxtsessions)...',
                     onClick: () => window.TeamUI.mobaWizard(),
+                },
+                {
+                    label: 'OpenSSH config (~/.ssh/config)...',
+                    onClick: () => window.TeamUI.sshImportWizard('sshconfig'),
+                },
+                {
+                    label: 'PuTTY saved sessions...',
+                    onClick: () => window.TeamUI.sshImportWizard('putty'),
                 },
                 {
                     label: 'Spreadsheet (CSV)...',

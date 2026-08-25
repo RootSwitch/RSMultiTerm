@@ -266,5 +266,100 @@
         window.Forms.showBanner('error', `Session sync: ${m.message}`);
     });
 
-    window.TeamUI = { mergeDialog, mobaWizard, syncCheck, syncPublish };
+    // OpenSSH-config and PuTTY imports: the MobaXTerm wizard's shape -
+    // summary, username-to-profile mapping, target folder, merge preview -
+    // with two extras the sources bring: parser warnings shown plainly,
+    // and a known IdentityFile prefilled into a created profile so a key
+    // user gets a key profile in one click.
+    async function sshImportWizard(kind) {
+        const report = await rsterm.invoke('rs:sshimport.scan', { kind });
+        if (!report) {
+            window.Forms.showBanner('warn', kind === 'putty'
+                ? 'No PuTTY saved sessions were found in the registry.'
+                : 'No OpenSSH config was found.');
+            return;
+        }
+        if (!report.sessions.length) {
+            window.Forms.showBanner('warn', 'Nothing importable was found' +
+                (report.skipped.length ? ` (${report.skipped.length} entries skipped).` : '.'));
+            return;
+        }
+        const profiles = await rsterm.invoke('rs:profiles.list');
+        const title = kind === 'putty' ? 'PuTTY import' : 'OpenSSH config import';
+        const defaultRoot = kind === 'putty' ? 'Imported from PuTTY' : 'Imported from ssh config';
+
+        const body = document.createElement('div');
+        const summary = document.createElement('p');
+        summary.style.marginBottom = '10px';
+        const jumps = report.sessions.filter((s) => s.jumpAlias).length;
+        summary.textContent = `${report.sessions.length} sessions found` +
+            (jumps ? `, ${jumps} with a jump host` : '') +
+            (report.skipped.length
+                ? `. Skipped ${report.skipped.length} (${[...new Set(report.skipped.map((s) => s.type))].join(', ')}).`
+                : '.');
+        body.appendChild(summary);
+        for (const w of (report.warnings || []).slice(0, 5)) {
+            const p = document.createElement('p');
+            p.style.cssText = 'margin:0 0 4px;color:var(--se-warn);font-size:12px;';
+            p.textContent = w;
+            body.appendChild(p);
+        }
+
+        const mapping = {};
+        const users = Object.entries(report.usernames || {});
+        if (users.length) {
+            const h = document.createElement('p');
+            h.style.cssText = 'margin:6px 0;color:var(--se-txt-dim);';
+            h.textContent = 'Map each username to a credential profile - sessions ' +
+                'import with the profile reference only:';
+            body.appendChild(h);
+            for (const [user, count] of users) {
+                const keyPath = (report.keyByUsername || {})[user] || null;
+                const createLabel = keyPath
+                    ? `create key profile "${user}"...` : `create profile "${user}"...`;
+                const opts = [{ value: '', label: '(no profile)' }]
+                    .concat(profiles.map((p) => ({ value: p.name, label: p.name })))
+                    .concat([{ value: '__new__', label: createLabel }]);
+                const sel = select(opts, '');
+                sel.addEventListener('change', async () => {
+                    if (sel.value === '__new__') {
+                        const name = await window.Modals.promptText('New credential profile', 'Profile name', user);
+                        if (name) {
+                            await rsterm.invoke('rs:profiles.upsert', keyPath
+                                ? { name, username: user, storage: 'prompt', authMethod: 'key', keyPath }
+                                : { name, username: user, storage: 'prompt' });
+                            const o = document.createElement('option');
+                            o.value = name;
+                            o.textContent = name;
+                            sel.insertBefore(o, sel.lastChild);
+                            sel.value = name;
+                        } else {
+                            sel.value = '';
+                        }
+                    }
+                    mapping[user] = sel.value && sel.value !== '__new__' ? sel.value : null;
+                });
+                body.appendChild(row(`${user} (${count})${keyPath ? ' [key]' : ''}`, sel));
+            }
+        }
+        const fRoot = input(defaultRoot, 'target folder name');
+        body.appendChild(row('Into folder', fRoot));
+
+        open(title, body, [
+            { label: 'Cancel' },
+            {
+                label: 'Preview import', primary: true,
+                onClick: () => {
+                    rsterm.invoke('rs:sshimport.apply', {
+                        report,
+                        profileByUsername: Object.fromEntries(
+                            Object.entries(mapping).filter(([, v]) => v)),
+                        rootName: fRoot.value.trim() || defaultRoot,
+                    }).then((plan) => mergeDialog(plan, 'rs:team.applyImport', title));
+                },
+            },
+        ]);
+    }
+
+    window.TeamUI = { mergeDialog, mobaWizard, sshImportWizard, syncCheck, syncPublish };
 })();

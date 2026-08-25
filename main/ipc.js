@@ -361,6 +361,31 @@ function wireIpc(engineRef, getWindow, bootConfig) {
         const nodes = moba.toNodes(report, profileByUsername || {}, rootName);
         return teamSync.importNodes(nodes);
     });
+
+    // OpenSSH config and PuTTY registry importers: same report shape and
+    // the same wizard as the MobaXTerm one, and the same merge preview
+    // before anything is written.
+    const sshImport = require('./ssh-import');
+    ipcMain.handle('rs:sshimport.scan', async (_e, { kind }) => {
+        if (kind === 'putty') return sshImport.scanPutty();
+        let report = sshImport.scanSshConfig();
+        if (!report) {
+            // No ~/.ssh/config: let the user point at one (a copied file,
+            // another user's profile) rather than shrugging.
+            const { dialog } = require('electron');
+            const r = await dialog.showOpenDialog(getWindow(), {
+                properties: ['openFile'],
+                title: 'Pick an OpenSSH config file',
+            });
+            if (r.canceled) return null;
+            report = sshImport.scanSshConfig(r.filePaths[0]);
+        }
+        return report;
+    });
+    ipcMain.handle('rs:sshimport.apply', (_e, { report, profileByUsername, rootName }) => {
+        const nodes = sshImport.toNodes(report, profileByUsername || {}, rootName);
+        return teamSync.importNodes(nodes);
+    });
     ipcMain.handle('rs:highlights.get', () => highlights.getSets());
     ipcMain.handle('rs:highlights.save', (_e, { sets }) => highlights.saveSets(sets));
 

@@ -65,6 +65,8 @@ const INVOKE_ALLOW = new Set([
     'rs:team.importPick',
     'rs:team.applyImport',
     'rs:moba.pick',
+    'rs:sshimport.scan',
+    'rs:sshimport.apply',
     'rs:moba.apply',
     'rs:csv.pick',
     'rs:csv.apply',

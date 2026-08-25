@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+- **Import from OpenSSH config and PuTTY.** Two new entries in the
+  Import menu (and the tree's right-click):
+  - **OpenSSH config** reads ~/.ssh/config (or a file you pick):
+    hosts, ports, ProxyJump chains (wired to jump hosts when the hop is
+    imported too), IdentityFile, and Host * defaults with OpenSSH's
+    real first-match-wins rule, wildcards and ! negation included.
+    Match and Include blocks are skipped and reported rather than
+    half-imported.
+  - **PuTTY saved sessions** reads the registry: SSH, telnet, serial
+    (with COM port and baud) and raw-TCP sessions, decoded names, .ppk
+    key paths.
+  Both use the same wizard as the MobaXTerm importer - usernames become
+  credential-profile references (never stored on sessions), and a user
+  with a known key file gets a key profile in one click - and both run
+  through the merge preview before anything is written.
+
 - **The animation set, pared and polished after real use:** Gravity,
   Defrag, Steam train and Donut are out. Snake's controls are now
   absolute - up means up, whatever way you were travelling (arrows or
