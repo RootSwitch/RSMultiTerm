@@ -24,6 +24,15 @@ const TTYPE_IS = 0, TTYPE_SEND = 1;
 // Parser states.
 const S_DATA = 0, S_IAC = 1, S_NEGOTIATE = 2, S_SB = 3, S_SB_IAC = 4;
 
+// Subnegotiation payloads are tiny - TTYPE is a terminal name, NAWS is four
+// bytes - so anything kilobytes deep is a server that never sends IAC SE
+// (or binary garbage that happened to contain IAC SB). Without a cap the
+// negotiator accumulated the entire remaining stream into sbBuf while
+// emitting nothing: the session looked hung and memory climbed. On
+// overflow: discard and fall back to data, the same "malformed, drop and
+// carry on" policy the SE path already uses.
+const MAX_SB = 4096;
+
 class TelnetNegotiator extends EventEmitter {
     constructor(termType = 'xterm-256color') {
         super();
@@ -63,6 +72,7 @@ class TelnetNegotiator extends EventEmitter {
                 case S_SB:
                     if (this.sbOption === -1) this.sbOption = b;
                     else if (b === IAC) this.state = S_SB_IAC;
+                    else if (this.sbBuf.length >= MAX_SB) { this.sbBuf = []; this.state = S_DATA; }
                     else this.sbBuf.push(b);
                     break;
                 case S_SB_IAC:

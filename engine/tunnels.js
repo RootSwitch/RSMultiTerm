@@ -82,6 +82,13 @@ function socksHandshake(sock, onTarget) {
                 buf = buf.subarray(offset + 2);
                 if (cmd !== CMD_CONNECT) { refuse(0x07); return; }
                 stage = 'done';
+                // pause() before dropping the listener: removing it leaves
+                // the socket FLOWING, and data emitted with no listener is
+                // gone. A client that pipelines its payload in a separate
+                // packet - without waiting for the reply - lost those bytes
+                // during the SSH channel-open round trip, corrupting the
+                // connection undetectably. bridge()'s pipe() resumes.
+                sock.pause();
                 sock.removeListener('data', onData);
                 onTarget(host, port, (ok) => {
                     if (!ok) return refuse(0x05);

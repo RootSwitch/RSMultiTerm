@@ -39,8 +39,29 @@
             restoreFocus();
         };
         const onKey = (e) => {
-            if (e.key !== 'Escape') return;
             if (stack[stack.length - 1] !== backdrop) return;   // not the top dialog
+            // Focus trap: Tab must cycle inside the dialog. Without this it
+            // walked out to the xterm textarea BEHIND the backdrop, and the
+            // next keystrokes went to a live device - through the broadcast
+            // router if one was armed - while the user believed they were
+            // typing into a password prompt.
+            if (e.key === 'Tab') {
+                const focusable = [...modal.querySelectorAll(
+                    'button, input, select, textarea, [href], [tabindex]:not([tabindex="-1"])',
+                )].filter((el) => !el.disabled && el.offsetParent !== null);
+                if (!focusable.length) { e.preventDefault(); return; }
+                const first = focusable[0];
+                const last = focusable[focusable.length - 1];
+                const inDialog = modal.contains(document.activeElement);
+                if (!inDialog) { e.preventDefault(); first.focus(); return; }
+                if (e.shiftKey && document.activeElement === first) {
+                    e.preventDefault(); last.focus();
+                } else if (!e.shiftKey && document.activeElement === last) {
+                    e.preventDefault(); first.focus();
+                }
+                return;
+            }
+            if (e.key !== 'Escape') return;
             e.stopImmediatePropagation();
             closeModal();
             if (opts.onCancel) opts.onCancel();

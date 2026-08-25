@@ -118,4 +118,28 @@ function runBoth(input, opts = {}) {
     assert.deepStrictEqual([...r.sent], [IAC, WILL, OPT_SGA, IAC, WONT, OPT_SGA]);
 }
 
-console.log('ok - telnet negotiator (10 scenarios, whole-buffer and byte-split)');
+// 11. An unterminated subnegotiation must not eat the stream. A server
+// that sends IAC SB and never IAC SE - malicious, or a console server
+// spraying binary that happens to contain the pair - used to make the
+// negotiator buffer every following byte forever: no data out, memory
+// climbing, session apparently hung.
+{
+    const neg = new TelnetNegotiator();
+    const got = [];
+    neg.on('data', (d) => got.push(d));
+    neg.feed(Buffer.from([255, 250, 24]));            // IAC SB TTYPE, no SE ever
+    const noise = Buffer.alloc(64 * 1024, 0x41);      // 64 KB of 'A'
+    neg.feed(noise);
+    assert.ok(neg.sbBuf.length <= 4096,
+        `sbBuf must be capped, holds ${neg.sbBuf.length} bytes`);
+    const arrived = got.reduce((n, d) => n + d.length, 0);
+    assert.ok(arrived >= noise.length - 8192,
+        `after the cap trips, bytes must flow as data again - got ${arrived}`);
+    // ...and the parser is still sane: a later negotiation still answers.
+    const sent = [];
+    neg.on('send', (d) => sent.push(d));
+    neg.feed(Buffer.from([255, 253, 3]));             // IAC DO SGA
+    assert.ok(sent.length === 1, 'the state machine must still negotiate after an SB overflow');
+}
+
+console.log('ok - telnet negotiator (11 scenarios incl. unterminated SB, whole-buffer and byte-split)');

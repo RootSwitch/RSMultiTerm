@@ -101,13 +101,20 @@ async function resolveMode(session) {
         await forSession(session);
         mode.set(session.id, 'sftp');
         return 'sftp';
-    } catch (_) {
+    } catch (err) {
+        // The state check above can race the transport back into
+        // 'connecting'; that answer is about THIS MOMENT, not the device.
+        if (/still connecting/.test(err.message || '')) return 'pending';
         const client = session.transport && session.transport._client;
         if (client && await scp.probe(client)) {
             mode.set(session.id, 'scp');
             return 'scp';
         }
-        mode.set(session.id, 'none');
+        // 'none' is never cached. A momentary channel-limit or timeout used
+        // to harden into "this device offers neither SFTP nor SCP" for the
+        // rest of the session; re-probing a genuinely bare device on the
+        // next file operation costs almost nothing, and a capable device
+        // that had a bad moment gets a second chance.
         return 'none';
     }
 }

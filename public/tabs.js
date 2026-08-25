@@ -37,6 +37,10 @@
         tab.sessionIds.push(sessionId);
         tab.focusedSessionId = sessionId;
         fire();
+        // Joining an ARMED tab makes the newcomer a broadcast recipient on
+        // arrival (membership is opt-out) - said out loud rather than
+        // discovered at the next keystroke.
+        if (window.MultiExec) window.MultiExec.noteTabGrew(tabId, 1, { bulk: false });
         return true;
     }
 
@@ -168,13 +172,18 @@
     function mergeAll() {
         if (tabs.length < 2) return;
         const target = tabs[0];
+        let moved = 0;
         for (const tab of tabs.slice(1)) {
-            for (const sid of tab.sessionIds) target.sessionIds.push(sid);
+            for (const sid of tab.sessionIds) { target.sessionIds.push(sid); moved++; }
             tab.sessionIds = [];
         }
         tabs.length = 1;
         activeId = target.id;
         fire();
+        // A merge pours every other tab's sessions into this one. If it was
+        // armed, sessions deliberately kept in separate tabs just became
+        // broadcast recipients - that disarms rather than warns.
+        if (window.MultiExec) window.MultiExec.noteTabGrew(target.id, moved, { bulk: true });
     }
 
     async function renameTab(tab) {

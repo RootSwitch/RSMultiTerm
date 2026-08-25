@@ -2,6 +2,34 @@
 
 ## Unreleased
 
+- **The review's medium-severity batch.**
+  - **Merging tabs no longer silently arms the newcomers.** "Merge into
+    MultiTerm" onto a tab with broadcast armed used to make every merged
+    session - production boxes deliberately kept in their own tabs - a
+    recipient of the next keystroke, with no acknowledgement. A merge
+    now turns broadcast OFF and says so; adding a single pane to an
+    armed tab warns with the new count.
+  - **Dialogs keep the keyboard.** Tab used to walk focus out of an open
+    dialog to the terminal behind it, so the next keystrokes went to a
+    live device - through the broadcast router, if armed - while you
+    thought you were typing into a password prompt. Tab now cycles
+    inside the dialog, both directions.
+  - **A device having a bad moment is no longer remembered as a device
+    with no file transfer.** A transient failure while probing SFTP
+    (a momentary channel limit, a timeout) was cached as "offers
+    neither SFTP nor SCP" until disconnect. Working verdicts are still
+    cached; failures are re-probed on the next file operation.
+  - **A telnet server that starts an option string and never ends it**
+    used to make the session buffer everything that followed - screen
+    frozen, memory climbing. The buffer is capped and the stream falls
+    back to plain data.
+  - **A SOCKS client that sends without waiting no longer loses bytes.**
+    Data arriving between the CONNECT request and the reply fell into a
+    listener gap and vanished, corrupting the connection undetectably.
+  - **SCP downloads no longer buffer without bound onto a slow disk**,
+    and SCP progress updates are throttled like SFTP's instead of
+    flooding one IPC message per chunk.
+
 - **The code review's follow-up batch: transfer safety and hardening.**
   - **Downloads and uploads never leave a half-file behind, or delete a
     good one.** Every transfer - single file, folder tree, and SCP -

@@ -43,6 +43,7 @@ function download(client, remotePath, localPath, onProgress) {
             let out = null;
             let settled = false;
             let errText = '';
+            let lastProgress = 0;
 
             // All writes land on a temp name; localPath is only ever
             // touched by the final rename. A refused transfer (wrong path,
@@ -95,11 +96,24 @@ function download(client, remotePath, localPath, onProgress) {
                     }
                     if (stage === 'data') {
                         const take = Math.min(remaining, chunk.length - i);
-                        out.write(chunk.subarray(i, i + take));
+                        // Honor the write verdict: a big image landing on a
+                        // slow disk otherwise buffers without bound in this
+                        // process - and an IOS image onto an SCP-only device
+                        // is exactly this path's use case. The upload side
+                        // has done this from the start.
+                        if (!out.write(chunk.subarray(i, i + take))) {
+                            stream.pause();
+                            out.once('drain', () => stream.resume());
+                        }
                         i += take;
                         remaining -= take;
                         written += take;
-                        if (onProgress) onProgress({ bytes: written, total });
+                        // At most 4/s, same as SFTP: every event is an
+                        // engine-to-main-to-renderer IPC message.
+                        if (onProgress && Date.now() - lastProgress >= 250) {
+                            lastProgress = Date.now();
+                            onProgress({ bytes: written, total });
+                        }
                         if (remaining === 0) stage = 'trailer';
                         continue;
                     }
@@ -172,6 +186,7 @@ function upload(client, localPath, remotePath, onProgress) {
             let settled = false;
             let errText = '';
             let sent = 0;
+            let lastUp = 0;
 
             const fail = (message) => {
                 if (settled) return;
@@ -193,7 +208,10 @@ function upload(client, localPath, remotePath, onProgress) {
                 const rs = fs.createReadStream(localPath);
                 rs.on('data', (d) => {
                     sent += d.length;
-                    if (onProgress) onProgress({ bytes: sent, total: stat.size });
+                    if (onProgress && Date.now() - lastUp >= 250) {
+                        lastUp = Date.now();
+                        onProgress({ bytes: sent, total: stat.size });
+                    }
                     if (!stream.write(d)) { rs.pause(); stream.once('drain', () => rs.resume()); }
                 });
                 rs.on('error', (e) => fail(e.message));

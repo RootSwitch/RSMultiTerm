@@ -28,7 +28,11 @@ const noEvents = () => {};
 function startFixture() {
     const proc = spawn(process.execPath,
         [path.join(__dirname, 'test-ssh-server.js'), String(SSH_PORT), 'tunnel-sw'],
-        { stdio: ['ignore', 'pipe', 'pipe'] });
+        { stdio: ['ignore', 'pipe', 'pipe'],
+            // 60ms on every channel open: wide enough that the eager
+            // sender's payload lands INSIDE the request-to-reply gap every
+            // run, instead of racing the loopback round trip.
+            env: { ...process.env, RSMT_FIXTURE_SLOW_TCPIP: '60' } });
     return new Promise((resolve, reject) => {
         proc.stdout.on('data', (d) => { if (/listening/.test(d.toString())) resolve(proc); });
         proc.stderr.on('data', (d) => reject(new Error(d.toString())));
@@ -173,6 +177,48 @@ const refused = (port) => new Promise((resolve) => {
         }
         await new Promise((r) => setTimeout(r, 400));
 
+        // 2c. A client that does NOT wait for the CONNECT reply before
+        // sending its payload. Those bytes used to arrive during the SSH
+        // channel-open round trip, when the handshake listener was removed
+        // and nothing else was attached - flowing mode, no listener, bytes
+        // gone, connection corrupted undetectably.
+        const eager = await new Promise((resolve, reject) => {
+            const sock = net.connect(socks.bindPort, '127.0.0.1');
+            let got = '';
+            const timer = setTimeout(() => { sock.destroy();
+                reject(new Error('eager-sender payload was lost in the handshake gap')); }, 5000);
+            sock.on('connect', () => sock.write(Buffer.from([0x05, 0x01, 0x00])));
+            let stage = 'greet';
+            sock.on('data', (d) => {
+                if (stage === 'greet') {
+                    stage = 'reply';
+                    const req = Buffer.alloc(10);
+                    req[0] = 0x05; req[1] = 0x01; req[2] = 0x00; req[3] = 0x01;
+                    req[4] = 127; req[5] = 0; req[6] = 0; req[7] = 1;
+                    req.writeUInt16BE(targetPort, 8);
+                    sock.write(req);
+                    // The point: payload right behind the request, before
+                    // any reply, in its own packet. The fixture holds the
+                    // channel open for 60ms, so 20ms is deterministically
+                    // inside the gap where the old code dropped bytes.
+                    setTimeout(() => sock.write('impatient'), 20);
+                    return;
+                }
+                if (stage === 'reply') {
+                    stage = 'data';
+                    if (d.length > 10) got += d.subarray(10).toString();
+                    return;
+                }
+                got += d.toString();
+                if (got.length >= 'impatient'.length) {
+                    clearTimeout(timer); sock.end(); resolve(got);
+                }
+            });
+            sock.on('error', (e) => { clearTimeout(timer); reject(e); });
+        });
+        assert.strictEqual(eager, 'IMPATIENT',
+            'bytes sent before the SOCKS reply must survive the channel-open gap');
+
         // 3. SOCKS5: the proxy resolves and dials the destination far-side.
         assert.strictEqual(await socksRoundTrip(socks.bindPort, targetPort, 'via socks'), 'VIA SOCKS',
             'data crosses the SOCKS proxy');
@@ -215,7 +261,8 @@ const refused = (port) => new Promise((resolve) => {
         }
         assert.deepStrictEqual(hopPool.stats(), {}, 'the pool drains when the last tunnel closes');
 
-        console.log('ok - tunnels (local forward, SOCKS5, rude clients survived, shared pooled connection, listener hygiene, clean teardown)');
+        console.log('ok - tunnels (local forward, SOCKS5, rude clients survived, eager senders kept, ' +
+            'shared pooled connection, listener hygiene, clean teardown)');
         process.exit(0);
     } finally {
         ssh.kill();

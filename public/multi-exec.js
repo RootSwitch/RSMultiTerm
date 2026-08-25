@@ -216,8 +216,36 @@
         }
     }
 
+    // A tab that gains sessions while broadcast is ARMED changes what the
+    // next keystroke reaches, and membership is opt-out - so the newcomers
+    // are participants the instant they land. For one added pane that is
+    // the designed behavior and worth a warning; for a bulk merge it is how
+    // production boxes deliberately kept in a separate tab suddenly join a
+    // broadcast, so the merge DISARMS and says so. Re-arming is one click,
+    // done by someone who has seen the new count.
+    function noteTabGrew(tabId, added, opts) {
+        const s = forTab(tabId);
+        if (!s.enabled || added <= 0) return;
+        if (opts && opts.bulk) {
+            s.enabled = false;
+            refreshChrome();
+            window.Forms.showBanner('warn',
+                `Broadcast turned OFF: ${added} session${added === 1 ? '' : 's'} joined this ` +
+                'tab in a merge. Re-arm it once you have seen the new line-up.',
+                [], { key: 'broadcast-grew' });
+            return;
+        }
+        const active = window.Tabs.active();
+        const count = active && active.id === tabId
+            ? ` (now ${participants(active).length} panes)` : '';
+        refreshChrome();
+        window.Forms.showBanner('warn',
+            `Broadcast is armed here: the added session receives every keystroke${count}.`,
+            [], { key: 'broadcast-grew' });
+    }
+
     window.MultiExec = {
-        routeInput, toggleBroadcast, toggleParticipant, pasteAll, refreshChrome,
+        routeInput, toggleBroadcast, toggleParticipant, pasteAll, refreshChrome, noteTabGrew,
         confirmBroadcastPaste: confirmPaste,
         wantsMultilineConfirm: () => confirmSingleMultiline,
     };

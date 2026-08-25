@@ -74,10 +74,18 @@ const server = new Server({ hostKeys: [hostKey] }, (client) => {
             const net = require('net');
             const out = net.connect(info.destPort, info.destIP);
             out.on('connect', () => {
-                const ch = accept();
-                ch.pipe(out).pipe(ch);
-                ch.on('close', () => out.destroy());
-                out.on('close', () => ch.close());
+                // RSMT_FIXTURE_SLOW_TCPIP holds the channel-open answer for
+                // N ms. Tests use it to widen the window between a SOCKS
+                // client's request and the proxy's reply, so bytes sent in
+                // that gap land there DETERMINISTICALLY rather than racing
+                // the loopback round trip.
+                const delay = Number(process.env.RSMT_FIXTURE_SLOW_TCPIP) || 0;
+                setTimeout(() => {
+                    const ch = accept();
+                    ch.pipe(out).pipe(ch);
+                    ch.on('close', () => out.destroy());
+                    out.on('close', () => ch.close());
+                }, delay);
             });
             out.on('error', () => reject());
         });

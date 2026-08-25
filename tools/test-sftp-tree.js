@@ -327,6 +327,33 @@ function fakeSftp(layout, opts = {}) {
         'the partial remote temp is removed');
     assert.ok(!calls.some((c) => c[0] === 'rename'), 'nothing is moved onto the target on failure');
 
+    // 9d. A transient SFTP failure must not harden into a permanent
+    // verdict. resolveMode used to cache 'none' the first time the channel
+    // open failed - a momentary channel-limit on a perfectly capable device
+    // read as "offers neither SFTP nor SCP" until disconnect.
+    {
+        let attempts = 0;
+        const session = {
+            id: 'probe-1',
+            transport: {
+                state: 'connected',
+                _client: null,   // no SCP either
+                sftp(cb) {
+                    attempts++;
+                    if (attempts === 1) return cb(new Error('channel limit exceeded'));
+                    cb(null, { on() {} });
+                },
+            },
+        };
+        const first = await sftpMod.resolveMode(session);
+        assert.strictEqual(first, 'none', 'the bad moment reports none');
+        const second = await sftpMod.resolveMode(session);
+        assert.strictEqual(second, 'sftp',
+            'the next call must re-probe and find the working subsystem, not serve a cached verdict');
+        assert.strictEqual(attempts, 2, 'the second answer came from a real probe');
+        sftpMod.drop('probe-1');
+    }
+
     // 10. Progress reports a file count, and a phase the panel can read.
     const out4 = path.join(box, 'out4');
     const seen = [];

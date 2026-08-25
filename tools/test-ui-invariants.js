@@ -278,7 +278,38 @@ const treeSrc = fs.readFileSync(path.join(PUBLIC, 'session-tree.js'), 'utf8');
 assert.ok(/if \(!window\.Tabs\.addSession\(tab\.id, r\.sessionId\)\) \{[\s\S]{0,80}newTab\(r\.title\)/.test(treeSrc),
     'openSessions must give the session a fresh tab when the current tab closed mid-dial');
 
-// 21. What Windows shows for the app. FileDescription is misnamed: it is
+// 21. Growing an ARMED broadcast tab is a safety event. Merge disarms -
+// production boxes deliberately in another tab must not silently become
+// keystroke recipients - and a single added pane warns with the new count.
+assert.ok(/function noteTabGrew\(/.test(multiExec),
+    'multi-exec must keep noteTabGrew - armed tabs must not grow silently');
+const bulkBody = multiExec.slice(multiExec.indexOf('function noteTabGrew('),
+    multiExec.indexOf('window.MultiExec = {'));
+assert.ok(/s\.enabled = false;/.test(bulkBody),
+    'a bulk merge into an armed tab must DISARM broadcast, not merely warn');
+assert.ok(/noteTabGrew\(target\.id, moved, \{ bulk: true \}\)/.test(tabsSrc),
+    'mergeAll must report its growth as bulk');
+assert.ok(/noteTabGrew\(tabId, 1, \{ bulk: false \}\)/.test(tabsSrc),
+    'addSession must report a single-pane growth');
+
+// 22. Dialogs trap Tab. Without it, Tab walked out to the xterm textarea
+// behind the backdrop and the next keystrokes went to a live device -
+// through the broadcast router if armed - mid password prompt.
+assert.ok(/e\.key === 'Tab'/.test(modals) && /shiftKey && document\.activeElement === first/.test(modals),
+    'modals.js must trap Tab inside the dialog, wrapping in both directions');
+
+// 23. SCP carries the same discipline as SFTP: progress throttled to 4/s
+// (every event is an engine-to-main-to-renderer IPC message) and the
+// download honors write backpressure instead of buffering a whole image.
+const scpSrc = fs.readFileSync(path.join(__dirname, '..', 'engine', 'scp.js'), 'utf8');
+assert.ok(/Date\.now\(\) - lastProgress >= 250/.test(scpSrc),
+    'scp download progress must be throttled like sftp');
+assert.ok(/Date\.now\(\) - lastUp >= 250/.test(scpSrc),
+    'scp upload progress must be throttled like sftp');
+assert.ok(/stream\.pause\(\);\s*[\s\S]{0,80}out\.once\('drain'/.test(scpSrc),
+    'scp download must pause the channel when the local disk falls behind');
+
+// 24. What Windows shows for the app. FileDescription is misnamed: it is
 // the label Windows puts on the taskbar jump list, in Task Manager and in
 // Explorer's Description column, so it has to be the app's NAME. Shipping
 // package.json's description there made right-clicking the taskbar button
@@ -302,4 +333,5 @@ assert.ok(!/\bteam\b/i.test(pkg.description),
 console.log(`ok - ui invariants (hidden rule, outside-click menus, clipboard perms, ` +
     `no default menu, wheel zoom, remote-name sanitizing, gated dev hooks, idle overlay-only, ` +
     `exe metadata, shared menus, focus handback, contrast floor, broadcast truth, no orphan sessions, ` +
+    `armed-tab growth, focus trap, scp discipline, ` +
     `${scripts.length} scripts, ${wired.size} wired ids)`);
