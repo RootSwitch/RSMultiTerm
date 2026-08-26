@@ -13,19 +13,19 @@
 
     // Static commands; sessions are appended fresh on every open.
     const COMMANDS = [
-        { title: 'Toggle broadcast', run: () => window.MultiExec.toggleBroadcast() },
-        { title: 'Paste to all panes', run: () => window.MultiExec.pasteAll() },
-        { title: 'Find in scrollback', run: () => window.SearchUI.open() },
-        { title: 'Hints: copy from screen', run: () => window.Hints.open() },
-        { title: 'Compare panes (diff)', run: () => window.DiffUI.comparePanes() },
-        { title: 'Merge all tabs into one', run: () => window.Tabs.mergeAll() },
+        { title: 'Toggle Broadcast', run: () => window.MultiExec.toggleBroadcast() },
+        { title: 'Paste to All Panes', run: () => window.MultiExec.pasteAll() },
+        { title: 'Find in Scrollback', run: () => window.SearchUI.open() },
+        { title: 'Hints: Copy from Screen', run: () => window.Hints.open() },
+        { title: 'Compare Panes (Diff)', run: () => window.DiffUI.comparePanes() },
+        { title: 'Merge All Tabs into One', run: () => window.Tabs.mergeAll() },
         {
-            title: 'Reconnect all disconnected panes',
+            title: 'Reconnect All Disconnected Panes',
             detail: 'dials each dead pane in turn, paced by the auth guard',
             run: () => window.Workspace.reconnectAll(),
         },
         {
-            title: 'Copy last command output',
+            title: 'Copy Last Command Output',
             run: () => {
                 const tab = window.Tabs.active();
                 const out = tab && window.TermPanes.lastCommandOutput(tab.focusedSessionId);
@@ -34,7 +34,7 @@
             },
         },
         {
-            title: 'Duplicate this pane',
+            title: 'Duplicate This Pane',
             run: () => {
                 const tab = window.Tabs.active();
                 if (tab && tab.focusedSessionId) window.App.duplicatePane(tab.focusedSessionId);
@@ -46,18 +46,18 @@
         {
             // Start the idle animation now rather than waiting out the
             // timer - for showing it off, and for checking a style.
-            title: 'Idle animation: play now',
+            title: 'Idle Animation: Play Now',
             run: () => window.Idle && window.Idle.start('random'),
         },
         {
-            title: 'Install SSH key on this device (ssh-copy-id)',
+            title: 'Install SSH Key on This Device (ssh-copy-id)',
             run: () => {
                 const tab = window.Tabs.active();
                 if (tab && tab.focusedSessionId) window.Forms.installKeyDialog(tab.focusedSessionId);
             },
         },
         {
-            title: 'Save this connection as a session',
+            title: 'Save This Connection as a Session',
             run: () => {
                 const tab = window.Tabs.active();
                 const sid = tab && tab.focusedSessionId;
@@ -70,23 +70,23 @@
                 window.Forms.saveSessionDialog(sid);
             },
         },
-        { title: 'Sync: check the sessions file for changes',
+        { title: 'Sync: Check the Sessions File for Changes',
             run: () => window.TeamUI.syncCheck() },
-        { title: 'Sync: publish sessions', run: () => window.TeamUI.syncPublish() },
+        { title: 'Sync: Publish Sessions', run: () => window.TeamUI.syncPublish() },
         {
-            title: 'Import MobaXTerm sessions (.mxtsessions)',
+            title: 'Import MobaXTerm Sessions (.mxtsessions)',
             detail: 'browse to a file exported from MobaXTerm, portable or installed',
             run: () => window.TeamUI.mobaWizard(),
         },
         {
-            title: 'Import sessions from a spreadsheet (CSV)',
+            title: 'Import Sessions from a Spreadsheet (CSV)',
             run: () => window.CsvUI.importCsv(window.SessionTree.selectedFolder(), null),
         },
-        { title: 'Edit highlight rules', run: () => window.HighlightRulesUI.openEditor() },
-        { title: 'Manage snippets', run: () => window.Snippets.openManager() },
-        { title: 'Tunnels / port forwards', run: () => window.Tunnels.openManager() },
+        { title: 'Edit Highlight Rules', run: () => window.HighlightRulesUI.openEditor() },
+        { title: 'Manage Snippets', run: () => window.Snippets.openManager() },
+        { title: 'Tunnels / Port Forwards', run: () => window.Tunnels.openManager() },
         {
-            title: 'Install shell integration on this host',
+            title: 'Install Shell Integration on This Host',
             detail: 'turns on prompt navigation and copy-last-output for a Linux session',
             run: () => window.ShellIntegration.openDialog(),
         },
