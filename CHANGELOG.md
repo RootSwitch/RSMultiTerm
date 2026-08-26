@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## 1.0.0 - 2026-08-25
+
+The first release the version number takes seriously. The app has been
+a daily driver throughout, three code reviews have been worked through
+end to end, and what is left is the kind of thing that only falls out
+of use. Windows is the supported platform; the Linux paths are written
+and tested in the suite, but no Linux build has been published yet.
+
 - **Title Case across the UI.** Buttons, menu items and dialog titles now
   read as names - "Field Tools", "Move To...", "Copy Last Command Output"
   - the way the rest of Windows does it. Field labels and the option text
@@ -74,7 +82,7 @@
   requirement belongs to the file servers), and its start line in the
   activity log now shows the right port.
 
-- **A syslog sink in Field tools.** Start a listener on 514 (or a high
+- **A syslog sink in Field Tools.** Start a listener on 514 (or a high
   port, since 514 needs admin) and watch devices announce themselves -
   the change-window staple, without standing up a syslog server. It
   decodes the priority into a severity so you can filter to "warnings
@@ -82,7 +90,7 @@
   and saves the filtered view to a file. Same rules as the other
   listeners: nothing starts by itself, the address is chosen, and it
   stops on the deadline.
-- **Copy fetch command.** Next to a running TFTP or HTTP server, a
+- **Copy Fetch Command.** Next to a running TFTP or HTTP server, a
   button that puts the DEVICE-side command on your clipboard, already
   filled in with the address and port it is listening on: `copy
   tftp://.../file flash:`, `curl -O http://...`, the ROMMON tftpdnld

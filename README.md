@@ -110,10 +110,13 @@ machine:
 npx electron-builder --linux
 ```
 
-One Linux note worth knowing before that lands: saved passwords need a
-system keyring (gnome-keyring or KWallet). Without one, Chromium's
+Two Linux notes worth knowing before that lands. Saved passwords need a
+system keyring (gnome-keyring or KWallet); without one, Chromium's
 fallback "encrypts" with a hardcoded key, so the app withholds the save
 option entirely and uses memory-only prompt mode rather than pretending.
+And "Edit Locally" hands a device file to the desktop's own association,
+falling back to `$VISUAL` / `$EDITOR`; set the editor in Settings if
+neither is what you want.
 
 ## Dependencies
 
