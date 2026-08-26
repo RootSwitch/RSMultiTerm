@@ -55,7 +55,9 @@ grab-bag. This is a terminal for SSH and text.
 
 ## Install
 
-Grab the installer or the portable exe from Releases. Both are unsigned -
+Grab the installer or the portable exe from the
+[latest release](https://github.com/RootSwitch/RSMultiTerm/releases/latest)
+(under **Assets** - not the source zip). Both are unsigned -
 this is a personal project without a code-signing certificate - so
 SmartScreen will warn on first run ("More info" > "Run anyway"). Every
 release publishes SHA-256 hashes in `SHA256SUMS.txt`; verify a download
