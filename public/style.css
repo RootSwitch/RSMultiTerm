@@ -296,6 +296,17 @@ label { color: var(--se-txt-dim); }
     white-space: nowrap;
     overflow: hidden;
 }
+/* Drag-to-move: the row (or the whole tree, for top level) that would
+   receive the drop. */
+.tree-row.drop-target {
+    outline: 1px dashed var(--se-warn);
+    outline-offset: -1px;
+    background: var(--se-input);
+}
+#tree.drop-root {
+    outline: 1px dashed var(--se-warn);
+    outline-offset: -2px;
+}
 .tree-row:hover { background: var(--se-panel-2); }
 .tree-row.selected { background: color-mix(in srgb, var(--se-accent) 25%, var(--se-panel)); }
 .tree-arrow { width: 12px; color: var(--se-txt-dim); flex: none; }
@@ -561,6 +572,18 @@ label { color: var(--se-txt-dim); }
     color: var(--se-txt-dim);
     min-width: 58px;
     text-align: right;
+}
+#search-bar .search-toggle {
+    font-size: 10px;
+    font-family: var(--mt-mono);
+    padding: 2px 5px;
+    border-radius: 3px;
+    color: var(--se-txt-dim);
+}
+#search-bar .search-toggle.on {
+    background: var(--se-input);
+    color: var(--se-txt);
+    outline: 1px solid var(--se-border);
 }
 #search-bar button {
     border: none;

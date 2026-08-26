@@ -205,6 +205,21 @@ process.parentPort.on('message', (e) => {
                 .catch((err) => send({ t: 'serial-ports', reqId: m.reqId, ports: [], error: err.message }));
             break;
         }
+        // Line controls on an open serial session: break, DTR/RTS, speed.
+        case 'serial-signal': {
+            const s = sessions.get(m.sessionId);
+            const reply = (ok, payload) => send({
+                t: 'serial-signal-result', reqId: m.reqId, ok,
+                ...(ok ? { result: payload } : { error: payload }),
+            });
+            if (!s || typeof s.transport.signal !== 'function') {
+                reply(false, 'not a serial session');
+                break;
+            }
+            s.transport.signal(m.req).then(
+                (r) => reply(true, r), (err) => reply(false, err.message));
+            break;
+        }
         case 'shutdown': {
             // Close everything deliberately (flushes logs once logging
             // lands), then exit so main never has to SIGKILL us.

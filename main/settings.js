@@ -48,6 +48,10 @@ const DEFAULTS = {
     // scan to security monitoring, so it happens when a human asks.
     healthcheck: { concurrency: 8, timeoutMs: 3000, retryDelayMs: 60000 },
     confirmations: { pasteMultilineBroadcast: true, pasteMultiline: true, closeManyTabs: true },
+    // Named broadcast line-ups: which SAVED sessions participate when the
+    // group is armed. Members are tree node ids; quick connects have no
+    // identity to remember and cannot join.
+    broadcastGroups: [],   // [{name, nodeIds: []}]
     // OSC 52: let a remote program (tmux, vim, kitty's kitten) put text on
     // the LOCAL clipboard. Write is the useful, low-risk half and is on by
     // default. Read - a remote asking what is ON the clipboard - is an
@@ -113,6 +117,23 @@ function sanitize(patch) {
     }
     if ('zoomModifier' in out && out.zoomModifier !== 'ctrl' && out.zoomModifier !== 'ctrl+shift') {
         out.zoomModifier = 'ctrl';
+    }
+    if ('editorCommand' in out && out.editorCommand !== null &&
+        typeof out.editorCommand !== 'string') {
+        delete out.editorCommand;
+    }
+    // Renderer-shaped structure that lands on disk and is iterated later:
+    // hold it to exactly [{name, nodeIds:[...]}] and drop the rest.
+    if ('broadcastGroups' in out) {
+        const src = Array.isArray(out.broadcastGroups) ? out.broadcastGroups : [];
+        out.broadcastGroups = src
+            .filter((g) => g && typeof g.name === 'string' && g.name.trim() &&
+                Array.isArray(g.nodeIds))
+            .slice(0, 100)
+            .map((g) => ({
+                name: g.name.trim().slice(0, 80),
+                nodeIds: g.nodeIds.filter((id) => typeof id === 'string').slice(0, 500),
+            }));
     }
     if (out.terminalColors && 'minContrast' in out.terminalColors) {
         // 1 is "off" and 21 is black on white; anything outside that is not

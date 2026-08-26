@@ -16,6 +16,7 @@ const INVOKE_ALLOW = new Set([
     'rs:session.saveAsNode',
     'rs:session.disconnect',
     'rs:serial.listPorts',
+    'rs:serial.signal',
     'rs:sftp.op',
     'rs:sftp.pickDownload',
     'rs:sftp.pickUpload',

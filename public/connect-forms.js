@@ -93,9 +93,14 @@
         fOnConnect.style.minHeight = '4.5em';
         fOnConnect.value = node.onConnect || '';
         fOnConnect.placeholder = 'terminal length 0';
+        // Outbound proxy for THIS dial (SSH and telnet; not used on a jump
+        // chain, which has its own way out). Inherits from the folder.
+        const fProxy = input(node.proxy || '', 'none - socks5://host:1080 or http://host:3128');
+        fProxy.title = 'Connect through this proxy. Inherits from the folder; blank = direct.';
         body.append(
             row('Name', fName), row('Host', fHost), row('Transport', fTransport),
             row('Port', fPort), row('Credentials', fProfile), row('Jump host', fJump),
+            row('Proxy', fProxy),
             row('Logging', fLogging),
             serialRows, row('Notes', fNotes),
             window.Modals.stacked('Commands on connect', fOnConnect,
@@ -109,6 +114,13 @@
                 label: 'Save', primary: true,
                 onClick: () => {
                     if (!fName.value.trim()) { fName.focus(); return false; }
+                    if (fProxy.value.trim() &&
+                        !/^(socks5|http):\/\/\S+:\d{1,5}\/?$/.test(fProxy.value.trim())) {
+                        showBanner('error',
+                            'Proxy must look like socks5://host:1080 or http://host:3128 (or be blank).');
+                        fProxy.focus();
+                        return false;
+                    }
                     const jump = fJump.value === '' ? null : (fJump.value === '-' ? null : fJump.value);
                     rsterm.invoke('rs:tree.upsert', {
                         ...node,
@@ -123,6 +135,7 @@
                         logging: fLogging.value === '' ? null : fLogging.value === 'on',
                         notes: fNotes.value,
                         onConnect: fOnConnect.value.trim() || null,
+                        proxy: fProxy.value.trim() || null,
                     });
                 },
             },
@@ -154,9 +167,13 @@
         fDefOnConnect.style.minHeight = '3.5em';
         fDefOnConnect.value = d.onConnect || '';
         fDefOnConnect.placeholder = 'terminal length 0';
+        const fDefProxy = input(d.proxy || '', 'none - socks5://host:1080 or http://host:3128');
+        fDefProxy.title = 'Every session in this folder connects through this proxy ' +
+            'unless it sets its own. Blank = direct.';
         body.append(row('Name', fName),
             row('Default credentials', fProfile),
             row('Default port', fPort),
+            row('Default proxy', fDefProxy),
             row('Logging', fLogging),
             window.Modals.stacked('Commands on connect (default)', fDefOnConnect,
                 'Typed into every session in this folder a moment after it connects. ' +
@@ -168,6 +185,13 @@
                 label: 'Save', primary: true,
                 onClick: () => {
                     if (!fName.value.trim()) { fName.focus(); return false; }
+                    if (fDefProxy.value.trim() &&
+                        !/^(socks5|http):\/\/\S+:\d{1,5}\/?$/.test(fDefProxy.value.trim())) {
+                        showBanner('error',
+                            'Proxy must look like socks5://host:1080 or http://host:3128 (or be blank).');
+                        fDefProxy.focus();
+                        return false;
+                    }
                     rsterm.invoke('rs:tree.upsert', {
                         ...node,
                         name: fName.value.trim(),
@@ -177,6 +201,7 @@
                             port: fPort.value ? Number(fPort.value) : null,
                             logging: fLogging.value === '' ? null : fLogging.value === 'on',
                             onConnect: fDefOnConnect.value.trim() || null,
+                            proxy: fDefProxy.value.trim() || null,
                         },
                     });
                 },

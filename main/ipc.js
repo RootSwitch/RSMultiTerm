@@ -1005,7 +1005,22 @@ function wireIpc(engineRef, getWindow, bootConfig) {
 
     // --- serial listing ---------------------------------------------------
     const serialWaiters = new Map();
+    const serialSignalWaiters = new Map();
     let nextReqId = 1;
+    // Line controls on an open serial session (break, DTR/RTS, speed).
+    ipcMain.handle('rs:serial.signal', (_e, { sessionId, req }) => {
+        const engine = engineRef.proc;
+        if (!engine) throw new Error('engine not running');
+        return new Promise((resolve, reject) => {
+            const reqId = nextReqId++;
+            serialSignalWaiters.set(reqId, { resolve, reject });
+            engine.postMessage({ t: 'serial-signal', reqId, sessionId, req });
+            setTimeout(() => {
+                const w = serialSignalWaiters.get(reqId);
+                if (w) { serialSignalWaiters.delete(reqId); w.reject(new Error('serial signal timeout')); }
+            }, 10000);
+        });
+    });
     ipcMain.handle('rs:serial.listPorts', () => {
         const engine = engineRef.proc;
         if (!engine) return [];
@@ -1058,6 +1073,15 @@ function wireIpc(engineRef, getWindow, bootConfig) {
             case 'serial-ports': {
                 const resolve = serialWaiters.get(m.reqId);
                 if (resolve) { serialWaiters.delete(m.reqId); resolve(m.ports); }
+                break;
+            }
+            case 'serial-signal-result': {
+                const w = serialSignalWaiters.get(m.reqId);
+                if (w) {
+                    serialSignalWaiters.delete(m.reqId);
+                    if (m.ok) w.resolve(m.result);
+                    else w.reject(new Error(m.error));
+                }
                 break;
             }
             case 'tunnel-result': {

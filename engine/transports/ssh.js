@@ -35,8 +35,25 @@ class SshTransport extends Transport {
         // must surface them and give back the pool ref itself - a gateway
         // that cannot reach the target is routine, not exceptional.
         let sock;
+        // Outbound proxy, for direct connections only: a jump chain already
+        // has its own way out of the building, and dialing the GATEWAY
+        // through a proxy is a different feature (say so rather than
+        // silently doing something surprising either way).
+        if (descriptor.proxy && !(descriptor.jumpChain && descriptor.jumpChain.length)) {
+            this._status('connecting', `via proxy ${descriptor.proxy}`);
+            try {
+                sock = await require('../proxy-dial').dial(
+                    descriptor.proxy, host, port, descriptor.timeoutMs);
+                if (this._aborted) { sock.destroy(); throw new Error('cancelled'); }
+            } catch (err) {
+                this._status('error', err.message);
+                this._emitClose(1, err.message);
+                throw err;
+            }
+        }
         if (descriptor.jumpChain && descriptor.jumpChain.length && helpers) {
-            this._status('connecting', `via ${descriptor.jumpChain.map((h) => h.host).join(' > ')}`);
+            this._status('connecting', `via ${descriptor.jumpChain.map((h) => h.host).join(' > ')}` +
+                (descriptor.proxy ? ' (the proxy is not used on a jump chain)' : ''));
             try {
                 this._hop = await hopPool.acquire(descriptor.jumpChain, helpers);
                 if (this._aborted) throw new Error('cancelled');

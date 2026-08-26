@@ -73,6 +73,10 @@ class SerialTransport extends Transport {
                     this._emitClose(0, 'cancelled');
                     return reject(new Error('cancelled'));
                 }
+                // serialport asserts DTR and RTS on open (unless told not
+                // to); this mirror is what the signal menu reads back.
+                this._signals = { dtr: true, rts: true };
+                this._baud = s.baud || 9600;
                 this._status('connected', `${path} @ ${s.baud || 9600}`);
                 resolve();
             });
@@ -104,6 +108,57 @@ class SerialTransport extends Transport {
 
     pause() { if (this._port) this._port.pause(); }
     resume() { if (this._port) this._port.resume(); }
+
+    // Line controls: break, DTR/RTS, and a mid-session speed change - the
+    // console-cable moves PuTTY and TeraTerm users expect. A break during
+    // boot is how ROMMON is reached for password recovery, which makes it
+    // the single most load-bearing thing a serial terminal can send.
+    async signal(req) {
+        const port = this._port;
+        if (!port || !port.isOpen) throw new Error('the port is not open');
+        const set = (opts) => new Promise((res, rej) =>
+            port.set(opts, (e) => e ? rej(e) : res()));
+        switch (req.op) {
+            case 'break': {
+                // Clamped: below ~100ms some USB adapters swallow the
+                // condition entirely; a break that never ends wedges the
+                // line. The deassert is unconditional - an error mid-wait
+                // must not leave break held.
+                const ms = Math.min(Math.max(Number(req.ms) || 300, 100), 3000);
+                await set({ brk: true });
+                try {
+                    await new Promise((res) => setTimeout(res, ms));
+                } finally {
+                    await set({ brk: false });
+                }
+                return { sent: 'break', ms };
+            }
+            case 'set': {
+                const next = {};
+                if (typeof req.dtr === 'boolean') next.dtr = req.dtr;
+                if (typeof req.rts === 'boolean') next.rts = req.rts;
+                if (!Object.keys(next).length) throw new Error('nothing to set');
+                await set(next);
+                this._signals = { ...this._signals, ...next };
+                return { signals: this._signals };
+            }
+            case 'baud': {
+                const baud = Number(req.baud);
+                if (!Number.isInteger(baud) || baud < 50 || baud > 4000000) {
+                    throw new Error(`not a usable line speed: ${req.baud}`);
+                }
+                await new Promise((res, rej) =>
+                    port.update({ baudRate: baud }, (e) => e ? rej(e) : res()));
+                this._baud = baud;
+                this._status('connected', `${port.path} @ ${baud}`);
+                return { baud };
+            }
+            case 'status':
+                return { signals: this._signals, baud: this._baud };
+            default:
+                throw new Error(`unknown serial op: ${req.op}`);
+        }
+    }
 
     async close() {
         this._status('closing', null);

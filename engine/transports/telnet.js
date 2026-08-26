@@ -32,16 +32,39 @@ class TelnetTransport extends Transport {
             });
         }
 
+        // Outbound proxy: the tunnel is established first, and the socket
+        // that comes back is already connected - the wiring below treats it
+        // exactly like a direct socket whose 'connect' already fired.
+        let proxied = null;
+        if (descriptor.proxy) {
+            this._status('connecting', `via proxy ${descriptor.proxy}`);
+            try {
+                proxied = await require('../proxy-dial').dial(
+                    descriptor.proxy, host, port, descriptor.timeoutMs);
+            } catch (err) {
+                this._status('error', err.message);
+                this._emitClose(1, err.message);
+                throw err;
+            }
+        }
+
         return new Promise((resolve, reject) => {
             let settled = false;
-            const sock = net.connect({ host, port });
+            const sock = proxied || net.connect({ host, port });
             this._sock = sock;
             sock.setNoDelay(true);
             // Half-open detection: a firewall idle-drop leaves the socket
             // "connected" forever without this - SSH gets the same from its
             // protocol keepalives, telnet only has TCP's.
             sock.setKeepAlive(true, 60000);
-            sock.setTimeout(descriptor.timeoutMs || 15000);
+
+            const opened = () => {
+                settled = true;
+                sock.setTimeout(0);
+                // No auth phase: telnet login happens in-band on screen.
+                this._status('connected', null);
+                resolve();
+            };
 
             sock.on('timeout', () => {
                 // Only the connect phase times out; established telnet
@@ -49,13 +72,12 @@ class TelnetTransport extends Transport {
                 if (!settled) sock.destroy(new Error('connection timed out'));
             });
 
-            sock.on('connect', () => {
-                settled = true;
-                sock.setTimeout(0);
-                // No auth phase: telnet login happens in-band on screen.
-                this._status('connected', null);
-                resolve();
-            });
+            if (proxied) {
+                opened();
+            } else {
+                sock.setTimeout(descriptor.timeoutMs || 15000);
+                sock.on('connect', opened);
+            }
 
             sock.on('data', (buf) => {
                 if (this._neg) this._neg.feed(buf);

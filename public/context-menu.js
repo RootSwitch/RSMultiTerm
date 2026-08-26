@@ -92,7 +92,7 @@
     // the keyboard back where it was. That last one is why Paste appeared to
     // work and then swallow the Enter after it - focus was sitting on a
     // button that no longer existed, so the terminal never saw the key.
-    function showMenu(e, pane) {
+    async function showMenu(e, pane) {
         const sel = pane.term.getSelection();
         const lastOut = window.TermPanes.lastCommandOutput(pane.sessionId);
         const items = [
@@ -119,6 +119,51 @@
         if (pane.transport === 'ssh') {
             items.push({ label: 'Shell integration...',
                 onClick: () => window.ShellIntegration.openDialog() });
+        }
+        // Serial line controls. State is read fresh so the DTR/RTS labels
+        // tell the truth; a session that just died degrades to no section
+        // rather than a menu of dead switches.
+        if (pane.transport === 'serial') {
+            let st = null;
+            try {
+                st = await rsterm.invoke('rs:serial.signal',
+                    { sessionId: pane.sessionId, req: { op: 'status' } });
+            } catch (_) { /* not open; below */ }
+            const say = (msg) => {
+                const el = document.getElementById('status-text');
+                if (el) el.textContent = msg;
+            };
+            const sig = async (req, done) => {
+                try {
+                    const r = await rsterm.invoke('rs:serial.signal',
+                        { sessionId: pane.sessionId, req });
+                    say(done(r));
+                } catch (err) { say(`serial: ${err.message}`); }
+            };
+            if (st) {
+                const s = st.signals || {};
+                items.push(null, {
+                    label: 'Send break',
+                    onClick: () => sig({ op: 'break' }, (r) => `break sent (${r.ms} ms)`),
+                }, {
+                    label: `DTR is ${s.dtr ? 'high' : 'low'} - set ${s.dtr ? 'low' : 'high'}`,
+                    onClick: () => sig({ op: 'set', dtr: !s.dtr },
+                        (r) => `DTR ${r.signals.dtr ? 'high' : 'low'}`),
+                }, {
+                    label: `RTS is ${s.rts ? 'high' : 'low'} - set ${s.rts ? 'low' : 'high'}`,
+                    onClick: () => sig({ op: 'set', rts: !s.rts },
+                        (r) => `RTS ${r.signals.rts ? 'high' : 'low'}`),
+                }, {
+                    label: `Line speed (${st.baud})...`,
+                    onClick: async () => {
+                        const v = await window.Modals.promptText('Line speed',
+                            'Baud rate', String(st.baud));
+                        if (!v) return;
+                        sig({ op: 'baud', baud: Number(v.trim()) },
+                            (r) => `line speed now ${r.baud}`);
+                    },
+                });
+            }
         }
         window.Modals.menu(e.clientX, e.clientY, items);
     }

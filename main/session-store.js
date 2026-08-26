@@ -14,7 +14,7 @@ const crypto = require('crypto');
 const store = require('./store');
 
 const INHERITABLE = ['credentialProfile', 'port', 'transport', 'jumpHost',
-    'logging', 'highlightSet', 'encoding', 'onConnect'];
+    'logging', 'highlightSet', 'encoding', 'onConnect', 'proxy'];
 
 let tree = null;   // {schema, nodes: {id: node}}
 const listeners = [];
@@ -206,6 +206,9 @@ function resolveDescriptor(id, appDefaults) {
         highlightSet: eff.highlightSet.value || null,
         encoding: eff.encoding.value || null,
         onConnect: eff.onConnect.value || null,
+        // 'socks5://host:port' or 'http://host:port'; the engine parses and
+        // refuses anything else at connect time.
+        proxy: eff.proxy.value || null,
     };
 }
 

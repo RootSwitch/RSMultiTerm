@@ -227,6 +227,9 @@
     document.getElementById('broadcast-btn').addEventListener('click', () => {
         window.MultiExec.toggleBroadcast();
     });
+    document.getElementById('broadcast-groups-btn').addEventListener('click', (e) => {
+        window.MultiExec.groupsMenu(e.currentTarget.getBoundingClientRect());
+    });
     document.getElementById('highlights-btn').addEventListener('click', () => {
         window.HighlightRulesUI.openEditor();
     });

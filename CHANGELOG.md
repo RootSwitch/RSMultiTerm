@@ -2,6 +2,25 @@
 
 ## Unreleased
 
+- **Serial line controls.** Right-click a serial pane: send a break (the
+  move that gets you into ROMMON during boot), toggle DTR and RTS, and
+  change the line speed mid-session - no more disconnecting to go from
+  9600 to 115200 after the bootloader hands off.
+- **Connect through a proxy.** A session (or a whole folder) can dial
+  out through socks5://host:port or http://host:port - the corporate
+  egress case. Set it once on the folder; every session inside inherits
+  it. Sessions with a jump host keep using the jump host.
+- **Drag sessions between folders**, or right-click > Move to... for
+  targets that are collapsed or far away. Reorganizing 200 imported
+  sessions no longer means delete and recreate.
+- **Saved broadcast groups.** Save the current broadcast line-up under
+  a name (the v next to the Broadcast button), then arm it later with
+  one click - it includes exactly its members and excludes everything
+  else in the tab, and tells you the count it armed.
+- **Search options.** The find bar grew match-case, whole-word, and
+  regex toggles. A half-typed regex says "bad pattern" instead of
+  finding nothing in silence.
+
 - **Edit remote files in your own editor.** Right-click a file in the
   file browser, "Edit locally", and it opens in whatever you actually
   edit with - every save uploads straight back to the device. The

@@ -17,8 +17,10 @@
     // MobaXterm dialog). Broadcast confirmation is not covered by this -
     // that one is never optional.
     let confirmSingleMultiline = true;
+    let groups = [];
     const applyPasteSettings = (s) => {
         confirmSingleMultiline = ((s || {}).confirmations || {}).pasteMultiline !== false;
+        groups = Array.isArray((s || {}).broadcastGroups) ? s.broadcastGroups : [];
     };
     rsterm.invoke('rs:settings.get').then(applyPasteSettings);
     rsterm.on('rs:evt.settings-changed', applyPasteSettings);
@@ -171,6 +173,96 @@
         if (cancel) cancel.focus();
     }
 
+    // --- saved broadcast groups -------------------------------------------
+    // A named line-up: which SAVED sessions participate when armed. The
+    // per-tab exclusion state is exactly what gets persisted - by tree node
+    // id, since a sessionId dies with the session. Arming a group in a tab
+    // includes its members and excludes everything else, then arms; the
+    // count banner is the receipt.
+
+    function saveGroupDialog() {
+        const tab = window.Tabs.active();
+        if (!tab) return;
+        const s = forTab(tab.id);
+        const members = [];
+        let anonymous = 0;
+        for (const sid of tab.sessionIds) {
+            if (s.excluded.has(sid)) continue;
+            const pane = window.TermPanes.panes.get(sid);
+            if (pane && pane.nodeId) members.push(pane.nodeId);
+            else anonymous++;
+        }
+        if (!members.length) {
+            window.Forms.showBanner('warn', 'Nothing here to save: a group remembers ' +
+                'SAVED sessions, and no included pane in this tab is one.');
+            return;
+        }
+        window.Modals.promptText('Save broadcast group',
+            `Group name (${members.length} saved session${members.length === 1 ? '' : 's'})`, '')
+            .then((name) => {
+                if (!name || !name.trim()) return;
+                const next = groups.filter((g) => g.name !== name.trim());
+                next.push({ name: name.trim(), nodeIds: [...new Set(members)] });
+                rsterm.invoke('rs:settings.update', { broadcastGroups: next });
+                window.Forms.showBanner('warn',
+                    `Saved '${name.trim()}' with ${members.length} member${members.length === 1 ? '' : 's'}.` +
+                    (anonymous ? ` ${anonymous} quick-connect pane${anonymous === 1 ? '' : 's'} ` +
+                        'could not join - only saved sessions have an identity to remember.' : ''));
+            });
+    }
+
+    function armGroup(group) {
+        const tab = window.Tabs.active();
+        if (!tab) return;
+        const s = forTab(tab.id);
+        const want = new Set(group.nodeIds);
+        let included = 0;
+        const present = new Set();
+        for (const sid of tab.sessionIds) {
+            const pane = window.TermPanes.panes.get(sid);
+            const member = !!(pane && pane.nodeId && want.has(pane.nodeId));
+            if (member) { included++; present.add(pane.nodeId); s.excluded.delete(sid); }
+            else s.excluded.add(sid);
+        }
+        s.enabled = included > 0;
+        refreshChrome();
+        const absent = group.nodeIds.filter((id) => !present.has(id)).length;
+        if (!included) {
+            window.Forms.showBanner('warn',
+                `'${group.name}': none of its ${group.nodeIds.length} members are open ` +
+                'in this tab, so broadcast stays off.');
+        } else {
+            window.Forms.showBanner('warn',
+                `Broadcast armed for '${group.name}': ${included} of ${tab.sessionIds.length} ` +
+                `panes here${absent ? ` (${absent} member${absent === 1 ? '' : 's'} not open in this tab)` : ''}.`);
+        }
+    }
+
+    function groupsMenu(anchor) {
+        const items = [];
+        for (const g of groups) {
+            items.push({
+                label: `Arm '${g.name}' (${g.nodeIds.length})`,
+                onClick: () => armGroup(g),
+            });
+        }
+        if (groups.length) items.push(null);
+        items.push({ label: 'Save current line-up as group...', onClick: saveGroupDialog });
+        if (groups.length) {
+            items.push({
+                label: 'Delete a group...',
+                onClick: () => {
+                    window.Modals.menu(anchor.left, anchor.bottom + 2, groups.map((g) => ({
+                        label: `Delete '${g.name}'`,
+                        onClick: () => rsterm.invoke('rs:settings.update',
+                            { broadcastGroups: groups.filter((x) => x.name !== g.name) }),
+                    })));
+                },
+            });
+        }
+        window.Modals.menu(anchor.left, anchor.bottom + 2, items);
+    }
+
     // Visual truth: outlines, toggle glyphs, toolbar count.
     function refreshChrome() {
         // Housekeeping: broadcast state for tabs that no longer exist.
@@ -232,6 +324,7 @@
 
     window.MultiExec = {
         routeInput, toggleBroadcast, toggleParticipant, pasteAll, refreshChrome, noteTabGrew,
+        groupsMenu, armGroup,
         confirmBroadcastPaste: confirmPaste,
         wantsMultilineConfirm: () => confirmSingleMultiline,
     };

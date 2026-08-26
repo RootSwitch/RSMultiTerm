@@ -210,6 +210,7 @@ ${describeAge(ageDays)}.` + NOT_PROBED;
             }
 
             el.addEventListener('click', (e) => handleSelect(node, e));
+            armRowDrag(el, node);
             el.addEventListener('contextmenu', (e) => {
                 e.preventDefault();
                 treeMenu(e, node);
@@ -305,6 +306,7 @@ ${describeAge(ageDays)}.` + NOT_PROBED;
 
         const jump = val('jumpHost');
         if (jump) add('Jump host', (nodes[jump] || {}).name || 'missing session', src('jumpHost'));
+        add('Proxy', val('proxy'), src('proxy'));
 
         const logging = val('logging');
         if (logging && typeof logging === 'object') {
@@ -342,6 +344,142 @@ ${describeAge(ageDays)}.` + NOT_PROBED;
             lastClicked = node.id;
         }
         render();
+    }
+
+    // --- moving nodes -----------------------------------------------------
+    // Drag onto a folder = into it; onto a session = beside it; onto the
+    // blank space = top level. "Move to..." in the menu covers targets that
+    // are collapsed or off screen. Main's move() re-checks the cycle rule,
+    // so these guards are for honest feedback, not for safety.
+
+    let dragIds = null;
+
+    // Only the outermost dragged nodes move; a folder brings its children
+    // by containment, and moving them separately would flatten it.
+    function outermost(ids) {
+        const set = new Set(ids);
+        return ids.filter((id) => {
+            let p = (nodes[id] || {}).parentId;
+            while (p) {
+                if (set.has(p)) return false;
+                p = (nodes[p] || {}).parentId;
+            }
+            return true;
+        });
+    }
+
+    function insideSubtree(candidate, folderId) {
+        let p = candidate;
+        while (p) {
+            if (p === folderId) return true;
+            p = (nodes[p] || {}).parentId;
+        }
+        return false;
+    }
+
+    function nextOrder(parentId) {
+        const sibs = childrenOf(parentId);
+        return sibs.length ? Math.max(...sibs.map((s) => s.order || 0)) + 1 : 0;
+    }
+
+    async function moveNodes(ids, parentId) {
+        const moving = outermost(ids);
+        let order = nextOrder(parentId);
+        let refused = 0;
+        for (const id of moving) {
+            const n = nodes[id];
+            if (!n) continue;
+            if (n.type === 'folder' && insideSubtree(parentId, id)) { refused++; continue; }
+            if ((n.parentId || null) === (parentId || null)) continue;
+            await rsterm.invoke('rs:tree.move', { id, parentId, order: order++ });
+        }
+        if (refused) {
+            window.Forms.showBanner('warn',
+                'A folder cannot move into itself or its own contents.');
+        }
+        // rs:evt.tree-changed repaints; expanding the target shows the move.
+        if (parentId) expanded.add(parentId);
+    }
+
+    // What a drop on this node means: folders receive, sessions redirect
+    // to their parent.
+    function dropParentFor(node) {
+        return node.type === 'folder' ? node.id : (node.parentId || null);
+    }
+
+    function armRowDrag(el, node) {
+        el.draggable = true;
+        el.addEventListener('dragstart', (e) => {
+            // Dragging something outside the selection drags just it - no
+            // re-render here, because replacing the source element kills
+            // the drag in Chromium.
+            dragIds = selected.has(node.id) ? [...selected] : [node.id];
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('text/plain', node.name || '');
+        });
+        el.addEventListener('dragend', () => {
+            dragIds = null;
+            clearDropMarks();
+        });
+        el.addEventListener('dragover', (e) => {
+            if (!dragIds) return;
+            const parentId = dropParentFor(node);
+            if (dragIds.some((id) => id === node.id ||
+                ((nodes[id] || {}).type === 'folder' && insideSubtree(parentId, id)))) return;
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+            if (el !== lastDropMark) {
+                clearDropMarks();
+                el.classList.add('drop-target');
+                lastDropMark = el;
+            }
+        });
+        el.addEventListener('drop', (e) => {
+            if (!dragIds) return;
+            e.preventDefault();
+            e.stopPropagation();
+            const ids = dragIds;
+            dragIds = null;
+            clearDropMarks();
+            moveNodes(ids, dropParentFor(node));
+        });
+    }
+
+    let lastDropMark = null;
+    function clearDropMarks() {
+        if (lastDropMark) { lastDropMark.classList.remove('drop-target'); lastDropMark = null; }
+        document.getElementById('tree').classList.remove('drop-root');
+    }
+
+    // Move to... - the same move, picked from a list instead of dragged.
+    function moveDialog() {
+        const ids = outermost([...selected]);
+        if (!ids.length) return;
+        const banned = new Set(ids.filter((id) => (nodes[id] || {}).type === 'folder'));
+        const options = [{ value: '', label: '(top level)' }];
+        const walk = (parentId, depth) => {
+            for (const n of childrenOf(parentId)) {
+                if (n.type !== 'folder') continue;
+                // Neither the moving folders nor anything inside them.
+                if ([...banned].some((b) => insideSubtree(n.id, b))) continue;
+                options.push({ value: n.id, label: `${' '.repeat(depth * 3)}${n.name}` });
+                walk(n.id, depth + 1);
+            }
+        };
+        walk(null, 0);
+        const pick = window.Modals.select(options, '');
+        const body = document.createElement('div');
+        const info = document.createElement('p');
+        info.style.marginBottom = '10px';
+        info.textContent = `Move ${ids.length} item${ids.length === 1 ? '' : 's'} to:`;
+        body.append(info, window.Modals.row('Folder', pick));
+        window.Modals.open('Move to', body, [
+            { label: 'Cancel' },
+            {
+                label: 'Move', primary: true,
+                onClick: () => moveNodes(ids, pick.value || null),
+            },
+        ]);
     }
 
     // Selection helpers: expand selected folders into their sessions.
@@ -496,6 +634,7 @@ ${describeAge(ageDays)}.` + NOT_PROBED;
             null,
             { label: multi ? 'Bulk edit...' : 'Edit...', onClick: editSelection },
             { label: 'Set credential profile...', disabled: !sessionCount, onClick: assignProfile },
+            { label: 'Move to...', onClick: moveDialog },
         ];
         if (!isFolder && !multi) {
             items.push(null, {
@@ -563,12 +702,32 @@ ${describeAge(ageDays)}.` + NOT_PROBED;
     }
 
     function wireToolbar() {
-        document.getElementById('tree').addEventListener('contextmenu', (e) => {
+        const treeBox = document.getElementById('tree');
+        treeBox.addEventListener('contextmenu', (e) => {
             // Rows have their own menu and their handler runs first; this
             // one is for the blank space beneath them.
             if (e.target.closest && e.target.closest('.tree-row, .tree-details')) return;
             e.preventDefault();
             blankMenu(e);
+        });
+        // Dropping on the blank space under the rows moves to the top level.
+        treeBox.addEventListener('dragover', (e) => {
+            if (!dragIds || (e.target.closest && e.target.closest('.tree-row'))) return;
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+            clearDropMarks();
+            treeBox.classList.add('drop-root');
+        });
+        treeBox.addEventListener('dragleave', (e) => {
+            if (!treeBox.contains(e.relatedTarget)) clearDropMarks();
+        });
+        treeBox.addEventListener('drop', (e) => {
+            if (!dragIds || (e.target.closest && e.target.closest('.tree-row'))) return;
+            e.preventDefault();
+            const ids = dragIds;
+            dragIds = null;
+            clearDropMarks();
+            moveNodes(ids, null);
         });
         document.getElementById('tree-new-session').addEventListener('click',
             () => window.Forms.editSession(null, selectionParent()));
