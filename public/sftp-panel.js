@@ -488,6 +488,19 @@
                 onClick: () => downloadTree(folders),
             });
         }
+        if (!many && !it.isDir) {
+            items.push({
+                label: 'Edit locally',
+                onClick: async () => {
+                    status(`opening ${it.name} for editing...`);
+                    try {
+                        await rsterm.invoke('rs:edit.start',
+                            { sessionId: bound, path: join(cwd, it.name) });
+                        status(`${it.name}: saves in your editor upload automatically`);
+                    } catch (err) { status(`edit: ${err.message}`); }
+                },
+            });
+        }
         if (!many) {
             items.push({
                 label: 'Rename',
@@ -757,6 +770,77 @@
         });
     }
 
+    // --- edit-and-sync strip ---------------------------------------------
+    // Files being edited in the local editor, syncing back on save. Shown
+    // for every session, not just the bound one: the sync keeps running
+    // when focus moves, and out of sight is how an unsaved conflict rots.
+
+    function editStatusText(en) {
+        if (en.status === 'uploading') return 'uploading...';
+        if (en.status === 'conflict') return 'changed on the device';
+        if (en.status === 'offline') return en.dirty ? 'offline - will upload on reconnect' : 'offline';
+        if (en.status === 'error') return en.error || 'failed';
+        if (en.lastUploadAt) {
+            const d = new Date(en.lastUploadAt);
+            const p2 = (n) => String(n).padStart(2, '0');
+            return `uploaded ${p2(d.getHours())}:${p2(d.getMinutes())}:${p2(d.getSeconds())}`;
+        }
+        return 'watching for saves';
+    }
+
+    function renderEdits(list) {
+        const box = el('sftp-edits');
+        if (!box) return;
+        box.innerHTML = '';
+        box.hidden = !list.length;
+        if (!list.length) return;
+        const head = document.createElement('div');
+        head.className = 'sftp-edits-head';
+        head.textContent = 'Editing locally';
+        box.appendChild(head);
+        for (const en of list) {
+            const row = document.createElement('div');
+            row.className = 'sftp-edit-row';
+            const name = document.createElement('span');
+            name.className = `sftp-edit-name ${en.status}`;
+            name.textContent = en.name;
+            name.title = en.remotePath;
+            const state = document.createElement('span');
+            state.className = 'sftp-edit-state';
+            state.textContent = editStatusText(en);
+            if (en.status === 'error' && en.error) state.title = en.error;
+            row.append(name, state);
+            if (en.status === 'conflict') {
+                const mine = document.createElement('button');
+                mine.textContent = 'Upload mine';
+                mine.title = 'Overwrite the device copy with this edit';
+                mine.addEventListener('click', () =>
+                    rsterm.invoke('rs:edit.resolve', { id: en.id, action: 'overwrite' }));
+                const theirs = document.createElement('button');
+                theirs.textContent = 'Take theirs';
+                theirs.title = 'Discard this edit and load the device copy into the editor';
+                theirs.addEventListener('click', () =>
+                    rsterm.invoke('rs:edit.resolve', { id: en.id, action: 'theirs' }));
+                row.append(mine, theirs);
+            }
+            const stop = document.createElement('button');
+            stop.textContent = 'Stop';
+            stop.title = 'Stop syncing and delete the local copy';
+            // Stopping deletes the local copy, so an edit that never made
+            // it to the device gets one explicit chance to be meant.
+            stop.addEventListener('click', () => {
+                if ((en.dirty || en.status === 'conflict') && stop.textContent === 'Stop') {
+                    stop.textContent = 'Discard edit?';
+                    setTimeout(() => { stop.textContent = 'Stop'; }, 3000);
+                    return;
+                }
+                rsterm.invoke('rs:edit.stop', { id: en.id });
+            });
+            row.appendChild(stop);
+            box.appendChild(row);
+        }
+    }
+
     function wireDrop() {
         const pane = el('side-pane-files');
         pane.addEventListener('dragover', (e) => {
@@ -776,6 +860,11 @@
 
     function wire() {
         wireDrop();
+        rsterm.on('rs:evt.edit-sync', (m) => renderEdits((m && m.entries) || []));
+        // Main owns the entries, so a reloaded renderer just asks.
+        rsterm.invoke('rs:edit.list')
+            .then((r) => renderEdits((r && r.entries) || []))
+            .catch(() => { /* main predates the feature mid-update */ });
         // Follow the sidebar drag so the columns appear and disappear with
         // the width rather than only on the next listing.
         if (window.ResizeObserver) {

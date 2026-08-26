@@ -39,6 +39,9 @@ const DEFAULTS = {
     // merely stylish.
     terminalColors: { mode: 'theme', background: null, minContrast: 3 },
     defaultLogFolder: null,    // null = alongside the app
+    // Edit-and-sync hands files to this. null = whatever the OS opens the
+    // file type with; a path here points at a specific editor executable.
+    editorCommand: null,
     logTimestamps: true,
     teamSync: { filePath: null, pollSeconds: 60, checkOnFocus: true },
     // Off by default: a sweep of a few hundred devices looks like a port

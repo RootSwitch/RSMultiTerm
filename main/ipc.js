@@ -763,12 +763,17 @@ function wireIpc(engineRef, getWindow, bootConfig) {
         recipes.delete(sessionId);
         liveDescriptors.delete(sessionId);
 
+        // Watched edits follow the session across the reconnect - the new
+        // id's 'connected' status flushes anything saved while down.
         if (recipe.nodeId) {
             const r = openNode(e, recipe.nodeId);
             if (r.error) throw new Error(r.error);
+            if (r.sessionId) require('./edit-sync').remapSession(sessionId, r.sessionId);
             return r;
         }
-        return startQuickConnect(e, recipe.args);
+        const r = startQuickConnect(e, recipe.args);
+        if (r && r.sessionId) require('./edit-sync').remapSession(sessionId, r.sessionId);
+        return r;
     });
 
     // What a live session would look like as a saved one. Never returns
@@ -893,6 +898,9 @@ function wireIpc(engineRef, getWindow, bootConfig) {
         // event will ever clean it out of the connect flow - do it here.
         connectFlow.onSessionGone(sessionId);
         if (engineRef.proc) engineRef.proc.postMessage({ t: 'disconnect', sessionId });
+        // Watched edits for a closed pane go offline immediately, not
+        // whenever the engine's status event happens to land.
+        require('./edit-sync').onSessionStatus(sessionId, 'closed');
     });
 
     // --- sftp -------------------------------------------------------------
@@ -900,7 +908,9 @@ function wireIpc(engineRef, getWindow, bootConfig) {
     const keyInstallWaiters = new Map();
     const fieldWaiters = new Map();
     let nextSftpReq = 1;
-    ipcMain.handle('rs:sftp.op', (_e, { sessionId, req }) => {
+    // Callable from main too, not just the renderer: edit-and-sync uploads
+    // from a file watcher with no renderer in the loop.
+    function sftpOp(sessionId, req) {
         const engine = engineRef.proc;
         if (!engine) throw new Error('engine not running');
         return new Promise((resolve, reject) => {
@@ -920,7 +930,42 @@ function wireIpc(engineRef, getWindow, bootConfig) {
                 }, 30000);
             }
         });
+    }
+    ipcMain.handle('rs:sftp.op', (_e, { sessionId, req }) => sftpOp(sessionId, req));
+
+    // --- edit-and-sync ----------------------------------------------------
+    const editSync = require('./edit-sync');
+    editSync.init({
+        sftpOp,
+        forward,
+        baseDir: path.join(require('./store').dir(), 'edit-sync'),
+        openEditor: async (file) => {
+            // Smoke runs exercise the sync loop, not the desktop - a real
+            // editor popping up on every CI pass helps nobody.
+            if (process.env.RSMT_SMOKE) return;
+            const cmd = String(settings.get().editorCommand || '').trim();
+            const { spawn } = require('child_process');
+            const launch = (exe, args) => new Promise((res, rej) => {
+                const child = spawn(exe, args, { detached: true, stdio: 'ignore' });
+                child.on('error', rej);
+                child.on('spawn', () => { child.unref(); res(); });
+            });
+            if (cmd) return launch(cmd, [file]);
+            const { shell } = require('electron');
+            const err = await shell.openPath(file);
+            if (!err) return;
+            // No association for the file type (device configs rarely have
+            // one). Fall back to the OS's always-there editor rather than
+            // failing the whole feature over a filename.
+            if (process.platform === 'win32') return launch('notepad', [file]);
+            throw new Error(err);
+        },
     });
+    ipcMain.handle('rs:edit.start', (_e, { sessionId, path: remotePath }) =>
+        editSync.start(sessionId, remotePath));
+    ipcMain.handle('rs:edit.stop', (_e, { id }) => editSync.stop(id));
+    ipcMain.handle('rs:edit.list', () => editSync.list());
+    ipcMain.handle('rs:edit.resolve', (_e, { id, action }) => editSync.resolve(id, action));
 
     ipcMain.handle('rs:sftp.pickDownload', async (_e, { name }) => {
         const { dialog } = require('electron');
@@ -1077,6 +1122,8 @@ function wireIpc(engineRef, getWindow, bootConfig) {
                 // session came up - auto-start tunnels key off it.
                 const d = liveDescriptors.get(m.sessionId);
                 forward('rs:evt.session-status', d && d.nodeId ? { ...m, nodeId: d.nodeId } : m);
+                // Edit-and-sync entries go offline and flush on this signal.
+                require('./edit-sync').onSessionStatus(m.sessionId, m.state);
                 break;
             }
             case 'field-result': {

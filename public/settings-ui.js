@@ -91,6 +91,21 @@
         const logLabel = document.createElement('label');
         logLabel.textContent = 'Log folder';
         logRow.append(logLabel, fLogFolder, logBrowse);
+        // Edit-and-sync hands remote files to this. Blank = whatever the OS
+        // associates with the file type (with notepad as the net under it).
+        const fEditor = input(s.editorCommand || '', 'default: what the OS opens it with');
+        fEditor.style.flex = '1';
+        const editorBrowse = document.createElement('button');
+        editorBrowse.textContent = 'Browse...';
+        editorBrowse.addEventListener('click', async () => {
+            const exe = await rsterm.invoke('rs:sftp.pickUpload');
+            if (exe) fEditor.value = exe;
+        });
+        const editorRow = document.createElement('div');
+        editorRow.className = 'field-row';
+        const editorLabel = document.createElement('label');
+        editorLabel.textContent = 'External editor';
+        editorRow.append(editorLabel, fEditor, editorBrowse);
         const fTimestamps = select([
             { value: 'yes', label: 'Timestamp each log line' },
             { value: 'no', label: 'No timestamps' },
@@ -295,7 +310,7 @@
             row('Font', fFontFamily), row('Font size', fFontSize),
             row('Font zoom keys', fZoomMod),
             row('Scrollback lines', fScrollback),
-            logRow, row('Log timestamps', fTimestamps),
+            logRow, row('Log timestamps', fTimestamps), editorRow,
             syncRow, syncHint, row('Check sync every (s)', fPoll),
             styleRow, row('Start after (min)', fIdleMin), row('Play over', fIdleArea),
             picksWrap, rotateRow, idleHint);
@@ -324,6 +339,7 @@
             font: { family: fFontFamily.value.trim() || null, size: Number(fFontSize.value) || 13 },
             scrollbackLines: Number(fScrollback.value) || 10000,
             defaultLogFolder: fLogFolder.value.trim() || null,
+            editorCommand: fEditor.value.trim() || null,
             logTimestamps: fTimestamps.value === 'yes',
             osc52: { allowWrite: fOsc52.value === 'yes' },
             teamSync: {

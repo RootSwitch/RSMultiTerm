@@ -142,4 +142,11 @@ function shapedCritical(name, isValid, fallback) {
     return data;
 }
 
-module.exports = { init, load, loadCritical, save, atomicWrite, shaped, shapedCritical };
+// Where the data lives, for features that keep working files beside the
+// stores (edit-sync's scratch copies).
+function dir() {
+    if (!dataDir) throw new Error('store.init(dir) not called');
+    return dataDir;
+}
+
+module.exports = { init, load, loadCritical, save, atomicWrite, shaped, shapedCritical, dir };

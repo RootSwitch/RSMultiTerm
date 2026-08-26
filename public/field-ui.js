@@ -157,22 +157,27 @@
             const b = document.createElement('button');
             b.textContent = label;
             b.addEventListener('click', async () => {
-                if (!fRoot.value.trim()) { fRoot.focus(); return; }
+                // A syslog sink serves no folder; only the file servers
+                // need one picked first.
+                if (kind !== 'syslog' && !fRoot.value.trim()) { fRoot.focus(); return; }
+                const port = kind === 'tftp' ? fTftpPort.value
+                    : kind === 'syslog' ? fSyslogPort.value : fHttpPort.value;
                 try {
                     await rsterm.invoke('rs:field.start', {
                         id: kind, kind,
-                        root: fRoot.value.trim(),
+                        root: kind === 'syslog' ? null : fRoot.value.trim(),
                         bind: fBind.value,
-                        port: Number(kind === 'tftp' ? fTftpPort.value
-                            : kind === 'syslog' ? fSyslogPort.value : fHttpPort.value),
+                        port: Number(port),
                         allowWrites: kind === 'tftp' && fWrites.checked,
                         listing: kind === 'http' && fListing.checked,
                         stopAfterMinutes: Number(fStop.value) || 60,
                     });
                     logLines.push(`${new Date().toLocaleTimeString()}  ${kind.toUpperCase()} started ` +
-                        `on ${fBind.value}:${kind === 'tftp' ? fTftpPort.value : fHttpPort.value}`);
+                        `on ${fBind.value}:${port}`);
                     remember({
-                        root: fRoot.value.trim(), bind: fBind.value,
+                        // Starting a syslog sink with the folder blank must
+                        // not blank the REMEMBERED folder.
+                        root: fRoot.value.trim() || (saved.root || null), bind: fBind.value,
                         tftpPort: Number(fTftpPort.value) || 69,
                         httpPort: Number(fHttpPort.value) || 8080,
                         syslogPort: Number(fSyslogPort.value) || 514,

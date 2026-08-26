@@ -168,6 +168,18 @@ async function run(session, req, onProgress) {
             return { mode: 'sftp' };
         case 'realpath':
             return new Promise((res, rej) => sftp.realpath(req.path || '.', (e, p) => e ? rej(e) : res({ path: p })));
+        // One file's attrs, for callers that need to notice the file
+        // changing under them (edit-and-sync's conflict check). mtime is
+        // SFTP's native seconds.
+        case 'stat':
+            return new Promise((res, rej) => sftp.stat(req.path, (e, a) => e ? rej(e)
+                : res({ size: a.size, mtime: a.mtime, mode: a.mode })));
+        // Reassert permissions after an upload replaced the file - the
+        // temp-and-rename that protects against torn uploads also resets
+        // the mode, and a key file that comes back 0644 stops working.
+        case 'chmod':
+            return new Promise((res, rej) => sftp.setstat(req.path, { mode: req.mode },
+                (e) => e ? rej(e) : res({})));
         case 'list':
             return new Promise((res, rej) => sftp.readdir(req.path, (e, list) => {
                 if (e) return rej(e);

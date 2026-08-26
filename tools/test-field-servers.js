@@ -428,14 +428,14 @@ const get = (port, p) => new Promise((resolve, reject) => {
         await say('<187>Aug 25 18:20:02 sw1 %SYS-3-CPUHOG: task ran long');
         // A line carrying control bytes must be scrubbed: this buffer goes
         // into the DOM and can be saved to a file.
-        await say('<189>bad[31mlinehere');
+        await say('<189>bad\x1b[31mline\x07here');
         await new Promise((r) => setTimeout(r, 300));
         const got = field.syslogLines('syslog').lines;
         assert.strictEqual(got.length, 3, `expected 3 messages, got ${got.length}`);
         assert.strictEqual(got[0].severityName, 'notice');
         assert.strictEqual(got[1].severityName, 'err');
         assert.ok(got[0].text.includes('%LINK-3-UPDOWN'), 'the message survives intact');
-        assert.ok(!/[ -]/.test(got[2].text),
+        assert.ok(!/[\u0000-\u001f\u007f]/.test(got[2].text),
             'control bytes must be scrubbed out of syslog text');
         assert.ok(got[2].text.includes('badline') || got[2].text.includes('bad '),
             `the readable part survives, got ${JSON.stringify(got[2].text)}`);

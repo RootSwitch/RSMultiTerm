@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+- **Edit remote files in your own editor.** Right-click a file in the
+  file browser, "Edit locally", and it opens in whatever you actually
+  edit with - every save uploads straight back to the device. The
+  panel shows what is being synced; if the file changes on the device
+  while you edit, nothing is clobbered - you choose "Upload mine" or
+  "Take theirs". Saves made while the session is down upload when it
+  reconnects. Stopping deletes the local copy: configs do not linger
+  in temp folders. Pick a specific editor in Settings, or leave it on
+  the system default.
+- Starting a syslog sink no longer demands a served folder (that
+  requirement belongs to the file servers), and its start line in the
+  activity log now shows the right port.
+
 - **A syslog sink in Field tools.** Start a listener on 514 (or a high
   port, since 514 needs admin) and watch devices announce themselves -
   the change-window staple, without standing up a syslog server. It

@@ -812,6 +812,34 @@ label { color: var(--se-txt-dim); }
     min-height: 22px;
 }
 
+/* Files being edited locally and synced back on save. */
+#sftp-edits {
+    border-top: 1px solid var(--se-border);
+    padding: 4px 8px 6px;
+    font-size: 11px;
+    max-height: 30vh;
+    overflow-y: auto;
+}
+.sftp-edits-head { color: var(--se-txt-dim); margin-bottom: 2px; }
+.sftp-edit-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 0;
+    flex-wrap: wrap;
+}
+.sftp-edit-name {
+    font-family: var(--mt-mono);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 40%;
+}
+.sftp-edit-name.conflict, .sftp-edit-name.error { color: var(--se-down); }
+.sftp-edit-name.offline { color: var(--se-warn); }
+.sftp-edit-state { color: var(--se-txt-dim); flex: 1; }
+.sftp-edit-row button { font-size: 10px; padding: 1px 6px; }
+
 /* ===== Merge dialog ===== */
 
 .merge-group {
