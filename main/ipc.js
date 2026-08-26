@@ -68,18 +68,38 @@ function defaultLogDir() {
 // .log name, so this is not an arbitrary-write primitive; what it can do is
 // drop a file into a directory that treats new files as instructions, or
 // quietly fill a system location.
-const FORBIDDEN_LOG_DIRS = [
+// Windows entries are directory NAMES matched at any depth ('system32'
+// catches C:\Windows\System32 and any other). POSIX entries are absolute
+// ROOTS: a leading separator means "this path and everything under it".
+// They were in the same list, run through the same '\name\' containment
+// test - and because a POSIX entry already begins with a separator, that
+// test looked for a doubled '\\etc\' no normalized path ever contains. So
+// exactly '/etc' was refused and '/etc/cron.d' was allowed, a Linux-only
+// weakness in a check that reads as if it covers both.
+const FORBIDDEN_LOG_NAMES = [
     'startup', 'system32', 'syswow64', 'windows', 'program files',
     'program files (x86)', 'programdata\\microsoft\\windows\\start menu',
-    '/etc', '/bin', '/sbin', '/usr/bin', '/boot',
+];
+const FORBIDDEN_LOG_ROOTS = [
+    '/etc', '/bin', '/sbin', '/usr/bin', '/usr/sbin', '/usr/lib', '/lib',
+    '/boot', '/dev', '/proc', '/sys', '/var/spool', '/opt',
+    // The Linux answer to Startup: a .desktop file here runs at login.
+    '.config/autostart',
 ];
 function safeLogDir(dir) {
     if (!dir || typeof dir !== 'string') return null;
     if (!path.isAbsolute(dir)) return null;
     const low = dir.replace(/\//g, '\\').toLowerCase();
-    for (const bad of FORBIDDEN_LOG_DIRS) {
+    for (const bad of FORBIDDEN_LOG_NAMES) {
         const b = bad.replace(/\//g, '\\');
         if (low === b || low.includes(`\\${b}\\`) || low.endsWith(`\\${b}`)) return null;
+    }
+    for (const bad of FORBIDDEN_LOG_ROOTS) {
+        // Normalized the same way, then matched as a prefix: the root
+        // itself, or anything beneath it.
+        const b = bad.replace(/\//g, '\\').toLowerCase();
+        if (low === b || low.startsWith(`${b}\\`) ||
+            low.includes(`\\${b}\\`) || low.endsWith(`\\${b}`)) return null;
     }
     return dir;
 }
@@ -945,6 +965,13 @@ function wireIpc(engineRef, getWindow, bootConfig) {
     // opened - just by the plain editor below, which reads it instead.
     const TEXTISH = new Set(['.txt', '.log', '.cfg', '.conf', '.config', '.ini',
         '.json', '.xml', '.yaml', '.yml', '.md', '.csv', '.tsv', '.diff', '.patch']);
+    // The other direction, for platforms where the association is otherwise
+    // safe: types a Linux or macOS desktop launches even without the execute
+    // bit. A deny-list is the right shape here precisely because an
+    // allow-list is not - refusing everything unknown would refuse
+    // `startup-config`, which is the whole point of the feature.
+    const LAUNCHABLE = new Set(['.desktop', '.appimage', '.exe', '.msi', '.jar',
+        '.app', '.command', '.workflow']);
     const editSync = require('./edit-sync');
     editSync.init({
         sftpOp,
@@ -977,15 +1004,47 @@ function wireIpc(engineRef, getWindow, bootConfig) {
             // everyone, and everything else - including no extension at all,
             // which is most device configs - goes to a plain editor that
             // cannot interpret what it opens.
-            if (TEXTISH.has(path.extname(file).toLowerCase())) {
+            //
+            // The extension rule is a WINDOWS rule. There, the association
+            // decides between "open" and "execute" and the file system has
+            // no say. On Linux and macOS a downloaded file is written 0644,
+            // so xdg-open/open on a script hands it to an editor rather
+            // than running it - and refusing extensionless files there
+            // would refuse `startup-config`, `running-config`, `sshd_config`
+            // and most of what anyone actually edits on a device.
+            //
+            // The short deny-list is the Linux/macOS counterpart: those
+            // desktops DO launch a handful of types regardless of the
+            // execute bit - .desktop is the direct Startup analogue,
+            // .AppImage and .jar run from their own runtimes, and .exe runs
+            // under Wine. Everything else, extensionless configs included,
+            // goes to the association.
+            const ext = path.extname(file).toLowerCase();
+            const assocOk = process.platform === 'win32'
+                ? TEXTISH.has(ext)
+                : !LAUNCHABLE.has(ext);
+            if (assocOk) {
                 const { shell } = require('electron');
                 const err = await shell.openPath(file);
                 if (!err) return;
             }
             if (process.platform === 'win32') return launch('notepad', [file]);
-            // No safe default elsewhere: say what to do rather than guessing
-            // at an executable.
-            throw new Error('no external editor is set - choose one in Settings');
+            // No association took it (a headless box, no xdg-utils, no
+            // handler for an extensionless file). $VISUAL and $EDITOR are
+            // where a Unix user already says which editor they want, and
+            // honoring them costs nothing; the app's own setting still wins
+            // over both, having been checked above.
+            const envEditor = String(process.env.VISUAL || process.env.EDITOR || '').trim();
+            if (envEditor) {
+                // These are command LINES ('code -w', 'emacsclient -nw'),
+                // not bare paths. Splitting on whitespace is what every
+                // other tool that reads $EDITOR does; a path with spaces
+                // needs the Settings field, which takes one verbatim.
+                const [exe, ...args] = envEditor.split(/\s+/);
+                return launch(exe, [...args, file]);
+            }
+            throw new Error('no external editor is set - choose one in Settings, ' +
+                'or set $EDITOR');
         },
     });
     ipcMain.handle('rs:edit.start', (_e, { sessionId, path: remotePath }) =>

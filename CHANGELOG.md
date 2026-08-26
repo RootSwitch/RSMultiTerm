@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- Editing a device file works on Linux and macOS again: files with no
+  extension - `startup-config`, `running-config`, `sshd_config`, most of
+  what anyone actually edits - open in your editor instead of being
+  refused. `$VISUAL` / `$EDITOR` are honored when no editor is set in
+  Settings. Windows still refuses to hand an executable type to the
+  system association.
+- Session logs cannot be written into system directories on Linux. The
+  rule was there but only matched exact paths, so `/etc` was refused
+  while `/etc/cron.d` was not.
+
 - **Security: a shared sessions file can no longer type commands into your
   devices.** A folder's defaults now pass a whitelist on the way IN, so a
   hostile or hand-edited team file cannot carry commands-on-connect (which

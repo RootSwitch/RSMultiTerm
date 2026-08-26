@@ -95,5 +95,54 @@ const never = (list, env, label) => {
     assert.deepStrictEqual(got, [W('Apps', 'logs')]);
 }
 
-console.log('ok - log dir candidates (8 scenarios: the portable-on-desktop bug, ' +
-    'temp never, desktop never, override wins)');
+// 9. Where a log folder may NOT be. safeLogDir lives in ipc.js, which pulls
+// in electron; the lists and the function are lifted out by source rather
+// than importing a window into a plain-node test.
+//
+// The Linux half was broken and read as if it were not: POSIX roots sat in
+// the same list as Windows directory NAMES and ran through the same
+// '\name\' containment test, but a POSIX entry already starts with a
+// separator, so the test looked for a doubled '\\etc\' that no normalized
+// path contains. Exactly '/etc' was refused while '/etc/cron.d' passed.
+{
+    const fs = require('fs');
+    const src = fs.readFileSync(path.join(__dirname, '..', 'main', 'ipc.js'), 'utf8');
+    const names = src.match(/const FORBIDDEN_LOG_NAMES = \[[\s\S]*?\];/);
+    const roots = src.match(/const FORBIDDEN_LOG_ROOTS = \[[\s\S]*?\];/);
+    const fn = src.match(/function safeLogDir\(dir\) \{[\s\S]*?\n\}/);
+    assert.ok(names && roots && fn, 'safeLogDir and both lists must be findable in ipc.js');
+    const safeLogDir = new Function('path',
+        `${names[0]}\n${roots[0]}\n${fn[0]}\nreturn safeLogDir;`)(path);
+    const B = String.fromCharCode(92);
+
+    const refused = [
+        '/etc', '/etc/cron.d', '/usr/bin', '/usr/lib/systemd', '/boot/grub',
+        '/var/spool/cron', '/proc/self', '/dev', '/lib/systemd/system',
+        // The Linux answer to Startup: a .desktop file here runs at login.
+        '/home/adam/.config/autostart',
+        `C:${B}Windows${B}System32`,
+        `C:${B}Users${B}me${B}AppData${B}Roaming${B}Microsoft${B}Windows${B}` +
+            `Start Menu${B}Programs${B}Startup`,
+    ];
+    for (const dir of refused) {
+        assert.strictEqual(safeLogDir(dir), null, `a log folder must be refused: ${dir}`);
+    }
+
+    const allowed = [
+        '/home/adam/logs', '/srv/rsmt/logs', '/media/usb/logs',
+        `C:${B}Users${B}me${B}Documents${B}logs`, `C:${B}logs`,
+        `D:${B}RSMultiTerm${B}logs`,
+    ];
+    for (const dir of allowed) {
+        assert.strictEqual(safeLogDir(dir), dir, `an ordinary log folder must pass: ${dir}`);
+    }
+
+    // Relative paths and junk never reach the filesystem.
+    assert.strictEqual(safeLogDir('logs'), null, 'a relative path is refused');
+    assert.strictEqual(safeLogDir(''), null);
+    assert.strictEqual(safeLogDir(null), null);
+    assert.strictEqual(safeLogDir(42), null);
+}
+
+console.log('ok - log dir candidates (9 scenarios: the portable-on-desktop bug, ' +
+    'temp never, desktop never, override wins, forbidden roots on both platforms)');

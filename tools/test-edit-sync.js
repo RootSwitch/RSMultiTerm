@@ -173,7 +173,57 @@ function atomicSave(file, text) {
 
         assert.ok(events > 0, 'state changes were broadcast to the renderer');
 
-        console.log('ok - edit-and-sync (atomic saves, debounce, conflicts, offline flush, cleanup)');
+        // --- which launcher a file goes to, per platform ---------------------
+        // The routing lives in ipc.js (which needs electron), so the lists and
+        // the branch are lifted out by source. Two opposite mistakes are
+        // possible here and both have been made:
+        //
+        //   Too permissive on Windows: shell.openPath is ShellExecute's `open`
+        //   verb, so a device's .cmd or .py is RUN, not opened.
+        //   Too strict elsewhere: requiring a known text extension refuses
+        //   `startup-config`, `running-config`, `sshd_config` - i.e. almost
+        //   everything anyone edits on a device - and Linux got exactly that
+        //   for a day.
+        {
+            const ipcSrc = fs.readFileSync(path.join(__dirname, '..', 'main', 'ipc.js'), 'utf8');
+            const grab = (re, name) =>
+                new Function(`${ipcSrc.match(re)[0]}\nreturn ${name};`)();
+            const TEXTISH = grab(/const TEXTISH = new Set\(\[[\s\S]*?\]\);/, 'TEXTISH');
+            const LAUNCHABLE = grab(/const LAUNCHABLE = new Set\(\[[\s\S]*?\]\);/, 'LAUNCHABLE');
+            // The REAL branch, lifted from openEditor and run - not a copy of
+            // it written here. A first version of this test re-implemented the
+            // decision, which meant re-opening the ShellExecute hole in ipc.js
+            // left the test green: it pinned the lists and nothing else.
+            const branchSrc = ipcSrc.match(
+                /const ext = path\.extname\(file\)\.toLowerCase\(\);[\s\S]*?const assocOk = [\s\S]*?;\n/);
+            assert.ok(branchSrc, 'the editor-routing branch must be findable in ipc.js');
+            const decide = new Function('path', 'TEXTISH', 'LAUNCHABLE', 'file', 'platform',
+                `const process = { platform };\n${branchSrc[0]}\nreturn assocOk;`);
+            const usesAssociation = (file, platform) =>
+                decide(path, TEXTISH, LAUNCHABLE, file, platform);
+
+            for (const f of ['evil.cmd', 'payload.exe', 'script.py', 'x.vbs',
+                'y.hta', 'z.bat', 'w.js', 'startup-config']) {
+                assert.strictEqual(usesAssociation(f, 'win32'), false,
+                    `on Windows the association must not receive ${f} - it would run it`);
+            }
+            for (const f of ['switch.cfg', 'notes.txt', 'data.json', 'run.log']) {
+                assert.strictEqual(usesAssociation(f, 'win32'), true,
+                    `plain text should still open with its handler: ${f}`);
+            }
+            for (const f of ['startup-config', 'running-config', 'sshd_config',
+                'vlan.dat', 'script.py']) {
+                assert.strictEqual(usesAssociation(f, 'linux'), true,
+                    `on Linux ${f} must reach an editor - the file is not executable there`);
+            }
+            for (const f of ['trap.desktop', 'thing.appimage', 'payload.exe', 'app.jar']) {
+                assert.strictEqual(usesAssociation(f, 'linux'), false,
+                    `a desktop launches ${f} without an execute bit - not the association`);
+            }
+        }
+
+        console.log('ok - edit-and-sync (atomic saves, debounce, conflicts, offline flush, ' +
+            'cleanup, per-platform editor routing)');
     } finally {
         editSync.stopAll();
         try { fs.rmSync(baseDir, { recursive: true, force: true }); } catch (_) { /* best effort */ }
