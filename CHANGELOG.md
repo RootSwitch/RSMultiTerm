@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## 1.0.0 - 2026-08-26
+
+The first release the version number takes seriously. The app has been
+a daily driver throughout, three code reviews have been worked through
+end to end, and what is left is the kind of thing that only falls out
+of use. Windows is the supported platform; the Linux paths are written
+and tested in the suite, but no Linux build has been published yet.
+
 - **First run offers to import what you already have.** A fresh install
   with an empty session list looks for PuTTY saved sessions and an
   OpenSSH config, and offers to import them - with counts, through the
@@ -14,14 +22,6 @@
   find out afterward. The import side names the format the same way
   ("RSMultiTerm Sessions (.json)"), and the JSON export's suggested
   filename is now sessions.json, matching sessions.csv.
-
-## 1.0.0 - 2026-08-25
-
-The first release the version number takes seriously. The app has been
-a daily driver throughout, three code reviews have been worked through
-end to end, and what is left is the kind of thing that only falls out
-of use. Windows is the supported platform; the Linux paths are written
-and tested in the suite, but no Linux build has been published yet.
 
 - **Title Case across the UI.** Buttons, menu items and dialog titles now
   read as names - "Field Tools", "Move To...", "Copy Last Command Output"
