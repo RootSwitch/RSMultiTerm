@@ -151,14 +151,14 @@
             'reconnects on its own - each pane offers R, or use Reconnect all.';
         body.append(p, q);
 
-        window.Modals.open('Restore your last session?', body, [
+        window.Modals.open('Restore Your Last Session?', body, [
             {
-                label: 'Start fresh',
+                label: 'Start Fresh',
                 onClick: () => rsterm.invoke('rs:workspace.save', { tabs: [], activeTab: 0 }),
             },
             { label: 'Restore', primary: true, onClick: () => restore(snapshot) },
             {
-                label: 'Restore and reconnect',
+                label: 'Restore and Reconnect',
                 onClick: () => restore(snapshot).then(reconnectAll),
             },
         ]);

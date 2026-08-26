@@ -151,7 +151,7 @@
 
         open('Snippets', body, [
             { label: 'Close', primary: true },
-            { label: 'New snippet', onClick: () => { editDialog(null, renderList); return false; } },
+            { label: 'New Snippet', onClick: () => { editDialog(null, renderList); return false; } },
         ]);
     }
 

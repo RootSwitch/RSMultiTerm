@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- **Title Case across the UI.** Buttons, menu items and dialog titles now
+  read as names - "Field Tools", "Move To...", "Copy Last Command Output"
+  - the way the rest of Windows does it. Field labels and the option text
+  that describes a behavior stay in sentence case, because those are
+  sentences.
+
 - Editing a device file works on Linux and macOS again: files with no
   extension - `startup-config`, `running-config`, `sshd_config`, most of
   what anyone actually edits - open in your editor instead of being

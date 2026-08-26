@@ -33,7 +33,7 @@
             renderRules();
         });
         const addSet = document.createElement('button');
-        addSet.textContent = 'New set';
+        addSet.textContent = 'New Set';
         addSet.addEventListener('click', () => {
             const s = {
                 id: 'set-' + Date.now().toString(36),

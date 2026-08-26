@@ -209,7 +209,7 @@
         const body = document.createElement('p');
         body.textContent = `Close ${count} tab${count === 1 ? '' : 's'} (${what})? ` +
             'Their sessions will be disconnected.';
-        window.Modals.open('Close tabs', body, [
+        window.Modals.open('Close Tabs', body, [
             { label: 'Cancel' },
             { label: `Close ${count}`, primary: true, onClick: run },
         ]);
@@ -266,7 +266,7 @@
         };
         body.appendChild(swatch(null));
         for (const c of TAB_COLORS) body.appendChild(swatch(c));
-        dlg = window.Modals.open('Tab color', body, [{ label: 'Cancel' }]);
+        dlg = window.Modals.open('Tab Color', body, [{ label: 'Cancel' }]);
     }
 
     function tabMenu(e, tab) {
@@ -281,42 +281,42 @@
         }] : [];
         window.Modals.menu(e.clientX, e.clientY, [
             ...saveItem,
-            { label: 'Rename tab...', onClick: () => renameTab(tab) },
+            { label: 'Rename Tab...', onClick: () => renameTab(tab) },
             ...(tab.customTitle
-                ? [{ label: 'Use automatic name', onClick: () => { tab.customTitle = null; fire(); } }]
+                ? [{ label: 'Use Automatic Name', onClick: () => { tab.customTitle = null; fire(); } }]
                 : []),
-            { label: 'Tab color...', onClick: () => pickColor(tab) },
+            { label: 'Tab Color...', onClick: () => pickColor(tab) },
             {
-                label: 'Save terminal output...',
+                label: 'Save Terminal Output...',
                 disabled: !tab.focusedSessionId,
                 onClick: () => window.TermPanes.saveOutput(tab.focusedSessionId),
             },
             null,
-            { label: 'Font size +  (Ctrl+wheel)', onClick: () => window.TermPanes.zoom(1) },
-            { label: 'Font size -', onClick: () => window.TermPanes.zoom(-1) },
+            { label: 'Font Size +  (Ctrl+wheel)', onClick: () => window.TermPanes.zoom(1) },
+            { label: 'Font Size -', onClick: () => window.TermPanes.zoom(-1) },
             {
                 // Greyed out when the font is already the Settings size, so
                 // the menu answers "am I zoomed?" as well as offering the
                 // way back.
-                label: 'Reset font size  (Ctrl+0)',
+                label: 'Reset Font Size  (Ctrl+0)',
                 disabled: !window.TermPanes.isZoomed(),
                 onClick: () => window.TermPanes.zoom(0),
             },
             null,
             { label: 'Close', onClick: () => closeTab(tab) },
             {
-                label: 'Close all but this tab',
+                label: 'Close All but This Tab',
                 disabled: others === 0,
                 onClick: () => confirmThenClose(others, 'all but this one', () => closeOthers(tab)),
             },
             {
-                label: 'Close tabs to the right',
+                label: 'Close Tabs to the Right',
                 disabled: right === 0,
                 onClick: () => confirmThenClose(right, 'to the right', () => closeToTheRight(tab)),
             },
             null,
             {
-                label: 'Merge all tabs into one',
+                label: 'Merge All Tabs into One',
                 disabled: tabs.length < 2,
                 onClick: mergeAll,
             },

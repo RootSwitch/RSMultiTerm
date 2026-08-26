@@ -414,7 +414,10 @@ assert.ok(!/s\.enabled \?/.test(pasteAllBody),
 assert.ok(/participants\(tab\)/.test(pasteAllBody),
     'pasteAll targets the participants - connected, not excluded');
 // The tree offers Duplicate on a session and a menu on the blank space.
-assert.ok(/Duplicate session\.\.\./.test(treeSrc),
+// Case-insensitive: what this pins is that the menu item EXISTS, not how
+// it is capitalized. The Title Case pass broke it once, which is the
+// invariant asserting the wrong thing rather than the label being wrong.
+assert.ok(/Duplicate session\.\.\./i.test(treeSrc),
     'the session context menu must offer Duplicate');
 assert.ok(/function blankMenu\(/.test(treeSrc) &&
     /closest\('\.tree-row, \.tree-details'\)/.test(treeSrc),

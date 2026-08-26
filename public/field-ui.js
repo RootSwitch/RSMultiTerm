@@ -36,8 +36,8 @@
         } catch (_) { /* engine restarting */ }
         btn.classList.toggle('serving', running.length > 0);
         btn.textContent = running.length
-            ? `Field tools: ${running.map((s) => s.kind.toUpperCase()).join(' + ')}`
-            : 'Field tools';
+            ? `Field Tools: ${running.map((s) => s.kind.toUpperCase()).join(' + ')}`
+            : 'Field Tools';
         return running;
     }
 
@@ -207,13 +207,13 @@
                     const hint = /EACCES|EPERM/i.test(err.message)
                         ? ' - ports below 1024 need admin rights; try 6969 or 8080'
                         : /EADDRINUSE/i.test(err.message) ? ' - something else is already on that port' : '';
-                    window.Forms.showBanner('error', `Field tools: ${err.message}${hint}`);
+                    window.Forms.showBanner('error', `Field Tools: ${err.message}${hint}`);
                 }
             });
             return b;
         };
         actions.append(startBtn('tftp', 'Start TFTP'), startBtn('http', 'Start HTTP'),
-            startBtn('syslog', 'Start syslog'));
+            startBtn('syslog', 'Start Syslog'));
         body.appendChild(actions);
 
         // Wake-on-LAN: not a server, so it sits apart.
@@ -331,7 +331,7 @@
                 // thing to get wrong by hand.
                 if (s.kind === 'tftp' || s.kind === 'http') {
                     const copy = document.createElement('button');
-                    copy.textContent = 'Copy fetch command';
+                    copy.textContent = 'Copy Fetch Command';
                     copy.title = 'Put the device-side command on the clipboard';
                     copy.addEventListener('click', () => fetchMenu(copy, s));
                     line.appendChild(copy);
@@ -378,7 +378,7 @@
             syslogRender = null;
             if (syslogPaint) { cancelAnimationFrame(syslogPaint); syslogPaint = 0; }
         };
-        open('Field tools', body, [
+        open('Field Tools', body, [
             { label: 'Close', primary: true, onClick: teardown },
         ], { onCancel: teardown });
     }
@@ -391,10 +391,10 @@
         const f = file || 'FILE';
         if (server.kind === 'tftp') {
             return [
-                { label: 'Cisco IOS - copy to flash', text: `copy tftp://${addr}/${f} flash:` },
-                { label: 'Cisco IOS - copy running-config out',
+                { label: 'Cisco IOS - Copy to Flash', text: `copy tftp://${addr}/${f} flash:` },
+                { label: 'Cisco IOS - Copy Running-Config Out',
                     text: `copy running-config tftp://${addr}/${f}` },
-                { label: 'Linux - tftp get', text: `tftp -g -r ${f} ${addr}` },
+                { label: 'Linux - TFTP Get', text: `tftp -g -r ${f} ${addr}` },
                 { label: 'ROMMON - tftpdnld', text:
                     `TFTP_SERVER=${addr}\nTFTP_FILE=${f}\ntftpdnld` },
             ];
@@ -402,7 +402,7 @@
         return [
             { label: 'curl', text: `curl -O http://${addr}:${server.port}/${f}` },
             { label: 'wget', text: `wget http://${addr}:${server.port}/${f}` },
-            { label: 'Cisco IOS - copy to flash',
+            { label: 'Cisco IOS - Copy to Flash',
                 text: `copy http://${addr}:${server.port}/${f} flash:` },
             { label: 'PowerShell',
                 text: `Invoke-WebRequest http://${addr}:${server.port}/${f} -OutFile ${f}` },
@@ -418,7 +418,7 @@
             addr = real ? real.address : '0.0.0.0';
             note = real ? `using ${real.address} (${real.name})` : null;
         }
-        const file = await window.Modals.promptText('Copy fetch command',
+        const file = await window.Modals.promptText('Copy Fetch Command',
             'File name on the server (leave blank for a placeholder)', '');
         if (file === null) return;
         const items = fetchCommands(server, addr, file.trim()).map((c) => ({

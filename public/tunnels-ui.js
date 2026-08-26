@@ -245,7 +245,7 @@
                 label: 'Close', primary: true,
                 onClick: () => { clearInterval(refreshTimer); refreshTimer = null; listEl = null; },
             },
-            { label: 'New tunnel', onClick: () => { editDialog(null); return false; } },
+            { label: 'New Tunnel', onClick: () => { editDialog(null); return false; } },
         ], {
             onCancel: () => { clearInterval(refreshTimer); refreshTimer = null; listEl = null; },
         });

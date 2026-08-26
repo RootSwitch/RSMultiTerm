@@ -410,7 +410,7 @@
             items.push({ label: `Effect: ${st.label}`, onClick: () => start(id, { area: settings.area }) });
         }
         items.push(null, {
-            label: 'Idle animation settings...',
+            label: 'Idle Animation Settings...',
             onClick: () => window.SettingsUI && window.SettingsUI.openSettings(),
         }, {
             // The same knob as Settings > Play over, surfaced here so people
@@ -1423,7 +1423,7 @@
     // style that is also a tool, which is why "Surprise me" never picks it
     // unless it is ticked on purpose: a surprise clock is just a clock.
     STYLES.clock = {
-        label: 'Big clock (24h)', screen: false, mood: 'calm', surprise: false,
+        label: 'Big Clock (24h)', screen: false, mood: 'calm', surprise: false,
         // Segments per digit: [top, topL, topR, mid, botL, botR, bottom].
         DIGITS: {
             0: [1, 1, 1, 0, 1, 1, 1], 1: [0, 0, 1, 0, 0, 1, 0],
@@ -1509,7 +1509,7 @@
     // entry rather than a setting, so both live in the Extras list and the
     // picker like everything else.
     STYLES.clock12 = {
-        label: 'Big clock (12h)', screen: false, mood: 'calm', surprise: false,
+        label: 'Big Clock (12h)', screen: false, mood: 'calm', surprise: false,
         init(env) {
             const st = STYLES.clock.init(env);
             st.twelve = true;
@@ -1523,7 +1523,7 @@
     // corner EXACTLY gets the burst everybody has waited a whole meeting
     // for. The epsilon is honest - a near-miss is a near-miss.
     STYLES.dvd = {
-        label: 'Logo bounce', screen: false, mood: 'calm',
+        label: 'Logo Bounce', screen: false, mood: 'calm',
         init(env) {
             return {
                 x: Math.random() * (env.w - 180) + 20,

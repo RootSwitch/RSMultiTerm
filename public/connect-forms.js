@@ -108,7 +108,7 @@
                 'time - every connect, reconnects included. Inherits from the folder.'));
         syncSerial();
 
-        open(isNew ? 'New session' : `Edit ${node.name}`, body, [
+        open(isNew ? 'New Session' : `Edit ${node.name}`, body, [
             { label: 'Cancel' },
             {
                 label: 'Save', primary: true,
@@ -179,7 +179,7 @@
                 'Typed into every session in this folder a moment after it connects. ' +
                 'A session with its own commands overrides this. Never published to a sync file.'));
 
-        open(isNew ? 'New folder' : `Edit ${node.name}`, body, [
+        open(isNew ? 'New Folder' : `Edit ${node.name}`, body, [
             { label: 'Cancel' },
             {
                 label: 'Save', primary: true,
@@ -219,7 +219,7 @@
     function offerNewProfile(sel) {
         const o = document.createElement('option');
         o.value = NEW_PROFILE;
-        o.textContent = 'Create a new profile...';
+        o.textContent = 'Create a New Profile...';
         sel.appendChild(o);
         let previous = sel.value;
         sel.addEventListener('change', () => {
@@ -283,10 +283,10 @@
         };
         await refresh();
 
-        open('Credential profiles', body, [
+        open('Credential Profiles', body, [
             // `refresh`, not a no-op: the list sat unchanged after a save, and
             // a user staring at it could not tell whether the profile took.
-            { label: 'New profile', onClick: () => { editProfile(null, refresh); return false; } },
+            { label: 'New Profile', onClick: () => { editProfile(null, refresh); return false; } },
             { label: 'Close', primary: true },
         ]);
     }
@@ -340,7 +340,7 @@
         if (!keyOpts.length) {
             keyOpts.push({ value: '', label: `no keys found in ${env.sshDir}` });
         }
-        keyOpts.push({ value: '__browse__', label: 'Another file...' });
+        keyOpts.push({ value: '__browse__', label: 'Another File...' });
         const fKey = select(keyOpts, prof.keyPath || keyOpts[0].value);
         const keyRow = row('Key file', fKey);
         const keyNote = document.createElement('p');
@@ -467,7 +467,7 @@
             // Blank-means-keep is the field's contract, so forgetting a
             // stored secret needs its own button rather than a magic blank.
             ...(!isNew && prof.hasSecret ? [{
-                label: 'Forget password',
+                label: 'Forget Password',
                 onClick: () => {
                     rsterm.invoke('rs:profiles.upsert', { name: prof.name, clearPassword: true }).then(done);
                 },
@@ -566,7 +566,7 @@
             [...paths.keys()][0]);
         body.append(what, row('Key', fKey));
 
-        open('Install SSH key on the device', body, [
+        open('Install SSH Key on the Device', body, [
             { label: 'Cancel' },
             {
                 label: 'Install', primary: true,
@@ -686,7 +686,7 @@
         fCred.addEventListener('change', syncKeep);
         syncKeep();
 
-        open('Save as a session', body, [
+        open('Save as a Session', body, [
             { label: 'Cancel' },
             {
                 label: 'Save', primary: true,
@@ -866,7 +866,7 @@
     rsterm.on('rs:evt.profile-missing', ({ profile }) => {
         showBanner('warn',
             `Sessions reference credential profile '${profile}' which is not set up on this machine.`,
-            [{ label: 'Set up profiles', onClick: () => manageProfiles() }]);
+            [{ label: 'Set Up Profiles', onClick: () => manageProfiles() }]);
     });
 
     // --- credentials-choice dialog ------------------------------------------
@@ -967,7 +967,7 @@
         open(`Trust ${host}?`, body, [
             { label: 'Cancel', onClick: () => rsterm.send('rs:hostkey.answer', { checkId, accept: false }) },
             {
-                label: 'Trust and connect', primary: true,
+                label: 'Trust and Connect', primary: true,
                 onClick: () => rsterm.send('rs:hostkey.answer', { checkId, accept: true, remember: true }),
             },
         ], { modal: true, onCancel: () => rsterm.send('rs:hostkey.answer', { checkId, accept: false }) });

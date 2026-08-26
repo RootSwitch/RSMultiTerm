@@ -114,10 +114,10 @@
         });
         sync();
 
-        open('Shell integration', body, [
+        open('Shell Integration', body, [
             { label: 'Cancel' },
             {
-                label: 'Copy snippet',
+                label: 'Copy Snippet',
                 onClick: () => {
                     navigator.clipboard.writeText(scripts.session).then(
                         () => window.Forms.showBanner('warn', 'Snippet copied - drop it in your dotfiles or push it with your config management.'),

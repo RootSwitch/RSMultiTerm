@@ -26,7 +26,7 @@
         const fTermMode = select([
             { value: 'theme', label: 'Follow the app theme' },
             { value: 'dark', label: 'Always dark' },
-            { value: 'custom', label: 'Custom color...' },
+            { value: 'custom', label: 'Custom Color...' },
         ], tc.mode || 'theme');
         const fTermBg = document.createElement('input');
         fTermBg.type = 'color';
@@ -144,7 +144,7 @@
         const idle = s.idle || { style: 'off', minutes: 5 };
         const styleOpts = [{ value: 'off', label: 'Off' }]
             .concat((window.Idle ? window.Idle.styles() : []).map((x) => ({ value: x.id, label: x.label })))
-            .concat([{ value: 'random', label: 'Surprise me' }]);
+            .concat([{ value: 'random', label: 'Surprise Me' }]);
         const fIdleStyle = select(styleOpts, idle.style || 'off');
         fIdleStyle.style.flex = '1';
         // Preview, as on a Windows screensaver: saves what is in this
@@ -188,7 +188,7 @@
         const picksWrap = document.createElement('div');
         picksWrap.className = 'field-stack';
         const picksLabel = document.createElement('label');
-        picksLabel.textContent = 'Surprise me uses';
+        picksLabel.textContent = 'Surprise Me uses';
         const picksBox = document.createElement('div');
         picksBox.style.cssText = 'display:flex;flex-direction:column;gap:8px;';
 

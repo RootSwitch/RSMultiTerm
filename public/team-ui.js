@@ -44,8 +44,8 @@
                 label.style.flex = '1';
                 label.textContent = `${name} - ${what}`;
                 const pick = select([
-                    { value: 'theirs', label: 'Take theirs' },
-                    { value: 'mine', label: 'Keep mine' },
+                    { value: 'theirs', label: 'Take Theirs' },
+                    { value: 'mine', label: 'Keep Mine' },
                 ], c.kind === 'delete-modify' ? 'mine' : 'theirs');
                 decisions.conflictTakes[c.id] = pick.value;
                 pick.addEventListener('change', () => { decisions.conflictTakes[c.id] = pick.value; });
@@ -113,7 +113,7 @@
         }
 
         open(title, body, [
-            { label: 'Not now' },
+            { label: 'Not Now' },
             {
                 label: 'Apply', primary: true,
                 onClick: () => {
@@ -252,10 +252,10 @@
         const fRoot = input('Imported from MobaXTerm', 'target folder name');
         body.appendChild(row('Into folder', fRoot));
 
-        open('MobaXTerm import', body, [
+        open('MobaXTerm Import', body, [
             { label: 'Cancel' },
             {
-                label: 'Preview import', primary: true,
+                label: 'Preview Import', primary: true,
                 onClick: () => {
                     rsterm.invoke('rs:moba.apply', {
                         report,
@@ -275,7 +275,7 @@
             `${m.adds} added, ${m.changes} changed, ${m.removals} removed` +
             (m.conflicts ? `, ${m.conflicts} conflicts` : '') + '.',
             [{
-                label: 'Review and merge',
+                label: 'Review and Merge',
                 onClick: syncCheck,
             }]);
     });
@@ -365,7 +365,7 @@
         open(title, body, [
             { label: 'Cancel' },
             {
-                label: 'Preview import', primary: true,
+                label: 'Preview Import', primary: true,
                 onClick: () => {
                     rsterm.invoke('rs:sshimport.apply', {
                         report,

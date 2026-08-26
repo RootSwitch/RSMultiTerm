@@ -473,7 +473,7 @@ ${describeAge(ageDays)}.` + NOT_PROBED;
         info.style.marginBottom = '10px';
         info.textContent = `Move ${ids.length} item${ids.length === 1 ? '' : 's'} to:`;
         body.append(info, window.Modals.row('Folder', pick));
-        window.Modals.open('Move to', body, [
+        window.Modals.open('Move To', body, [
             { label: 'Cancel' },
             {
                 label: 'Move', primary: true,
@@ -582,7 +582,7 @@ ${describeAge(ageDays)}.` + NOT_PROBED;
         const profiles = await rsterm.invoke('rs:profiles.list');
         if (!profiles.length) {
             window.Forms.showBanner('warn', 'No credential profiles yet - set one up first.',
-                [{ label: 'Manage profiles', onClick: () => window.Forms.manageProfiles() }]);
+                [{ label: 'Manage Profiles', onClick: () => window.Forms.manageProfiles() }]);
             return;
         }
         const body = document.createElement('div');
@@ -596,7 +596,7 @@ ${describeAge(ageDays)}.` + NOT_PROBED;
         // Same affordance as the session editor's Credentials dropdown.
         window.Forms.offerNewProfile(pick);
         body.append(info, window.Modals.row('Profile', pick));
-        window.Modals.open('Set credential profile', body, [
+        window.Modals.open('Set Credential Profile', body, [
             { label: 'Cancel' },
             {
                 label: 'Apply', primary: true,
@@ -633,12 +633,12 @@ ${describeAge(ageDays)}.` + NOT_PROBED;
             },
             null,
             { label: multi ? 'Bulk edit...' : 'Edit...', onClick: editSelection },
-            { label: 'Set credential profile...', disabled: !sessionCount, onClick: assignProfile },
-            { label: 'Move to...', onClick: moveDialog },
+            { label: 'Set Credential Profile...', disabled: !sessionCount, onClick: assignProfile },
+            { label: 'Move To...', onClick: moveDialog },
         ];
         if (!isFolder && !multi) {
             items.push(null, {
-                label: 'Duplicate session...',
+                label: 'Duplicate Session...',
                 onClick: async () => {
                     // A copy beside the original, sharing everything but the
                     // name - the MobaXterm workflow for building out a new
@@ -657,9 +657,9 @@ ${describeAge(ageDays)}.` + NOT_PROBED;
         }
         if (isFolder && !multi) {
             items.push(null,
-                { label: 'New session here', onClick: () => window.Forms.editSession(null, node.id) },
-                { label: 'New folder here', onClick: () => window.Forms.editFolder(null, node.id) },
-                { label: 'Audit this folder', onClick: auditDevices });
+                { label: 'New Session Here', onClick: () => window.Forms.editSession(null, node.id) },
+                { label: 'New Folder Here', onClick: () => window.Forms.editFolder(null, node.id) },
+                { label: 'Audit This Folder', onClick: auditDevices });
         }
         items.push(null, { label: multi ? `Delete ${selected.size} items...` : 'Delete...', onClick: deleteSelection });
         window.Modals.menu(e.clientX, e.clientY, items);
@@ -669,15 +669,15 @@ ${describeAge(ageDays)}.` + NOT_PROBED;
     // about the tree as a whole rather than any node in it.
     function blankMenu(e) {
         window.Modals.menu(e.clientX, e.clientY, [
-            { label: 'New session...', onClick: () => window.Forms.editSession(null, selectionParent()) },
-            { label: 'New folder...', onClick: () => window.Forms.editFolder(null, selectionParent()) },
+            { label: 'New Session...', onClick: () => window.Forms.editSession(null, selectionParent()) },
+            { label: 'New Folder...', onClick: () => window.Forms.editFolder(null, selectionParent()) },
             null,
-            { label: 'Import MobaXTerm sessions...', onClick: () => window.TeamUI.mobaWizard() },
-            { label: 'Import OpenSSH config...', onClick: () => window.TeamUI.sshImportWizard('sshconfig') },
-            { label: 'Import PuTTY sessions...', onClick: () => window.TeamUI.sshImportWizard('putty') },
-            { label: 'Import spreadsheet (CSV)...', onClick: () => window.CsvUI.importCsv(selectedFolder(), null) },
+            { label: 'Import MobaXTerm Sessions...', onClick: () => window.TeamUI.mobaWizard() },
+            { label: 'Import OpenSSH Config...', onClick: () => window.TeamUI.sshImportWizard('sshconfig') },
+            { label: 'Import PuTTY Sessions...', onClick: () => window.TeamUI.sshImportWizard('putty') },
+            { label: 'Import Spreadsheet (CSV)...', onClick: () => window.CsvUI.importCsv(selectedFolder(), null) },
             {
-                label: 'Import exported session file...',
+                label: 'Import Exported Session File...',
                 onClick: async () => {
                     const plan = await rsterm.invoke('rs:team.importPick');
                     if (plan) window.TeamUI.mergeDialog(plan, 'rs:team.applyImport', 'Import sessions');
@@ -686,7 +686,7 @@ ${describeAge(ageDays)}.` + NOT_PROBED;
             null,
             { label: 'Export to CSV...', onClick: () => window.CsvUI.exportCsv(selectedFolder()) },
             {
-                label: 'Export sessions to a file...',
+                label: 'Export Sessions to a File...',
                 onClick: async () => {
                     const r = await rsterm.invoke('rs:team.export');
                     if (r) window.Forms.showBanner('warn',
@@ -695,7 +695,7 @@ ${describeAge(ageDays)}.` + NOT_PROBED;
             },
             null,
             {
-                label: 'Collapse all folders',
+                label: 'Collapse All Folders',
                 onClick: () => { expanded.clear(); render(); },
             },
         ]);
@@ -750,11 +750,11 @@ ${describeAge(ageDays)}.` + NOT_PROBED;
             const syncItems = syncFile ? [
                 null,
                 {
-                    label: 'Publish sessions to the sync file',
+                    label: 'Publish Sessions to the Sync File',
                     onClick: () => window.TeamUI.syncPublish(),
                 },
                 {
-                    label: 'Check the sync file now',
+                    label: 'Check the Sync File Now',
                     onClick: () => window.TeamUI.syncCheck(),
                 },
             ] : [];
@@ -776,7 +776,7 @@ ${describeAge(ageDays)}.` + NOT_PROBED;
                     onClick: () => window.CsvUI.importCsv(selectedFolder(), null),
                 },
                 {
-                    label: 'Exported session file (.json)...',
+                    label: 'Exported Session File (.json)...',
                     onClick: async () => {
                         const plan = await rsterm.invoke('rs:team.importPick');
                         if (plan) window.TeamUI.mergeDialog(plan, 'rs:team.applyImport', 'Import sessions');
@@ -784,11 +784,11 @@ ${describeAge(ageDays)}.` + NOT_PROBED;
                 },
                 null,
                 {
-                    label: 'Export selection to CSV...',
+                    label: 'Export Selection to CSV...',
                     onClick: () => window.CsvUI.exportCsv(selectedFolder()),
                 },
                 {
-                    label: 'Export sessions to a file...',
+                    label: 'Export Sessions to a File...',
                     onClick: async () => {
                         const r = await rsterm.invoke('rs:team.export');
                         if (r) window.Forms.showBanner('warn',
@@ -897,7 +897,7 @@ ${describeAge(ageDays)}.` + NOT_PROBED;
             `Audit finished - ${present.length} device${present.length === 1 ? '' : 's'} ` +
             'did not answer and have not answered recently.',
             [{
-                label: 'Select them',
+                label: 'Select Them',
                 onClick: () => {
                     selected.clear();
                     for (const id of present) {

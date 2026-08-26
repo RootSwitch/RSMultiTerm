@@ -490,7 +490,7 @@
         }
         if (!many && !it.isDir) {
             items.push({
-                label: 'Edit locally',
+                label: 'Edit Locally',
                 onClick: async () => {
                     status(`opening ${it.name} for editing...`);
                     try {
@@ -515,7 +515,7 @@
             });
         }
         items.push({
-            label: many ? `Copy ${targets.length} paths` : 'Copy path',
+            label: many ? `Copy ${targets.length} Paths` : 'Copy Path',
             onClick: () => {
                 const text = targets.map((t) => join(cwd, t.name)).join(String.fromCharCode(10));
                 navigator.clipboard.writeText(text)
@@ -543,7 +543,7 @@
             'border:1px solid var(--se-border);border-radius:4px;';
         listEl.textContent = targets.map((t) => (t.isDir ? `${t.name}/` : t.name)).join('\n');
         body.append(info, listEl);
-        window.Modals.open('Delete from device', body, [
+        window.Modals.open('Delete from Device', body, [
             { label: 'Cancel' },
             {
                 label: `Delete ${targets.length === 1 ? '' : targets.length + ' items'}`.trim(),
@@ -580,7 +580,7 @@
             const body = document.createElement('p');
             body.textContent = `Download ${targets.length} folder${targets.length === 1 ? '' : 's'} ` +
                 `into ${dir}? Files with the same names will be replaced.`;
-            window.Modals.open('Download folders', body, [
+            window.Modals.open('Download Folders', body, [
                 { label: 'Cancel', onClick: () => resolve(false) },
                 { label: 'Download', primary: true, onClick: () => resolve(true) },
             ], { onCancel: () => resolve(false) });
@@ -629,7 +629,7 @@
             const body = document.createElement('p');
             body.textContent = `Save ${files.length} file${files.length === 1 ? '' : 's'} into ` +
                 `${dir}? Files with the same names will be replaced.`;
-            window.Modals.open('Download files', body, [
+            window.Modals.open('Download Files', body, [
                 { label: 'Cancel', onClick: () => resolve(false) },
                 { label: 'Download', primary: true, onClick: () => resolve(true) },
             ], { onCancel: () => resolve(false) });
@@ -759,7 +759,7 @@
                 'border:1px solid var(--se-border);border-radius:4px;';
             listEl.textContent = names.join(String.fromCharCode(10));
             body.append(info, listEl);
-            window.Modals.open('Overwrite on device', body, [
+            window.Modals.open('Overwrite on Device', body, [
                 { label: 'Cancel', onClick: () => answer(false) },
                 {
                     label: names.length === 1 ? 'Overwrite' : `Overwrite ${names.length}`,
@@ -799,7 +799,7 @@
         if (!list.length) return;
         const head = document.createElement('div');
         head.className = 'sftp-edits-head';
-        head.textContent = 'Editing locally';
+        head.textContent = 'Editing Locally';
         box.appendChild(head);
         for (const en of list) {
             const row = document.createElement('div');
@@ -815,12 +815,12 @@
             row.append(name, state);
             if (en.status === 'conflict') {
                 const mine = document.createElement('button');
-                mine.textContent = 'Upload mine';
+                mine.textContent = 'Upload Mine';
                 mine.title = 'Overwrite the device copy with this edit';
                 mine.addEventListener('click', () =>
                     rsterm.invoke('rs:edit.resolve', { id: en.id, action: 'overwrite' }));
                 const theirs = document.createElement('button');
-                theirs.textContent = 'Take theirs';
+                theirs.textContent = 'Take Theirs';
                 theirs.title = 'Discard this edit and load the device copy into the editor';
                 theirs.addEventListener('click', () =>
                     rsterm.invoke('rs:edit.resolve', { id: en.id, action: 'theirs' }));
@@ -885,7 +885,7 @@
         });
         el('sftp-upload').addEventListener('click', upload);
         el('sftp-mkdir').addEventListener('click', async () => {
-            const name = await window.Modals.promptText('New remote folder', 'Folder name', '');
+            const name = await window.Modals.promptText('New Remote Folder', 'Folder name', '');
             if (!name) return;
             try { await op({ op: 'mkdir', path: join(cwd, name) }); list(); }
             catch (err) { status(err.message); }

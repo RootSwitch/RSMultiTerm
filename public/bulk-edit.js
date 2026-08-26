@@ -56,7 +56,7 @@
             return f.value.slice(2);
         };
 
-        open(`Bulk edit ${sessionIds.length} sessions`, body, [
+        open(`Bulk Edit ${sessionIds.length} Sessions`, body, [
             { label: 'Cancel' },
             {
                 label: 'Apply', primary: true,

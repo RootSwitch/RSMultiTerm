@@ -197,7 +197,7 @@
                 'SAVED sessions, and no included pane in this tab is one.');
             return;
         }
-        window.Modals.promptText('Save broadcast group',
+        window.Modals.promptText('Save Broadcast Group',
             `Group name (${members.length} saved session${members.length === 1 ? '' : 's'})`, '')
             .then((name) => {
                 if (!name || !name.trim()) return;
@@ -247,10 +247,10 @@
             });
         }
         if (groups.length) items.push(null);
-        items.push({ label: 'Save current line-up as group...', onClick: saveGroupDialog });
+        items.push({ label: 'Save Current Line-up as Group...', onClick: saveGroupDialog });
         if (groups.length) {
             items.push({
-                label: 'Delete a group...',
+                label: 'Delete a Group...',
                 onClick: () => {
                     window.Modals.menu(anchor.left, anchor.bottom + 2, groups.map((g) => ({
                         label: `Delete '${g.name}'`,

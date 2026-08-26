@@ -98,26 +98,26 @@
         const items = [
             { label: 'Copy', onClick: () => navigator.clipboard.writeText(sel), disabled: !sel },
             { label: 'Paste', onClick: () => pasteInto(pane) },
-            { label: 'Paste to all panes', onClick: () => window.MultiExec.pasteAll() },
+            { label: 'Paste to All Panes', onClick: () => window.MultiExec.pasteAll() },
             // Only offered when the shell actually marks its commands (OSC
             // 133); greyed-out clutter would just advertise a feature the
             // device the user is on cannot do.
-            { label: 'Copy last command output', disabled: lastOut === null,
+            { label: 'Copy Last Command Output', disabled: lastOut === null,
                 onClick: () => navigator.clipboard.writeText(lastOut) },
             null,
-            { label: 'Select all', onClick: () => pane.term.selectAll() },
-            { label: 'Save output as...', onClick: () => window.TermPanes.saveOutput(pane.sessionId) },
+            { label: 'Select All', onClick: () => pane.term.selectAll() },
+            { label: 'Save Output As...', onClick: () => window.TermPanes.saveOutput(pane.sessionId) },
             null,
         ];
         // Only for SSH: there is no shell to integrate with on a serial
         // console into a switch, and none on a telnet vty either.
         if (pane.transport === 'ssh') {
-            items.push({ label: 'Install SSH key on this device...',
+            items.push({ label: 'Install SSH Key on This Device...',
                 onClick: () => window.Forms.installKeyDialog(pane.sessionId) });
         }
-        items.push({ label: 'Clear scrollback', onClick: () => pane.term.clear() });
+        items.push({ label: 'Clear Scrollback', onClick: () => pane.term.clear() });
         if (pane.transport === 'ssh') {
-            items.push({ label: 'Shell integration...',
+            items.push({ label: 'Shell Integration...',
                 onClick: () => window.ShellIntegration.openDialog() });
         }
         // Serial line controls. State is read fresh so the DTR/RTS labels
@@ -143,7 +143,7 @@
             if (st) {
                 const s = st.signals || {};
                 items.push(null, {
-                    label: 'Send break',
+                    label: 'Send Break',
                     onClick: () => sig({ op: 'break' }, (r) => `break sent (${r.ms} ms)`),
                 }, {
                     label: `DTR is ${s.dtr ? 'high' : 'low'} - set ${s.dtr ? 'low' : 'high'}`,

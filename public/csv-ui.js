@@ -97,7 +97,7 @@
             if (applyBtn) applyBtn.textContent = `Apply ${accepted.size} change${accepted.size === 1 ? '' : 's'}`;
         };
 
-        const modal = open('CSV import preview', body, [
+        const modal = open('CSV Import Preview', body, [
             { label: 'Cancel' },
             {
                 label: `Apply ${accepted.size} changes`, primary: true,
