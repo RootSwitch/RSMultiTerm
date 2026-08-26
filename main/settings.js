@@ -52,6 +52,9 @@ const DEFAULTS = {
     // group is armed. Members are tree node ids; quick connects have no
     // identity to remember and cannot join.
     broadcastGroups: [],   // [{name, nodeIds: []}]
+    // The one-time "this machine has PuTTY sessions - import them?" offer.
+    // True once it has been shown, whatever was chosen.
+    importOfferShown: false,
     // OSC 52: let a remote program (tmux, vim, kitty's kitten) put text on
     // the LOCAL clipboard. Write is the useful, low-risk half and is on by
     // default. Read - a remote asking what is ON the clipboard - is an
@@ -122,6 +125,7 @@ function sanitize(patch) {
         typeof out.editorCommand !== 'string') {
         delete out.editorCommand;
     }
+    if ('importOfferShown' in out) out.importOfferShown = !!out.importOfferShown;
     // Renderer-shaped structure that lands on disk and is iterated later:
     // hold it to exactly [{name, nodeIds:[...]}] and drop the rest.
     if ('broadcastGroups' in out) {

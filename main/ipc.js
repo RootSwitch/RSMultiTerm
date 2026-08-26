@@ -194,7 +194,10 @@ function wireIpc(engineRef, getWindow, bootConfig) {
     ipcMain.handle('rs:team.export', async () => {
         const { dialog } = require('electron');
         const r = await dialog.showSaveDialog(getWindow(), {
-            defaultPath: 'team-sessions.json',
+            // Matches the CSV export's 'sessions.csv'. The SYNC file
+            // keeps its distinctive rsmultiterm- name - on a shared
+            // drive, a file named that is self-explaining.
+            defaultPath: 'sessions.json',
             filters: [{ name: 'Session files', extensions: ['json'] }],
         });
         if (r.canceled) return null;
@@ -405,6 +408,26 @@ function wireIpc(engineRef, getWindow, bootConfig) {
             report = sshImport.scanSshConfig(r.filePaths[0]);
         }
         return report;
+    });
+    // What this machine could import, counted WITHOUT any dialog - the
+    // first-run offer asks before showing anything. scanPutty resolves
+    // null when there is no PuTTY hive; scanSshConfig(undefined) returns
+    // null when ~/.ssh/config does not exist. Neither ever prompts.
+    ipcMain.handle('rs:sshimport.detect', async () => {
+        // Smoke seam, dev builds only: the machine that runs the suite has
+        // no PuTTY hive and no ~/.ssh/config, and pointing Electron at a
+        // staged home turned out to be a fight with Chromium, not a test.
+        const fake = require('./dev-hooks').devOnlyHook('RSMT_FAKE_IMPORT_SOURCES');
+        if (fake) {
+            try { return JSON.parse(fake); } catch (_) { /* fall through to real scan */ }
+        }
+        let putty = 0;
+        let sshConfig = 0;
+        try { const r = await sshImport.scanPutty(); putty = r ? r.sessions.length : 0; }
+        catch (_) { /* a hostile hive is a 0, not a crash */ }
+        try { const r = sshImport.scanSshConfig(); sshConfig = r ? r.sessions.length : 0; }
+        catch (_) { /* unreadable config, same */ }
+        return { putty, sshConfig };
     });
     ipcMain.handle('rs:sshimport.apply', (_e, { report, profileByUsername, rootName }) => {
         const nodes = sshImport.toNodes(report, profileByUsername || {}, rootName);

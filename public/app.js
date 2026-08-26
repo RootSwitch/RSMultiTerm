@@ -483,6 +483,7 @@
     // --- session tree -----------------------------------------------------
     window.SessionTree.wireToolbar();
     window.SessionTree.refresh();
+    window.SessionTree.offerFirstImport();
     window.SftpPanel.wire();
 
     // --- sidebar resizing -------------------------------------------------

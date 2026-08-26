@@ -677,16 +677,16 @@ ${describeAge(ageDays)}.` + NOT_PROBED;
             { label: 'Import PuTTY Sessions...', onClick: () => window.TeamUI.sshImportWizard('putty') },
             { label: 'Import Spreadsheet (CSV)...', onClick: () => window.CsvUI.importCsv(selectedFolder(), null) },
             {
-                label: 'Import Exported Session File...',
+                label: 'Import RSMultiTerm Sessions (.json)...',
                 onClick: async () => {
                     const plan = await rsterm.invoke('rs:team.importPick');
-                    if (plan) window.TeamUI.mergeDialog(plan, 'rs:team.applyImport', 'Import sessions');
+                    if (plan) window.TeamUI.mergeDialog(plan, 'rs:team.applyImport', 'Import Sessions');
                 },
             },
             null,
-            { label: 'Export to CSV...', onClick: () => window.CsvUI.exportCsv(selectedFolder()) },
+            { label: 'Export to CSV (keeps usernames)...', onClick: () => window.CsvUI.exportCsv(selectedFolder()) },
             {
-                label: 'Export Sessions to a File...',
+                label: 'Export Sessions to JSON (shareable - no usernames)...',
                 onClick: async () => {
                     const r = await rsterm.invoke('rs:team.export');
                     if (r) window.Forms.showBanner('warn',
@@ -760,15 +760,15 @@ ${describeAge(ageDays)}.` + NOT_PROBED;
             ] : [];
             window.Modals.menu(btn.left, btn.bottom + 2, [
                 {
-                    label: 'MobaXTerm sessions (.mxtsessions)...',
+                    label: 'MobaXTerm Sessions (.mxtsessions)...',
                     onClick: () => window.TeamUI.mobaWizard(),
                 },
                 {
-                    label: 'OpenSSH config (~/.ssh/config)...',
+                    label: 'OpenSSH Config (~/.ssh/config)...',
                     onClick: () => window.TeamUI.sshImportWizard('sshconfig'),
                 },
                 {
-                    label: 'PuTTY saved sessions...',
+                    label: 'PuTTY Saved Sessions...',
                     onClick: () => window.TeamUI.sshImportWizard('putty'),
                 },
                 {
@@ -776,19 +776,19 @@ ${describeAge(ageDays)}.` + NOT_PROBED;
                     onClick: () => window.CsvUI.importCsv(selectedFolder(), null),
                 },
                 {
-                    label: 'Exported Session File (.json)...',
+                    label: 'RSMultiTerm Sessions (.json)...',
                     onClick: async () => {
                         const plan = await rsterm.invoke('rs:team.importPick');
-                        if (plan) window.TeamUI.mergeDialog(plan, 'rs:team.applyImport', 'Import sessions');
+                        if (plan) window.TeamUI.mergeDialog(plan, 'rs:team.applyImport', 'Import Sessions');
                     },
                 },
                 null,
                 {
-                    label: 'Export Selection to CSV...',
+                    label: 'Export Selection to CSV (keeps usernames)...',
                     onClick: () => window.CsvUI.exportCsv(selectedFolder()),
                 },
                 {
-                    label: 'Export Sessions to a File...',
+                    label: 'Export Sessions to JSON (shareable - no usernames)...',
                     onClick: async () => {
                         const r = await rsterm.invoke('rs:team.export');
                         if (r) window.Forms.showBanner('warn',
@@ -923,8 +923,49 @@ ${describeAge(ageDays)}.` + NOT_PROBED;
     rsterm.on('rs:evt.tree-changed', refresh);
     rsterm.on('rs:evt.profiles-changed', refresh);
 
+    // First run, empty tree, and a machine that plainly has sessions
+    // elsewhere: offer to import them. SecureCRT and MobaXterm do this
+    // SILENTLY at install; this one asks, once, and remembers that it
+    // asked whatever the answer was. Self-contained on purpose - it reads
+    // the tree itself rather than trusting module state to be loaded yet.
+    async function offerFirstImport() {
+        try {
+            const s = await rsterm.invoke('rs:settings.get');
+            if (s.importOfferShown) return;
+            const tree = await rsterm.invoke('rs:tree.get');
+            if (Object.values(tree).some((n) => n && n.type === 'session')) return;
+            const found = await rsterm.invoke('rs:sshimport.detect');
+            if (!found || (!found.putty && !found.sshConfig)) return;
+            // Marked shown BEFORE the banner: a crash mid-banner must not
+            // turn a one-time offer into an every-start nag.
+            rsterm.invoke('rs:settings.update', { importOfferShown: true });
+            const bits = [];
+            const actions = [];
+            if (found.putty) {
+                bits.push(`${found.putty} PuTTY session${found.putty === 1 ? '' : 's'}`);
+                actions.push({
+                    label: `Import PuTTY (${found.putty})`,
+                    onClick: () => window.TeamUI.sshImportWizard('putty'),
+                });
+            }
+            if (found.sshConfig) {
+                bits.push(`an OpenSSH config with ${found.sshConfig} ` +
+                    `host${found.sshConfig === 1 ? '' : 's'}`);
+                actions.push({
+                    label: `Import OpenSSH (${found.sshConfig})`,
+                    onClick: () => window.TeamUI.sshImportWizard('sshconfig'),
+                });
+            }
+            window.Forms.showBanner('warn',
+                `This machine has ${bits.join(' and ')}. Import them? You will ` +
+                'see exactly what would be added before anything is written. ' +
+                '(Also available later under Import.)',
+                actions, { key: 'first-import' });
+        } catch (_) { /* an offer, never worth an error */ }
+    }
+
     window.SessionTree = {
-        refresh, wireToolbar, openSessions, selectedFolder,
+        refresh, wireToolbar, openSessions, selectedFolder, offerFirstImport,
         selectedSessions: () => selectedSessions(),
         allNodes: () => nodes,
     };

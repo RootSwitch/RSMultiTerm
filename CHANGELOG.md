@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+- **First run offers to import what you already have.** A fresh install
+  with an empty session list looks for PuTTY saved sessions and an
+  OpenSSH config, and offers to import them - with counts, through the
+  same preview every import gets, once. SecureCRT and MobaXterm do this
+  silently at install; this one asks.
+- **The exports say what they carry.** "Export Sessions to JSON
+  (shareable - no usernames)" and "Export to CSV (keeps usernames)" -
+  the difference matters when you are moving to a new machine (CSV) vs
+  handing sessions to a teammate (JSON), and the old labels made you
+  find out afterward. The import side names the format the same way
+  ("RSMultiTerm Sessions (.json)"), and the JSON export's suggested
+  filename is now sessions.json, matching sessions.csv.
+
 ## 1.0.0 - 2026-08-25
 
 The first release the version number takes seriously. The app has been
