@@ -134,7 +134,8 @@ and hash-checked against their npm originals by `npm test`.
   Per-session and per-folder off switches in the editor; the folder is
   configurable in Settings.
 - The security posture, threat model, and accepted risks are written up in
-  [docs/security-review-2026-08.md](docs/security-review-2026-08.md).
+  [docs/security-review-2026-08.md](docs/security-review-2026-08.md) - kept
+  current with the code, including what is deliberately accepted and why.
 
 ## License
 
