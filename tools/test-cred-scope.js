@@ -43,13 +43,28 @@ assert.ok(!scope.matches('999.1.1.1/8', '999.1.1.1'), 'octets above 255 are not 
 
 // --- wildcards --------------------------------------------------------------
 assert.ok(scope.matches('*.corp.local', 'sw-core-01.corp.local'));
-assert.ok(scope.matches('*.corp.local', 'a.b.corp.local'), 'a wildcard spans labels');
+assert.ok(scope.matches('*.corp.local', 'a.b.corp.local'),
+    'a wildcard spans labels when a dot-anchored suffix pins the end');
 assert.ok(!scope.matches('*.corp.local', 'corp.local'),
     'the parent domain is not a host under it');
 assert.ok(!scope.matches('*.corp.local', 'sw.corp.local.evil.com'),
     'a suffix wildcard must be anchored at the END');
 assert.ok(scope.matches('10.50.1.*', '10.50.1.7'));
 assert.ok(!scope.matches('10.50.1.*', '10.50.2.7'));
+// A TRAILING wildcard has nothing anchoring its end, so it must not cross a
+// dot. '*' used to compile to '.+' everywhere, which made this documented
+// pattern admit any DNS name beginning with those labels - a bypass of the
+// whole module, available to anyone who can register a domain (or write the
+// team share, which may set a session's host).
+assert.ok(!scope.matches('10.50.1.*', '10.50.1.7.evil.com'),
+    'a trailing wildcard must NOT cross a dot - this is the bypass it exists to refuse');
+assert.ok(!scope.matches('10.50.1.*', '10.50.1.7.8'),
+    'not even onto another numeric label');
+// Same reasoning mid-pattern: spanning is safe only when what follows the
+// wildcard begins with a dot, because then the END is still pinned.
+assert.ok(scope.matches('sw-*-01', 'sw-core-01'));
+assert.ok(!scope.matches('sw-*-01', 'sw-core.evil-01'),
+    'an un-anchored wildcard must not cross a dot either');
 // The dots in a pattern are literal, not regex any-char - or '*.corpXlocal'
 // would pass a scope written for corp.local.
 assert.ok(!scope.matches('*.corp.local', 'swXcorpXlocal'),

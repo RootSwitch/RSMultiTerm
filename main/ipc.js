@@ -934,6 +934,17 @@ function wireIpc(engineRef, getWindow, bootConfig) {
     ipcMain.handle('rs:sftp.op', (_e, { sessionId, req }) => sftpOp(sessionId, req));
 
     // --- edit-and-sync ----------------------------------------------------
+    // Extensions the OS association may be trusted with: text to every
+    // handler that claims them. Deliberately short and deliberately not
+    // "everything except the dangerous ones" - a blacklist of executable
+    // extensions on Windows is a losing game (.pif, .scf, .url, whatever
+    // ships next), so this is the other kind of list.
+    // Script extensions are NOT here on purpose: with an interpreter
+    // installed, Windows registers .py/.pl/.rb/.vbs as executable types and
+    // ShellExecute runs them exactly like a .exe. A device's .py is still
+    // opened - just by the plain editor below, which reads it instead.
+    const TEXTISH = new Set(['.txt', '.log', '.cfg', '.conf', '.config', '.ini',
+        '.json', '.xml', '.yaml', '.yml', '.md', '.csv', '.tsv', '.diff', '.patch']);
     const editSync = require('./edit-sync');
     editSync.init({
         sftpOp,
@@ -951,14 +962,30 @@ function wireIpc(engineRef, getWindow, bootConfig) {
                 child.on('spawn', () => { child.unref(); res(); });
             });
             if (cmd) return launch(cmd, [file]);
-            const { shell } = require('electron');
-            const err = await shell.openPath(file);
-            if (!err) return;
-            // No association for the file type (device configs rarely have
-            // one). Fall back to the OS's always-there editor rather than
-            // failing the whole feature over a filename.
+            // No editor configured, so the OS association decides - and on
+            // Windows that is ShellExecute's `open` verb, which RUNS .exe,
+            // .cmd, .bat, .hta, .js, .vbs and friends rather than opening
+            // them. Both the name and the contents of this file came from
+            // the device, and the SFTP panel offers "Edit locally" on every
+            // file it lists: a switch serving `startup.cmd` would have been
+            // executing code here, and a legitimate one would too.
+            //
+            // safeName() already guarantees the file sits inside its own
+            // scratch directory; what is unguarded is the EXTENSION, and the
+            // extension is what decides whether "edit" means edit. So the
+            // association is used only for extensions that are text to
+            // everyone, and everything else - including no extension at all,
+            // which is most device configs - goes to a plain editor that
+            // cannot interpret what it opens.
+            if (TEXTISH.has(path.extname(file).toLowerCase())) {
+                const { shell } = require('electron');
+                const err = await shell.openPath(file);
+                if (!err) return;
+            }
             if (process.platform === 'win32') return launch('notepad', [file]);
-            throw new Error(err);
+            // No safe default elsewhere: say what to do rather than guessing
+            // at an executable.
+            throw new Error('no external editor is set - choose one in Settings');
         },
     });
     ipcMain.handle('rs:edit.start', (_e, { sessionId, path: remotePath }) =>

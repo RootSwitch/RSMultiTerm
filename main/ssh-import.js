@@ -52,7 +52,12 @@ function parseSshConfig(text, home) {
     for (const raw of lines) {
         const line = raw.trim();
         if (!line || line.startsWith('#')) continue;
-        const m = /^(\S+)\s+(.*)$/.exec(line);
+        // `Port 2222` and `Port=2222` are both legal ssh_config: the man
+        // page allows the separator to be whitespace OR an equals sign,
+        // optionally surrounded by whitespace. Requiring whitespace meant
+        // an equals-form line was silently skipped, so an imported session
+        // quietly carried the wrong port.
+        const m = /^([A-Za-z0-9_-]+)(?:\s*=\s*|\s+)(.*)$/.exec(line);
         if (!m) continue;
         const key = m[1].toLowerCase();
         // Values may be quoted; a Host line may carry several patterns.
@@ -217,7 +222,14 @@ function parsePuttyReg(text) {
 
 function scanPutty() {
     return new Promise((resolve) => {
-        execFile('reg', ['query', 'HKCU\\Software\\SimonTatham\\PuTTY\\Sessions', '/s'],
+        // Absolute path, not a bare name: Windows resolves a bare command
+        // against the application directory and the working directory
+        // BEFORE PATH, so a reg.exe dropped next to the app (or in whatever
+        // folder the app happens to be running from) would be preferred
+        // over the real one. %SystemRoot% is where the real one lives.
+        const regExe = path.join(process.env.SystemRoot || 'C:\\Windows',
+            'System32', 'reg.exe');
+        execFile(regExe, ['query', 'HKCU\\Software\\SimonTatham\\PuTTY\\Sessions', '/s'],
             { encoding: 'utf8', timeout: 15000, maxBuffer: 8 * 1024 * 1024 },
             (err, stdout) => {
                 if (err) return resolve(null);   // no PuTTY, or an empty hive

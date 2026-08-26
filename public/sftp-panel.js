@@ -791,7 +791,10 @@
     function renderEdits(list) {
         const box = el('sftp-edits');
         if (!box) return;
-        box.innerHTML = '';
+        // replaceChildren, not innerHTML: assigning '' is harmless in
+        // itself, but this was the only innerHTML in app code, and "there
+        // is no innerHTML here" is a property worth being able to grep for.
+        box.replaceChildren();
         box.hidden = !list.length;
         if (!list.length) return;
         const head = document.createElement('div');

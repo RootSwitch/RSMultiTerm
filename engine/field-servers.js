@@ -573,7 +573,18 @@ function startSyslog(id, spec) {
         const sock = dgram.createSocket({ type: 'udp4', reuseAddr: false });
         const lines = [];
         let dropped = 0;
-        sock.on('error', (err) => reject(err));
+        let bound = false;
+        // Before bind, an error is why the start failed. AFTER bind, this
+        // promise is settled and reject() is a no-op - so an error that
+        // killed the socket (an interface going away, an ICMP storm) left
+        // the sink dead while the panel happily listed it as running. Say
+        // so, and take the entry down.
+        sock.on('error', (err) => {
+            if (!bound) return reject(err);
+            note(id, 'syslog: the listener stopped', err.message);
+            try { sock.close(); } catch (_) { /* already gone */ }
+            stop(id);
+        });
         sock.on('message', (msg, rinfo) => {
             // Device output, so: no control bytes, bounded length. The
             // panel puts this in the DOM via textContent, but a log line
@@ -588,12 +599,19 @@ function startSyslog(id, spec) {
                 text: parsed.message,
             };
             lines.push(entry);
-            if (lines.length > SYSLOG_KEEP) { lines.shift(); dropped++; }
+            // splice() over shift(): shift() on a full 5,000-element array
+            // is O(n) per datagram, and this is the hot path of a sink
+            // pointed at a flapping estate.
+            if (lines.length > SYSLOG_KEEP) {
+                dropped += lines.length - SYSLOG_KEEP;
+                lines.splice(0, lines.length - SYSLOG_KEEP);
+            }
             // The panel is told about each line as it lands; the buffer is
             // for what it missed and for saving.
             onEvent({ t: 'field-syslog', id, entry });
         });
         sock.bind(spec.port, spec.bind === '0.0.0.0' ? undefined : spec.bind, () => {
+            bound = true;
             resolve({
                 close: () => { try { sock.close(); } catch (_) { /* closed */ } },
                 port: sock.address().port,

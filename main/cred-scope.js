@@ -24,7 +24,8 @@
 //   10.50.1.7          an exact address or hostname (case-insensitive)
 //   10.50.0.0/16       a CIDR range (IPv4)
 //   *.corp.local       a wildcard, matching one or more leading labels
-//   10.50.1.*          a trailing wildcard on an address
+//   10.50.1.*          a trailing wildcard, matching exactly ONE label -
+//                      it does not admit 10.50.1.7.evil.com
 //
 // An EMPTY list means "no restriction" - every profile that exists today
 // has one, and silently refusing them all on upgrade would be worse than
@@ -69,14 +70,37 @@ function matches(pattern, host) {
 
     if (pat === h) return true;
 
-    // Wildcards. '*' stands for one or more characters and never for the
-    // empty string, so '*.corp.local' does not match bare 'corp.local' -
-    // the parent domain is a different thing from a host under it.
+    // Wildcards. '*' never stands for the empty string, so '*.corp.local'
+    // does not match bare 'corp.local' - the parent domain is a different
+    // thing from a host under it.
+    //
+    // Where the '*' SITS decides how far it may reach, and that distinction
+    // is the fix for a real bypass:
+    //
+    //   *.corp.local   what follows the '*' is a DOT-anchored suffix, so
+    //                  however many labels it eats, the host is still under
+    //                  corp.local. Spanning is safe here, and useful:
+    //                  'a.b.corp.local' is inside the estate.
+    //   10.50.1.*      nothing follows. Letting this span labels admitted
+    //                  '10.50.1.7.evil.com' - a name anyone who can
+    //                  register a domain can create - into a scope written
+    //                  to exclude exactly that.
+    //   sw-*-01        what follows ('-01') is not dot-anchored, so
+    //                  spanning would admit 'sw-core.evil-01' the same way.
+    //
+    // So: a '*' may cross dots only when the text right after it starts
+    // with one. Otherwise it stands for a single label. Use CIDR for ranges
+    // that need to cover several octets.
     if (pat.includes('*')) {
-        const rx = new RegExp('^' + pat.split('*')
-            .map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
-            .join('.+') + '$');
-        return rx.test(h);
+        const raw = pat.split('*');
+        const esc = raw.map((p) => p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+        let src = '';
+        for (let i = 0; i < esc.length; i++) {
+            src += esc[i];
+            if (i === esc.length - 1) break;
+            src += raw[i + 1].startsWith('.') ? '.+' : '[^.]+';
+        }
+        return new RegExp(`^${src}$`).test(h);
     }
     return false;
 }

@@ -64,8 +64,25 @@
             }
         }
 
-        addGroup(body, `Added (${plan.adds.length})`, plan.adds, (a) =>
-            `${a.node.name}${a.node.host ? ' - ' + a.node.host : ''}`,
+        // Added rows used to print name and host only, so a folder whose
+        // DEFAULTS carried settings that act on every session beneath it
+        // appeared in the approval dialog as nothing but its name - the
+        // user approved an import, not the behavior inside it. Ingest now
+        // strips the two that were dangerous outright (onConnect, proxy),
+        // and what still travels is SHOWN, because a default that changes
+        // where sessions dial or who they authenticate as is a decision.
+        const NOTABLE_DEFAULTS = ['proxy', 'jumpHost', 'credentialProfile', 'port', 'transport'];
+        const describeAdd = (a) => {
+            const base = `${a.node.name}${a.node.host ? ' - ' + a.node.host : ''}`;
+            const d = a.node.defaults;
+            if (!d || typeof d !== 'object') return base;
+            const carried = NOTABLE_DEFAULTS
+                .filter((f) => d[f] !== undefined && d[f] !== null && d[f] !== '')
+                .map((f) => `${f} ${fmt(d[f])}`);
+            return carried.length
+                ? `${base} - folder defaults: ${carried.join(', ')}` : base;
+        };
+        addGroup(body, `Added (${plan.adds.length})`, plan.adds, describeAdd,
             (a) => a.node.id, unchecked.adds);
         addGroup(body, `Changed (${plan.changes.length})`, plan.changes, (ch) => {
             const diffs = ch.fields.map((f) => `${f} -> ${fmt(ch.node[f])}`).join(', ');

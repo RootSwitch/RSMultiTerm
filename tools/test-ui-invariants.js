@@ -464,12 +464,27 @@ assert.ok(/classList\.toggle\('unread'/.test(tabsSrc),
     'updateStatus must paint the unread badge');
 assert.ok(/\.tab\.unread \.tab-label::before/.test(css),
     'style.css must draw the unread dot');
-// Commands-on-connect: the serializer must strip it from folder defaults -
-// a shared file that can type into every reader's devices is an injection
-// channel - and the engine must cancel its timers when the session dies.
+// Commands-on-connect: a shared file that can type into every reader's
+// devices is an injection channel, so folder defaults must be whitelisted
+// on the way IN - and the engine must cancel its timers when the session
+// dies. This assertion used to grep the PUBLISH path (serializeNodes),
+// which is the half that was never at risk: a hostile file meets
+// validateTeamFile, and that is what must hold the line. The behavioral
+// test lives in tools/test-merge.js; this pins the shape.
 const serializerSrc = fs.readFileSync(path.join(__dirname, '..', 'main', 'team-serializer.js'), 'utf8');
-assert.ok(/'onConnect' in clean\.defaults/.test(serializerSrc),
-    'team-serializer must strip defaults.onConnect - it is auto-typed into live sessions');
+assert.ok(/const SHARED_DEFAULTS = /.test(serializerSrc),
+    'team-serializer must define a whitelist for folder defaults');
+assert.ok(!/SHARED_DEFAULTS = \[[^\]]*'onConnect'/s.test(serializerSrc),
+    'onConnect must NOT be an adoptable folder default - it is auto-typed into live sessions');
+assert.ok(!/SHARED_DEFAULTS = \[[^\]]*'proxy'/s.test(serializerSrc),
+    'proxy must NOT be an adoptable folder default - it decides where sessions dial through');
+{
+    // The whitelist has to be APPLIED in the ingest path, not merely
+    // declared: this is the exact hole the 2026-08-25 review found.
+    const ingest = serializerSrc.slice(serializerSrc.indexOf('function validateTeamFile'));
+    assert.ok(/SHARED_DEFAULTS/.test(ingest),
+        'validateTeamFile must apply the folder-defaults whitelist on ingest');
+}
 const sessionSrc = fs.readFileSync(path.join(__dirname, '..', 'engine', 'session.js'), 'utf8');
 assert.ok(/for \(const t of this\._onConnectTimers \|\| \[\]\) clearTimeout\(t\);/.test(sessionSrc),
     'a dying session must cancel pending on-connect sends');

@@ -339,7 +339,11 @@
             const label = document.createElement('span');
             label.className = `tab-label ${tabStatus(tab)}`;
             label.textContent = tab.title;
+            // Both classes, because updateStatus toggles both: rebuilding
+            // the strip (opening or closing any tab) used to drop alert
+            // styling while pane.alert still said the tab had one.
             if (tab.id !== activeId && hasUnread(tab)) el.classList.add('unread');
+            if (tab.id !== activeId && hasAlert(tab)) el.classList.add('alert');
             const close = document.createElement('button');
             close.className = 'close';
             close.textContent = '×';

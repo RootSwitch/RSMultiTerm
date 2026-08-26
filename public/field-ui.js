@@ -41,11 +41,30 @@
         return running;
     }
 
+    // Painting is coalesced onto an animation frame: a chatty estate at
+    // debug level arrives faster than a human reads, and re-rendering up to
+    // 5,000 lines per datagram (filter, slice, map, join, then a
+    // scrollHeight read that forces layout) is enough to peg the renderer
+    // with no attacker involved. The highlighter has been throttled for the
+    // same reason since it was written.
+    let syslogPaint = 0;
+    function scheduleSyslogRender() {
+        if (!syslogRender || syslogPaint) return;
+        syslogPaint = requestAnimationFrame(() => {
+            syslogPaint = 0;
+            if (syslogRender) syslogRender();
+        });
+    }
+
     rsterm.on('rs:evt.field', (m) => {
         if (m.t === 'field-syslog' && m.entry) {
             syslogLines.push(m.entry);
-            if (syslogLines.length > SYSLOG_KEEP) syslogLines.shift();
-            if (syslogRender) syslogRender();
+            // A ring rather than shift(): shift() on a full 5,000-element
+            // array is O(n) per message, and this runs per datagram.
+            if (syslogLines.length > SYSLOG_KEEP) {
+                syslogLines.splice(0, syslogLines.length - SYSLOG_KEEP);
+            }
+            scheduleSyslogRender();
             return;
         }
         if (m.t === 'field-log') {
@@ -344,9 +363,24 @@
         dialog = { render };
         await render();
 
+        // syslogRender closes over THIS dialog's elements. Leaving it set
+        // kept the app re-rendering a detached <pre> for every datagram for
+        // the rest of the process's life, holding the closed dialog's DOM
+        // alive with it.
+        //
+        // It has to hang off BOTH exits. Modals.open calls onCancel for
+        // Escape and for a backdrop click, but an action button only calls
+        // its own onClick - so hanging cleanup on onCancel alone means the
+        // Close button, the way almost everyone shuts this dialog, skips
+        // it. (The pre-existing `dialog = null` had the same hole.)
+        const teardown = () => {
+            dialog = null;
+            syslogRender = null;
+            if (syslogPaint) { cancelAnimationFrame(syslogPaint); syslogPaint = 0; }
+        };
         open('Field tools', body, [
-            { label: 'Close', primary: true },
-        ], { onCancel: () => { dialog = null; } });
+            { label: 'Close', primary: true, onClick: teardown },
+        ], { onCancel: teardown });
     }
 
     // What a device would type to pull a file from this server. The

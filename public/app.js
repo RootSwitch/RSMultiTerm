@@ -64,11 +64,21 @@
     // pane sits on an orange dot forever - which is exactly how the first
     // credential-scope refusal looked in real use.
     const earlyStatus = new Map();   // sessionId -> {state, detail}
+    // Held statuses are claimed by takeEarlyStatus when the pane appears -
+    // but a session that dies before its pane exists (a refusal, a cancelled
+    // open) is never claimed, and its entry used to sit here for the life of
+    // the process. Same unbounded-map class as the armed-tab growth already
+    // fixed once, so it gets the same treatment: a modest cap, oldest first.
+    // Map iteration is insertion-ordered, which makes "oldest" free.
+    const EARLY_STATUS_MAX = 64;
     rsterm.on('rs:evt.session-status', (m) => {
         if (!m || !m.sessionId || !m.state) return;
         const pane = window.TermPanes.panes.get(m.sessionId);
         if (!pane) {
             earlyStatus.set(m.sessionId, { state: m.state, detail: m.detail });
+            while (earlyStatus.size > EARLY_STATUS_MAX) {
+                earlyStatus.delete(earlyStatus.keys().next().value);
+            }
             return;
         }
         if (pane.state !== m.state) {

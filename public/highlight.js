@@ -21,6 +21,7 @@
         return rsterm.invoke('rs:highlights.get').then((s) => {
             sets = s;
             compiled.clear();
+            watchRules.clear();
             for (const pane of window.TermPanes.panes.values()) {
                 if (pane.highlighter) pane.highlighter.rescan();
             }
@@ -48,6 +49,18 @@
         return out;
     }
 
+    // The watch subset, cached alongside the compiled rules: filtering the
+    // whole set allocated an array on EVERY line feed, in every pane, even
+    // when no rule watches anything - real work per line of output on a
+    // chatty session.
+    const watchRules = new Map();   // setId -> [{rule, regex}]
+    function watchesFor(setId) {
+        if (watchRules.has(setId)) return watchRules.get(setId);
+        const out = compile(setId).filter((r) => r.rule.watch);
+        watchRules.set(setId, out);
+        return out;
+    }
+
     // --- watch: output triggers -------------------------------------------
     // Matching happens on COMPLETED buffer lines via onLineFeed, not on the
     // write stream (tokens split across chunks) and not in the viewport
@@ -56,6 +69,10 @@
     // A chatty match is rate-limited per pane and rule: the badge is
     // idempotent anyway, and one notification per burst is a feature.
     const WATCH_COOLDOWN_MS = 5000;
+    // How much of a completed line a watch rule may be run against. See the
+    // onLineFeed handler: this is the bound the highlight-ReDoS acceptance
+    // depends on, made explicit now that watch rules match off-screen.
+    const WATCH_MAX_LINE = 4096;
     const lastWatchAlert = new Map();   // `${sessionId}:${pattern}` -> ts
 
     function fireWatch(pane, rule, lineText) {
@@ -63,6 +80,16 @@
         const now = Date.now();
         if (now - (lastWatchAlert.get(key) || 0) < WATCH_COOLDOWN_MS) return;
         lastWatchAlert.set(key, now);
+        // Keyed by session id, and every reconnect mints a new one - so this
+        // map grew for the life of the process. Entries older than the
+        // cooldown cannot suppress anything, so they are simply garbage;
+        // sweeping them when the map gets big keeps this O(1) amortised
+        // without a timer.
+        if (lastWatchAlert.size > 256) {
+            for (const [k, ts] of lastWatchAlert) {
+                if (now - ts >= WATCH_COOLDOWN_MS) lastWatchAlert.delete(k);
+            }
+        }
         if (window.Tabs) window.Tabs.markAlert(pane.sessionId);
         const st = document.getElementById('status-text');
         if (st) st.textContent = `${pane.title}: "${rule.pattern}" matched`;
@@ -102,7 +129,7 @@
                 // onLineFeed fires the cursor has moved on, so the finished
                 // line is the row above it.
                 this.term.onLineFeed(() => {
-                    const watch = compile(this.setId).filter((r) => r.rule.watch);
+                    const watch = watchesFor(this.setId);
                     if (!watch.length) return;
                     const buf = this.term.buffer.active;
                     const row = buf.baseY + buf.cursorY - 1;
@@ -110,9 +137,22 @@
                     if (!line) return;
                     const text = line.translateToString(true);
                     if (!text) return;
+                    // The ReDoS acceptance for highlight rules rested on
+                    // matching being bounded to the viewport. Watch rules
+                    // broke that bound - they run on every completed line,
+                    // including in background panes that never render - so
+                    // the bound is restored explicitly here. A pattern from
+                    // a shared file still cannot be trusted not to
+                    // backtrack; what it can be denied is a long subject,
+                    // which is what turns backtracking into a hang. A
+                    // watched string longer than this is a log dump, not
+                    // the "link down" a trigger is written for.
                     for (const { rule, regex } of watch) {
                         regex.lastIndex = 0;
-                        if (regex.test(text)) fireWatch(this.pane, rule, text);
+                        if (regex.test(text.length > WATCH_MAX_LINE
+                            ? text.slice(0, WATCH_MAX_LINE) : text)) {
+                            fireWatch(this.pane, rule, text);
+                        }
                     }
                 }),
             ];

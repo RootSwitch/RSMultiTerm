@@ -2,6 +2,30 @@
 
 ## Unreleased
 
+- **Security: a shared sessions file can no longer type commands into your
+  devices.** A folder's defaults now pass a whitelist on the way IN, so a
+  hostile or hand-edited team file cannot carry commands-on-connect (which
+  are typed into every session beneath that folder, on every connect) or a
+  proxy (which decides where those sessions dial through). The import
+  preview also shows what a new folder's defaults carry, instead of just
+  its name.
+- **Security: credential host scopes no longer leak across a dot.** A scope
+  of `10.50.1.*` matched `10.50.1.7.evil.com` - a name anyone can register.
+  A trailing wildcard now covers exactly one label. `*.corp.local` still
+  spans subdomains, because the suffix pins the end.
+- **Security: "Edit locally" cannot execute a device's file.** With no
+  editor configured, Windows would RUN a downloaded `.cmd`, `.exe` or
+  `.py` instead of opening it. Only inert text types go to the system
+  association now; everything else opens in a plain editor.
+- Changing serial line speed no longer retypes your on-connect commands
+  into the session.
+- The syslog panel no longer pegs the renderer under a message flood, and
+  it stops rendering when you close it.
+- Fixes: an OpenSSH config using `Port=2222` is imported correctly; a
+  syslog listener that dies is reported instead of showing as running; tab
+  alert dots survive opening another tab; PuTTY import runs the real
+  `reg.exe`; hostile host names are refused before an HTTP proxy request.
+
 - **Serial line controls.** Right-click a serial pane: send a break (the
   move that gets you into ROMMON during boot), toggle DTR and RTS, and
   change the line speed mid-session - no more disconnecting to go from

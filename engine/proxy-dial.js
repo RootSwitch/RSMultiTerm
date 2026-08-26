@@ -65,6 +65,23 @@ function socksAddress(host) {
 // is ready for the tunneled protocol's first byte, in either direction.
 function dial(proxyStr, host, port, timeoutMs) {
     const proxy = parseProxy(proxyStr);
+    // The host reaches here from a session's `host` field, which travels in
+    // the team file's SESSION_FIELDS and is never shape-checked on the way
+    // in. HTTP CONNECT interpolates it into a request LINE, so a name
+    // carrying CR/LF would split that request and let the file add headers
+    // (or a second request) to whatever the proxy is asked for. SOCKS5 is
+    // immune - it length-prefixes the name - but the check belongs on both
+    // paths, because the next protocol added here will be textual again.
+    const clean = String(host == null ? '' : host);
+    if (!clean || /[\s\u0000-\u001f\u007f]/.test(clean)) {
+        return Promise.reject(new Error(`not a usable host name: ${JSON.stringify(clean)}`));
+    }
+    host = clean;
+    const p = Number(port);
+    if (!Number.isInteger(p) || p < 1 || p > 65535) {
+        return Promise.reject(new Error(`not a usable port: ${port}`));
+    }
+    port = p;
     return new Promise((resolve, reject) => {
         let buf = Buffer.alloc(0);
         let done = false;
@@ -135,8 +152,16 @@ function dial(proxyStr, host, port, timeoutMs) {
                 if (phase === 'reply') {
                     if (buf.length < 4) return;
                     const rep = buf[1];
+                    // An address type outside 1/3/4 used to fall through to
+                    // alen = 0, which silently misparses the rest of the
+                    // reply instead of saying the proxy is speaking
+                    // something this does not understand.
+                    if (buf[3] !== 1 && buf[3] !== 3 && buf[3] !== 4) {
+                        throw new Error(`SOCKS: the proxy replied with address type ${buf[3]}, ` +
+                            'which this app does not understand');
+                    }
                     const alen = buf[3] === 1 ? 4 : buf[3] === 4 ? 16
-                        : buf[3] === 3 ? (buf.length < 5 ? null : 1 + buf[4]) : 0;
+                        : (buf.length < 5 ? null : 1 + buf[4]);
                     if (alen === null) return;
                     const total = 4 + alen + 2;
                     if (buf.length < total) return;

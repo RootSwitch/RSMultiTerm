@@ -6,6 +6,14 @@
 // overrides.json are never touched by this module at all.
 
 const FOLDER_FIELDS = ['id', 'type', 'name', 'parentId', 'order', 'defaults', 'notes'];
+// What a folder's `defaults` may carry BETWEEN machines. Everything here is
+// a setting a teammate should be able to share; what is missing is
+// deliberate. onConnect is auto-typed into live sessions, and proxy decides
+// where every session in the folder dials THROUGH - neither is something a
+// shared file gets to decide for a reader. Enforced on ingest, which is the
+// side a hostile file meets; see validateTeamFile.
+const SHARED_DEFAULTS = ['credentialProfile', 'port', 'transport', 'jumpHost',
+    'logging', 'highlightSet', 'encoding'];
 const SESSION_FIELDS = ['id', 'type', 'name', 'parentId', 'order', 'host', 'transport',
     'port', 'rawTcp', 'credentialProfile', 'jumpHost', 'serial', 'logging',
     'highlightSet', 'encoding', 'tags', 'notes', 'modifiedAt'];
@@ -114,6 +122,36 @@ function validateTeamFile(data) {
         // local path ("log terminal output into Startup"). Strip, not trust.
         if (n.logging && typeof n.logging === 'object' && 'folder' in n.logging) {
             delete n.logging.folder;
+        }
+        // A folder's `defaults` object reaches every session beneath it
+        // through the inheritance walk, so it is the highest-value thing in
+        // a hostile file - and it used to arrive unexamined. The publish
+        // path strips onConnect (see serializeNodes) with a comment about
+        // the INBOUND threat; this is the side that actually meets one.
+        //
+        //   defaults.onConnect is auto-typed into every session on every
+        //   connect, so adopting it is remote command execution on the
+        //   reader's own gear.
+        //   defaults.proxy silently routes every session in the folder
+        //   through a host the file chose - captured outright for telnet
+        //   and raw TCP, a first-contact fingerprint prompt for SSH.
+        //
+        // Whitelisted rather than blacklisted: the point of a whitelist
+        // serializer is that schema growth cannot open a hole, and that has
+        // to hold on the way IN as well.
+        if (n.type === 'folder' && n.defaults !== undefined) {
+            if (!n.defaults || typeof n.defaults !== 'object' || Array.isArray(n.defaults)) {
+                delete n.defaults;
+            } else {
+                const clean = {};
+                for (const f of SHARED_DEFAULTS) {
+                    if (n.defaults[f] !== undefined) clean[f] = n.defaults[f];
+                }
+                if (clean.logging && typeof clean.logging === 'object' && 'folder' in clean.logging) {
+                    delete clean.logging.folder;
+                }
+                n.defaults = clean;
+            }
         }
     }
     data.highlightSets = sanitizeHighlightSets(data.highlightSets);
