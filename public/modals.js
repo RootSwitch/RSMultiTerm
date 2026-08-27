@@ -273,17 +273,46 @@
         restoreFocus();
     }
 
-    // Give the keyboard back - but only if nothing else has claimed it.
-    // After the menu goes, focus has fallen to <body>; if it is anywhere
-    // else, something took it deliberately (a dialog the item opened, a
-    // field it focused) and must not be interrupted.
+    // Give the keyboard back - but only if nothing else has claimed it,
+    // and never to a CHROME CONTROL. Focus returned to the toolbar button
+    // that opened a dialog sits there invisibly armed: the numpad Enter
+    // meant for the terminal presses the button instead and the dialog
+    // reopens, with no hint of why until the focus ring lights up. The
+    // element that opened the thing is the right home only when it is a
+    // still-open dialog (stacked editors) or the terminal itself; for
+    // everything else, the next keystroke in this app is headed for the
+    // focused pane, so that is where the keyboard goes.
     function restoreFocus() {
         const prev = returnFocusTo;
         returnFocusTo = null;
-        if (!prev || !prev.isConnected || prev === document.body) return;
         const now = document.activeElement;
+        // Something took focus deliberately (a dialog the item opened, a
+        // field it focused) - never interrupt that.
         if (now && now !== document.body) return;
-        try { prev.focus(); } catch (_) { /* gone between then and now */ }
+        // A dialog is still open: the keyboard stays INSIDE it, in the old
+        // element when that element lives there, else its first control.
+        // Never the terminal - keystrokes reaching a live device behind a
+        // backdrop is the exact hazard the Tab trap exists to stop.
+        if (stack.length) {
+            const top = stack[stack.length - 1];
+            const home = (prev && prev.isConnected && top.contains(prev)) ? prev
+                : top.querySelector('button, input, select, textarea');
+            if (home) { try { home.focus(); } catch (_) { /* torn down */ } }
+            return;
+        }
+        if (prev && prev.isConnected && prev !== document.body && prev.closest &&
+            prev.closest('.rs-term-host')) {
+            try { prev.focus(); } catch (_) { /* gone between then and now */ }
+            return;
+        }
+        const tab = window.Tabs && window.Tabs.active && window.Tabs.active();
+        const pane = tab && tab.focusedSessionId && window.TermPanes &&
+            window.TermPanes.panes.get(tab.focusedSessionId);
+        if (pane && pane.term) {
+            try { pane.term.focus(); return; } catch (_) { /* torn down */ }
+        }
+        // No pane to give it to: focus resting on <body> is harmless;
+        // focus resting on a button is a loaded spring.
     }
 
     window.Modals = { open, row, stacked, input, select, promptText, menu, closeMenu };

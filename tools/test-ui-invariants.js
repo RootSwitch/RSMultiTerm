@@ -188,6 +188,23 @@ assert.ok(/function restoreFocus\(/.test(modals),
     'modals.js must keep restoreFocus - a menu or dialog that closes has to hand the keyboard back');
 const closeMenuBody = modals.slice(modals.indexOf('function closeMenu()'),
     modals.indexOf('function restoreFocus('));
+// The handback must never re-arm a chrome control. Returning focus to
+// the toolbar button that opened a dialog leaves the next Enter pressing
+// that button - the dialog reopens with no visible reason. Only a still-
+// open dialog or the terminal may receive the old focus back; everything
+// else routes to the focused pane.
+{
+    const rf = modals.slice(modals.indexOf('function restoreFocus('));
+    const stackGuard = rf.indexOf('if (stack.length)');
+    const termOk = rf.indexOf(".closest('.rs-term-host')");
+    const focusPrev = rf.indexOf('prev.focus()');
+    assert.ok(stackGuard !== -1 && termOk !== -1 && focusPrev !== -1 &&
+        stackGuard < focusPrev && stackGuard < rf.indexOf('term.focus()'),
+    'restoreFocus must keep the keyboard inside a still-open dialog, and ' +
+    'may hand it to the old element only when that is the terminal - a ' +
+    'refocused toolbar button is a loaded spring, and a focused terminal ' +
+    'behind a backdrop sends keystrokes to a live device');
+}
 assert.ok(closeMenuBody.includes('restoreFocus()'),
     'closeMenu must restore focus, or the key after a menu action goes nowhere');
 assert.ok(/returnFocusTo = cameFrom;/.test(modals),

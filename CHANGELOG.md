@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- **Closing a dialog puts the keyboard back in the terminal.** It used
+  to return focus to whatever opened the dialog - fine when that was
+  the terminal, a trap when it was a toolbar button: the button sat
+  there invisibly focused, and the next Enter (numpad Enter meant for
+  the device, say) pressed it and reopened the window you had just
+  closed. Focus now goes to the focused pane, with two exceptions that
+  stay as they were: a dialog closed over another dialog keeps the
+  keyboard in the one still open, and a dialog opened from the
+  terminal hands back to the terminal.
+
 - **One broadcast confirmation at a time.** Clicking Send on a snippet
   (or Paste to All) while its confirmation was already open stacked a
   second identical dialog behind the first - invisible, since they
