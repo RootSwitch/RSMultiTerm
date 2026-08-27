@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 1.0.1 - 2026-08-26
+
+Fixes from the first days of 1.0.0 in real use - every one of them
+stumbled on by actually working, which is what a daily driver is for.
+
 - **Closing a dialog puts the keyboard back in the terminal.** It used
   to return focus to whatever opened the dialog - fine when that was
   the terminal, a trap when it was a toolbar button: the button sat
