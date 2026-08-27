@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 1.0.2 - 2026-08-27
+
+One fix, for a paper cut that had been there since well before 1.0.0
+and only became obvious once closing a dialog started leaving the
+keyboard where you expect it.
+
 - **Enter sends a confirmed paste to a single session.** The paste
   confirmation used to give Enter to Cancel in every case, so
   paste-then-Enter quietly threw the paste away. For one session the
