@@ -457,9 +457,11 @@ assert.ok(/participants\(tab\)/.test(pasteAllBody),
     // Enter semantics are conditional ON PURPOSE: one session is a habit
     // guard (paste-then-Enter sends), a broadcast is the interlock (Enter
     // must never confirm a multi-device send - Cancel holds the keyboard).
-    assert.ok(/targetCount === 1\s*
-?\s*\? btns\.find\(\(b\) => b\.textContent === 'Send'\)/.test(cp) &&
-        /: btns\.find\(\(b\) => b\.textContent === 'Cancel'\)/.test(cp),
+    const focusPick = cp.indexOf('targetCount === 1');
+    const sendPick = cp.indexOf("btns.find((b) => b.textContent === 'Send')");
+    const cancelPick = cp.indexOf("btns.find((b) => b.textContent === 'Cancel')");
+    assert.ok(focusPick !== -1 && sendPick !== -1 && cancelPick !== -1 &&
+        focusPick < sendPick && sendPick < cancelPick,
     'the paste confirm must focus Send for ONE target and Cancel for a ' +
     'broadcast - Enter sending to one pane is muscle memory, Enter sending ' +
     'to six switches is the accident this dialog exists to stop');
