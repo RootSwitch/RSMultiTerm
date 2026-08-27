@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+- **Drop a folder into the file browser and it uploads.** Walked and
+  pushed inside the engine - directories created first, files pooled,
+  every one through the same temp-and-rename that protects single
+  uploads - with a summary of what went (files, folders, symlinks
+  skipped, failures). Dropping onto an existing remote folder asks
+  once before replacing matching names. Previously a dropped folder
+  turned into a bogus zero-byte FILE on the device: the engine opened
+  the remote side before discovering the local "file" was a directory.
+  That can no longer happen from any path - a folder handed to the
+  single-file upload is refused before the device is touched.
+
 ## 1.0.0 - 2026-08-26
 
 The first release the version number takes seriously. The app has been

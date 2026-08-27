@@ -966,7 +966,8 @@ function wireIpc(engineRef, getWindow, bootConfig) {
             // metadata ops get a deadline. downloadTree was missing here
             // and any tree slower than 30s was reported failed while the
             // engine kept downloading it in the background.
-            if (req.op !== 'download' && req.op !== 'upload' && req.op !== 'downloadTree') {
+            if (req.op !== 'download' && req.op !== 'upload' &&
+                req.op !== 'downloadTree' && req.op !== 'uploadTree') {
                 setTimeout(() => {
                     const w = sftpWaiters.get(reqId);
                     if (w) { sftpWaiters.delete(reqId); w.reject(new Error('sftp timeout')); }

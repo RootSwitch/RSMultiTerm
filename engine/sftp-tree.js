@@ -229,4 +229,152 @@ async function downloadTree(sftp, req, onProgress) {
     };
 }
 
-module.exports = { downloadTree, safeComponent, localFor, walk, MAX_FILES, MAX_DEPTH, MAX_DIRS, MAX_READDIRS };
+// --- the other direction: a local folder pushed to the device ---------------
+// The mirror of downloadTree, with the trust arrows flipped. The LOCAL tree
+// is the user's own disk, so its names need no laundering to be read - but
+// symlinks are still never followed (a directory link is how a walk becomes
+// infinite, on either side), and a name the SFTP path syntax cannot carry
+// cleanly (control bytes, '/') is skipped and counted rather than sent
+// mangled. Same caps as the download: a mistaken drop of C:\ must run into
+// a wall, not fill a switch's flash.
+
+function remoteComponent(name) {
+    const n = String(name == null ? '' : name);
+    if (!n || n === '.' || n === '..') return null;
+    if (/[/\u0000-\u001f]/.test(n)) return null;
+    return n;
+}
+
+// Breadth-first over the local filesystem: parents are discovered before
+// children, so the mkdir list is already in creation order.
+function walkLocal(localRoot, remoteRoot, onNote) {
+    const files = [];
+    const dirs = [];
+    const skipped = { links: 0, unsafe: 0 };
+    let truncated = false;
+    let readdirs = 0;
+    const cleanRoot = remoteRoot.replace(/\/+$/, '');
+
+    const queue = [{ local: localRoot, remote: cleanRoot, depth: 0 }];
+    while (queue.length) {
+        if (truncated) break;
+        const here = queue.shift();
+        if (here.depth > MAX_DEPTH) { truncated = true; continue; }
+        if (++readdirs > MAX_READDIRS) { truncated = true; break; }
+        let names;
+        try {
+            names = fs.readdirSync(here.local);
+        } catch (err) {
+            onNote(`skipped ${path.basename(here.local)}: ${err.message}`);
+            continue;
+        }
+        for (const name of names) {
+            const localPath = path.join(here.local, name);
+            let st;
+            try {
+                // lstat, not stat: a symlink must be SEEN as one, or a
+                // directory link becomes an infinite walk and a file link
+                // uploads something outside the folder that was dropped.
+                st = fs.lstatSync(localPath);
+            } catch (err) {
+                onNote(`skipped ${name}: ${err.message}`);
+                continue;
+            }
+            if (st.isSymbolicLink()) { skipped.links++; continue; }
+            const clean = remoteComponent(name);
+            if (!clean) { skipped.unsafe++; continue; }
+            const remote = `${here.remote}/${clean}`;
+            if (st.isDirectory()) {
+                if (dirs.length >= MAX_DIRS) { truncated = true; continue; }
+                dirs.push(remote);
+                queue.push({ local: localPath, remote, depth: here.depth + 1 });
+            } else if (st.isFile()) {
+                if (files.length >= MAX_FILES) { truncated = true; continue; }
+                files.push({ local: localPath, remote, size: st.size });
+            }
+            // Sockets, FIFOs, devices: not files we were asked to copy.
+        }
+    }
+    return { files, dirs, skipped, truncated };
+}
+
+const mkdirRemote = (sftp, dir) => new Promise((res, rej) =>
+    sftp.mkdir(dir, (e) => (e ? rej(e) : res())));
+const statRemote = (sftp, p) => new Promise((res, rej) =>
+    sftp.stat(p, (e, a) => (e ? rej(e) : res(a))));
+
+// req: {local, path}. `path` is the remote folder the tree lands AS - the
+// caller appends the dropped folder's name, mirroring downloadTree.
+async function uploadTree(sftp, req, onProgress) {
+    const localRoot = path.resolve(req.local);
+    const st = fs.lstatSync(localRoot);
+    if (!st.isDirectory()) throw new Error(`${path.basename(localRoot)} is not a folder`);
+
+    const notes = [];
+    onProgress({ phase: 'scanning', files: 0, total: 0 });
+    const remoteRoot = req.path.replace(/\/+$/, '');
+    const { files, dirs, skipped, truncated } =
+        walkLocal(localRoot, remoteRoot, (n) => notes.push(n));
+
+    // Directories first, root included, parents before children (the walk
+    // is breadth-first). mkdir over an EXISTING directory fails on most
+    // servers - re-uploading a tree is routine, so that failure is checked
+    // against a stat and forgiven when the directory is really there. Any
+    // other failure is noted, and the files beneath it fail per-file the
+    // way an unwritable remote file would.
+    for (const dir of [remoteRoot, ...dirs]) {
+        try {
+            await mkdirRemote(sftp, dir);
+        } catch (err) {
+            let isDir = false;
+            try { isDir = ((await statRemote(sftp, dir)).mode & 0xF000) === 0x4000; }
+            catch (_) { /* not there at all */ }
+            if (!isDir) notes.push(`could not create ${dir}: ${err.message}`);
+        }
+    }
+
+    // Pooled uploads, each through transfer()'s temp-and-rename - a torn
+    // upload must not leave a half-file looking complete on flash, in a
+    // tree exactly as much as alone. Lazy require: sftp.js loads this
+    // module lazily, so the cycle is safe by the time either runs.
+    const { transfer } = require('./sftp');
+    let next = 0;
+    let done = 0;
+    let last = 0;
+    const failures = [];
+    const worker = async () => {
+        for (;;) {
+            const i = next++;
+            if (i >= files.length) return;
+            const f = files[i];
+            try {
+                await transfer(sftp, 'put', { local: f.local, path: f.remote }, () => {});
+            } catch (err) {
+                failures.push({ remote: f.remote, error: err.message });
+            }
+            done++;
+            const now = Date.now();
+            if (now - last >= 250 || done === files.length) {
+                last = now;
+                onProgress({ phase: 'uploading', files: done, total: files.length,
+                    name: path.basename(f.local) });
+            }
+        }
+    };
+    await Promise.all(Array.from({ length: Math.min(CONCURRENCY, files.length) }, worker));
+
+    return {
+        files: files.length - failures.length,
+        folders: dirs.length + 1,
+        bytes: files.reduce((n, f) => n + (f.size || 0), 0),
+        skippedLinks: skipped.links,
+        skippedUnsafe: skipped.unsafe,
+        truncated,
+        failures: failures.slice(0, 10),
+        failureCount: failures.length,
+        notes: notes.slice(0, 10),
+    };
+}
+
+module.exports = { downloadTree, uploadTree, walkLocal, remoteComponent,
+    safeComponent, localFor, walk, MAX_FILES, MAX_DEPTH, MAX_DIRS, MAX_READDIRS };

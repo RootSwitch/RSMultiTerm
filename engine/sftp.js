@@ -157,6 +157,8 @@ async function run(session, req, onProgress) {
                 throw new Error('SCP cannot download folders - it cannot list them');
             case 'upload':
                 return scp.upload(client, req.local, req.path, onProgress);
+            case 'uploadTree':
+                throw new Error('SCP cannot upload folders - it cannot create remote directories');
             default:
                 throw new Error(`SCP cannot ${req.op}`);
         }
@@ -206,6 +208,11 @@ async function run(session, req, onProgress) {
         // per file from the renderer. See engine/sftp-tree.js.
         case 'downloadTree':
             return require('./sftp-tree').downloadTree(sftp, req, onProgress);
+        // The other direction: a local folder walked and pushed, sequential
+        // mkdirs then pooled uploads, every file through the same
+        // temp-and-rename discipline as a single upload.
+        case 'uploadTree':
+            return require('./sftp-tree').uploadTree(sftp, req, onProgress);
         case 'upload':
             return transfer(sftp, 'put', req, onProgress);
         case 'mkdir':
@@ -242,7 +249,19 @@ function transfer(sftp, dir, req, onProgress) {
     return new Promise((resolve, reject) => {
         let total = 0;
         try {
-            if (dir === 'put') total = fs.statSync(req.local).size;
+            if (dir === 'put') {
+                const st = fs.statSync(req.local);
+                // Refused HERE, before any remote open. fastPut creates the
+                // remote temp first and reads the local file second, so a
+                // directory used to leave a bogus file on the device and a
+                // raw EISDIR in the status line. statSync on a directory
+                // SUCCEEDS - the old size read sailed past this case.
+                if (st.isDirectory()) {
+                    return reject(new Error(
+                        `${path.basename(req.local)} is a folder - drop it to upload its contents`));
+                }
+                total = st.size;
+            }
         } catch (e) { return reject(e); }
 
         // Progress at most 4/s - a 10 GB transfer must not melt the IPC.

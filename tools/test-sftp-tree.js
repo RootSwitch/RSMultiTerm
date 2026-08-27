@@ -387,8 +387,132 @@ function fakeSftp(layout, opts = {}) {
     assert.strictEqual(last.files, 3);
     assert.strictEqual(last.total, 3, 'the total is known up front because the walk finishes first');
 
+    // ===== The other direction: uploadTree =================================
+    // A fake WRITE-side server: records every mkdir and every remote open,
+    // and lets one file fail mid-transfer to prove the tree keeps going.
+    function fakeUploadSftp(opts = {}) {
+        const mkdirs = [];
+        const written = new Map();   // remote path -> content
+        const opens = [];
+        return {
+            mkdirs, written, opens,
+            mkdir(dir, cb) {
+                if (opts.existing && opts.existing.includes(dir)) {
+                    return setImmediate(() => cb(new Error('Failure')));
+                }
+                mkdirs.push(dir);
+                setImmediate(() => cb(null));
+            },
+            stat(pth, cb) {
+                if (opts.existing && opts.existing.includes(pth)) {
+                    return setImmediate(() => cb(null, { mode: 0x4000 | 0o755 }));
+                }
+                setImmediate(() => cb(new Error('no such file')));
+            },
+            fastPut(local, remote, _o, cb) {
+                opens.push(remote);
+                if (opts.failFile && remote.includes(opts.failFile)) {
+                    return setImmediate(() => cb(new Error('flash full')));
+                }
+                setImmediate(() => {
+                    try { written.set(remote, fs.readFileSync(local, 'utf8')); cb(null); }
+                    catch (e) { cb(e); }
+                });
+            },
+            rename(from, to, cb) {
+                if (written.has(from)) { written.set(to, written.get(from)); written.delete(from); }
+                setImmediate(() => cb(null));
+            },
+            unlink(pth, cb) {
+                written.delete(pth);
+                setImmediate(() => cb(new Error('no such file')));
+            },
+        };
+    }
+
+    // A real local tree, including an empty folder and a directory link.
+    const pushRoot = path.join(box, 'push-me');
+    fs.mkdirSync(path.join(pushRoot, 'configs', 'deep'), { recursive: true });
+    fs.mkdirSync(path.join(pushRoot, 'empty'), { recursive: true });
+    fs.writeFileSync(path.join(pushRoot, 'top.txt'), 'TOP');
+    fs.writeFileSync(path.join(pushRoot, 'configs', 'startup-config'), 'CONF');
+    fs.writeFileSync(path.join(pushRoot, 'configs', 'deep', 'vlan.dat'), 'VLAN');
+    fs.writeFileSync(path.join(pushRoot, 'configs', 'bad.bin'), 'WILL FAIL');
+    // A junction on Windows needs no privilege; a symlink elsewhere.
+    let linkMade = false;
+    try {
+        fs.symlinkSync(path.join(box, 'push-me'), path.join(pushRoot, 'loop'),
+            process.platform === 'win32' ? 'junction' : 'dir');
+        linkMade = true;
+    } catch (_) { /* cannot create links here; that assertion is skipped */ }
+
+    // 10. The walk mirror: BFS order, links skipped, files found.
+    {
+        const w = tree.walkLocal(pushRoot, '/flash/push-me', () => {});
+        assert.strictEqual(w.files.length, 4);
+        assert.deepStrictEqual([...w.dirs].sort(),
+            ['/flash/push-me/configs', '/flash/push-me/configs/deep', '/flash/push-me/empty']);
+        assert.ok(w.dirs.indexOf('/flash/push-me/configs') <
+            w.dirs.indexOf('/flash/push-me/configs/deep'),
+        'parents come before children - mkdir order depends on it');
+        if (linkMade) {
+            assert.strictEqual(w.skipped.links, 1,
+                'a directory link must be SKIPPED - following it walks forever');
+        }
+    }
+
+    // 11. The upload itself: dirs created root-first, files land through
+    // temp-and-rename, one failure does not lose the batch, and the empty
+    // folder exists on the far side.
+    {
+        const sftp = fakeUploadSftp({ failFile: 'bad.bin' });
+        const seen = [];
+        const r = await tree.uploadTree(sftp,
+            { local: pushRoot, path: '/flash/push-me' }, (p) => seen.push(p));
+        assert.strictEqual(sftp.mkdirs[0], '/flash/push-me', 'the root is created first');
+        assert.ok(sftp.mkdirs.includes('/flash/push-me/empty'),
+            'an empty local folder still becomes a remote one');
+        assert.strictEqual(r.files, 3);
+        assert.strictEqual(r.failureCount, 1);
+        assert.ok(r.failures[0].remote.endsWith('bad.bin'));
+        assert.strictEqual(r.folders, 4);
+        if (linkMade) assert.strictEqual(r.skippedLinks, 1);
+        assert.strictEqual(sftp.written.get('/flash/push-me/configs/deep/vlan.dat'), 'VLAN');
+        assert.strictEqual(sftp.written.get('/flash/push-me/top.txt'), 'TOP');
+        // Every remote open was a temp name: the rename is what makes it real.
+        assert.ok(sftp.opens.every((o) => o.endsWith('.part')),
+            'tree uploads keep the temp-and-rename discipline');
+        assert.ok(![...sftp.written.keys()].some((k) => k.endsWith('.part')),
+            'no temp names survive');
+        assert.ok(seen.some((p) => p.phase === 'uploading'), 'progress reports the upload phase');
+    }
+
+    // 12. Re-uploading over an existing remote tree: mkdir failures on
+    // directories that are really there are forgiven, not noted.
+    {
+        const sftp = fakeUploadSftp({ existing: ['/flash/push-me', '/flash/push-me/configs'] });
+        const r = await tree.uploadTree(sftp,
+            { local: pushRoot, path: '/flash/push-me' }, () => {});
+        assert.strictEqual(r.notes.length, 0,
+            'an already-existing directory is routine, not a warning');
+        assert.strictEqual(r.files, 4, 'everything uploads on the second pass');
+    }
+
+    // 13. The correctness bug that started this: a directory handed to the
+    // single-file upload op is refused BEFORE the remote is touched.
+    {
+        const sftpMod = require('../engine/sftp');
+        const sftp = fakeUploadSftp();
+        await assert.rejects(
+            () => sftpMod.transfer(sftp, 'put', { local: pushRoot, path: '/flash/oops' }, () => {}),
+            /is a folder/);
+        assert.strictEqual(sftp.opens.length, 0,
+            'a refused folder must never open ANYTHING remote - the old bug left a bogus file on the device');
+    }
+
     console.log('ok - sftp folder download (walk, traversal/symlink/reserved-name/collision ' +
-        'refusals, breadth caps, first-use creation, concurrency, .part discipline both ways)');
+        'refusals, breadth caps, first-use creation, concurrency, .part discipline both ways) ' +
+        '+ upload (local walk, mkdir order, empty dirs, mid-tree failure, re-upload, EISDIR guard)');
 })().then(
     () => { fs.rmSync(box, { recursive: true, force: true }); },
     (err) => { fs.rmSync(box, { recursive: true, force: true }); console.error(err); process.exit(1); },

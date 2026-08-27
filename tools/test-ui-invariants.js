@@ -239,8 +239,18 @@ assert.ok(/if \(targets\.length > 1 \|\|[\s\S]{0,40}\(lines\.length > 1/.test(ct
 // 18. Long transfers are exempt from the 30s IPC timeout - all of them.
 // downloadTree was missing from the exemption and any tree slower than 30
 // seconds was reported failed while the engine kept downloading it.
-assert.ok(/req\.op !== 'download' && req\.op !== 'upload' && req\.op !== 'downloadTree'/.test(ipcSrc),
-    'downloadTree must be exempt from the sftp op timeout, like download and upload');
+// Matched per-op rather than as one literal line: the condition wraps as
+// ops are added, and the property is WHICH ops are exempt, not how the
+// line breaks. uploadTree joined the list the day folder upload landed -
+// its walk of a big tree is exactly as legitimately slow as the download.
+{
+    const cond = ipcSrc.match(/if \(req\.op !== 'download'[\s\S]{0,200}?\) \{/);
+    assert.ok(cond, 'the sftp op timeout exemption must exist');
+    for (const op of ['download', 'upload', 'downloadTree', 'uploadTree']) {
+        assert.ok(cond[0].includes(`req.op !== '${op}'`),
+            `${op} must be exempt from the sftp op timeout - a long transfer is not a hang`);
+    }
+}
 
 // 19. Every socket in the TFTP write path carries an error listener. An
 // ICMP port-unreachable from a vanished client surfaces as 'error' on

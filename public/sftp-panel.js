@@ -669,7 +669,7 @@
         if (m.sessionId !== bound) return;
         // A tree reports files done; a single transfer reports bytes.
         if (m.phase === 'scanning') return status('scanning the folder...');
-        if (m.phase === 'downloading') {
+        if (m.phase === 'downloading' || m.phase === 'uploading') {
             return status(`${m.files} of ${m.total} files - ${m.name || ''}`);
         }
         status(m.total ? `${human(m.bytes)} of ${human(m.total)}` : human(m.bytes));
@@ -693,18 +693,82 @@
         if (transferMode !== 'sftp' && transferMode !== 'scp') {
             return status('this device does not accept uploads');
         }
-        const files = [...(e.dataTransfer ? e.dataTransfer.files : [])];
-        if (!files.length) return;
-
-        // Resolve real paths through the preload (sandboxed renderers get
-        // File objects with no .path on purpose).
-        const paths = [];
-        for (const f of files) {
-            const local = rsterm.pathForFile(f);
-            if (local) paths.push(local);
+        // Everything is read from the DataTransfer SYNCHRONOUSLY: it is
+        // neutered the moment this handler awaits anything. items[i] and
+        // files[i] describe the same drop in the same order, and
+        // webkitGetAsEntry is how a directory is recognized as one -
+        // File objects for folders look like zero-byte files, which is
+        // exactly how a dropped folder used to reach the engine and come
+        // out the other side as a bogus remote file.
+        const items = [...((e.dataTransfer && e.dataTransfer.items) || [])];
+        const files = [...((e.dataTransfer && e.dataTransfer.files) || [])];
+        const filePaths = [];
+        const dirDrops = [];
+        for (let i = 0; i < files.length; i++) {
+            const local = rsterm.pathForFile(files[i]);
+            if (!local) continue;
+            const entry = items[i] && items[i].webkitGetAsEntry && items[i].webkitGetAsEntry();
+            if (entry && entry.isDirectory) dirDrops.push(local);
+            else filePaths.push(local);
         }
-        if (!paths.length) return status('nothing droppable (folders cannot be uploaded)');
-        await uploadPaths(paths);
+        if (!filePaths.length && !dirDrops.length) return status('nothing droppable');
+
+        if (dirDrops.length && transferMode === 'scp') {
+            status('SCP cannot upload folders - files only on this device');
+        } else if (dirDrops.length) {
+            await uploadDirs(dirDrops);
+        }
+        if (filePaths.length) await uploadPaths(filePaths);
+    }
+
+    // The upload mirror of downloadTree: one op per dropped folder, walked
+    // and pushed inside the engine, every file through the same
+    // temp-and-rename discipline as a single upload.
+    async function uploadDirs(paths) {
+        // Overwriting into an existing remote folder is routine (push the
+        // configs again) but deserves one honest sentence first.
+        const existing = paths
+            .map((p) => p.split(/[/\\]/).pop())
+            .filter((n) => entryByName.has(n) && entryByName.get(n).isDir);
+        if (existing.length) {
+            const go = await new Promise((resolve) => {
+                const body = document.createElement('p');
+                body.textContent = `${existing.join(', ')} already exist${existing.length === 1 ? 's' : ''} ` +
+                    'on the device. Files inside will be replaced where names match.';
+                window.Modals.open('Upload Into Existing Folders', body, [
+                    { label: 'Cancel', onClick: () => resolve(false) },
+                    { label: 'Upload', primary: true, onClick: () => resolve(true) },
+                ], { onCancel: () => resolve(false) });
+            });
+            if (!go) { status('upload cancelled'); return; }
+        }
+        let ok = 0, folders = 0, links = 0, failed = 0;
+        const problems = [];
+        for (const local of paths) {
+            const name = local.split(/[/\\]/).pop();
+            status(`scanning ${name}...`);
+            try {
+                const r = await op({ op: 'uploadTree', local, path: join(cwd, name) });
+                ok += r.files; folders += r.folders;
+                links += r.skippedLinks; failed += r.failureCount;
+                if (r.truncated) problems.push(`${name} was too large to send in one go`);
+                for (const n of r.notes) problems.push(n);
+                for (const f of r.failures) problems.push(`${f.remote}: ${f.error}`);
+            } catch (err) {
+                problems.push(`${name}: ${err.message}`);
+                failed++;
+            }
+        }
+        const bits = [`uploaded ${ok} file${ok === 1 ? '' : 's'} in ${folders} folder${folders === 1 ? '' : 's'}`];
+        if (failed) bits.push(`${failed} failed`);
+        if (links) bits.push(`${links} symlink${links === 1 ? '' : 's'} skipped`);
+        status(bits.join(', '));
+        if (problems.length) {
+            window.Forms.showBanner('warn',
+                `Folder upload finished with notes: ${problems.slice(0, 5).join('; ')}` +
+                (problems.length > 5 ? ` (and ${problems.length - 5} more)` : ''));
+        }
+        list();
     }
 
     // Upload local files by path into the current directory, sequentially so
@@ -729,8 +793,6 @@
                 await op({ op: 'upload', local, path: join(cwd, name) });
                 done++;
             } catch (err) {
-                // EISDIR is what a dropped folder looks like by the time it
-                // reaches the engine.
                 status(`upload ${name} failed: ${err.message}`);
                 break;
             }
