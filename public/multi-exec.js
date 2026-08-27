@@ -122,7 +122,25 @@
         }
     }
 
+    // The one broadcast confirm allowed on screen at a time. Two of these
+    // STACK pixel-for-pixel - open() has no idea they are twins - so a
+    // second Send while one was up looked like nothing happened, invited a
+    // third, and left the user closing identical dialogs one by one
+    // wondering where they kept coming from. Cosmetically odd; practically
+    // dangerous: every hidden copy was one more armed delivery of the FULL
+    // payload to every device in the broadcast. Re-asking is cheap. A
+    // queued second send never is.
+    let confirmShowing = null;
+
     function confirmPaste(text, lineCount, targetCount, onYes) {
+        if (confirmShowing) {
+            // The request is dropped, not queued: a confirm that fires a
+            // send the user answered minutes ago is worse than asking again.
+            const cancel = confirmShowing.querySelector('.modal-actions button');
+            if (cancel) cancel.focus();
+            setStatus('answer the send confirmation that is already open');
+            return;
+        }
         // Built on Modals.open, which this dialog used to bypass - so it
         // missed the Escape stack, the Tab trap, and the focus handback
         // every other dialog gets. Worse, Send was pre-focused: the Enter a
@@ -152,14 +170,16 @@
             body.appendChild(lbl);
         }
 
+        const done = () => { confirmShowing = null; };
         const dialog = window.Modals.open(
             `Send ${lineCount} line${lineCount === 1 ? '' : 's'} to ` +
             `${targetCount} session${targetCount === 1 ? '' : 's'}?`,
             body, [
-                { label: 'Cancel' },
+                { label: 'Cancel', onClick: done },
                 {
                     label: 'Send', primary: true,
                     onClick: () => {
+                        done();
                         if (dontAsk && dontAsk.checked) {
                             rsterm.invoke('rs:settings.update',
                                 { confirmations: { pasteMultiline: false } });
@@ -167,7 +187,8 @@
                         onYes();
                     },
                 },
-            ]);
+            ], { onCancel: done });
+        confirmShowing = dialog.el;
         const cancel = [...dialog.el.querySelectorAll('.modal-actions button')]
             .find((b) => b.textContent === 'Cancel');
         if (cancel) cancel.focus();

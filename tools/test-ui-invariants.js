@@ -423,6 +423,22 @@ assert.ok(!/s\.enabled \?/.test(pasteAllBody),
     'pasteAll must not gate its targets on broadcast being armed');
 assert.ok(/participants\(tab\)/.test(pasteAllBody),
     'pasteAll targets the participants - connected, not excluded');
+// The broadcast confirm must refuse to stack. Two identical confirms
+// overlay pixel-for-pixel, so a second Send while one was open read as
+// "nothing happened" - and every hidden copy was one more armed delivery
+// of the full payload to every device. One confirm at a time; the guard
+// must be checked before the dialog opens and cleared on every way out.
+{
+    const cp = multiExec.slice(multiExec.indexOf('function confirmPaste('),
+        multiExec.indexOf('function refreshChrome('));
+    assert.ok(/if \(confirmShowing\)/.test(cp) &&
+        cp.indexOf('if (confirmShowing)') < cp.indexOf('window.Modals.open'),
+    'confirmPaste must refuse a second broadcast confirm while one is open');
+    assert.ok(/onCancel: done/.test(cp),
+        'the confirm guard must clear on Escape/backdrop too, or one Escape ' +
+        'silences every future broadcast confirmation');
+}
+
 // The tree offers Duplicate on a session and a menu on the blank space.
 // Case-insensitive: what this pins is that the menu item EXISTS, not how
 // it is capitalized. The Title Case pass broke it once, which is the

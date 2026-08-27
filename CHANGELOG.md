@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- **One broadcast confirmation at a time.** Clicking Send on a snippet
+  (or Paste to All) while its confirmation was already open stacked a
+  second identical dialog behind the first - invisible, since they
+  overlay exactly - and closing them one by one looked like windows
+  popping up out of nowhere. Worse than odd: every hidden copy was one
+  more armed delivery of the full payload to every device. A second
+  request now focuses the confirmation that is already open instead.
+
 - **Drop a folder into the file browser and it uploads.** Walked and
   pushed inside the engine - directories created first, files pooled,
   every one through the same temp-and-rename that protects single
