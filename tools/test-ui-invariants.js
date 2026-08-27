@@ -454,6 +454,15 @@ assert.ok(/participants\(tab\)/.test(pasteAllBody),
     assert.ok(/onCancel: done/.test(cp),
         'the confirm guard must clear on Escape/backdrop too, or one Escape ' +
         'silences every future broadcast confirmation');
+    // Enter semantics are conditional ON PURPOSE: one session is a habit
+    // guard (paste-then-Enter sends), a broadcast is the interlock (Enter
+    // must never confirm a multi-device send - Cancel holds the keyboard).
+    assert.ok(/targetCount === 1\s*
+?\s*\? btns\.find\(\(b\) => b\.textContent === 'Send'\)/.test(cp) &&
+        /: btns\.find\(\(b\) => b\.textContent === 'Cancel'\)/.test(cp),
+    'the paste confirm must focus Send for ONE target and Cancel for a ' +
+    'broadcast - Enter sending to one pane is muscle memory, Enter sending ' +
+    'to six switches is the accident this dialog exists to stop');
 }
 
 // The tree offers Duplicate on a session and a menu on the blank space.

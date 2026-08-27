@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- **Enter sends a confirmed paste to a single session.** The paste
+  confirmation used to give Enter to Cancel in every case, so
+  paste-then-Enter quietly threw the paste away. For one session the
+  dialog is a habit guard and Enter now means Send. For a broadcast
+  nothing changes, deliberately: Cancel keeps the keyboard, because
+  Enter firing a multi-device send by reflex is the accident that
+  dialog exists to stop.
+
 ## 1.0.1 - 2026-08-26
 
 Fixes from the first days of 1.0.0 in real use - every one of them

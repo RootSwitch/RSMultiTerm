@@ -143,10 +143,11 @@
         }
         // Built on Modals.open, which this dialog used to bypass - so it
         // missed the Escape stack, the Tab trap, and the focus handback
-        // every other dialog gets. Worse, Send was pre-focused: the Enter a
-        // user was about to press to run the last pasted line instantly
-        // confirmed a multi-device send. Cancel gets the keyboard now -
-        // confirming a broadcast is a click or a Tab, never a reflex.
+        // every other dialog gets. Worse, Send was pre-focused even for a
+        // BROADCAST: the Enter a user was about to press to run the last
+        // pasted line instantly confirmed a multi-device send. Who holds
+        // the keyboard now depends on the target count - see the focus
+        // choice at the bottom of this function.
         const body = document.createElement('div');
         const pre = document.createElement('pre');
         pre.style.cssText = 'font-family:var(--mt-mono);font-size:12px;max-height:40vh;overflow:auto;' +
@@ -189,9 +190,18 @@
                 },
             ], { onCancel: done });
         confirmShowing = dialog.el;
-        const cancel = [...dialog.el.querySelectorAll('.modal-actions button')]
-            .find((b) => b.textContent === 'Cancel');
-        if (cancel) cancel.focus();
+        // Who gets the keyboard depends on which dialog this IS. For a
+        // BROADCAST it is the safety interlock: Cancel takes focus, so the
+        // reflex Enter dismisses safely and confirming a multi-device send
+        // stays a deliberate click or Tab. For ONE session it is a habit
+        // guard, and the habit is paste-then-Enter: Send takes focus, so
+        // Enter does what the hand expects instead of silently throwing
+        // the paste away - which read as "the dialog ate my command".
+        const btns = [...dialog.el.querySelectorAll('.modal-actions button')];
+        const take = targetCount === 1
+            ? btns.find((b) => b.textContent === 'Send')
+            : btns.find((b) => b.textContent === 'Cancel');
+        if (take) take.focus();
     }
 
     // --- saved broadcast groups -------------------------------------------
