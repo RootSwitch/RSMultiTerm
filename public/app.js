@@ -258,6 +258,35 @@
     rsterm.on('rs:evt.settings-changed', refreshLogsButton);
     refreshLogsButton();
 
+    // Said once, on the first run: this app writes a transcript of every
+    // session, and here is the folder. The toolbar button only helps
+    // someone who thinks to look, and the person who needs to know is
+    // exactly the one who would not think to.
+    async function noticeLogging() {
+        try {
+            const s = await rsterm.invoke('rs:settings.get');
+            if (s.logNoticeShown) return;
+            const info = await rsterm.invoke('rs:logs.info');
+            if (!info || !info.dir) return;
+            // Marked shown BEFORE the banner renders: a crash between the
+            // two would otherwise turn a one-time notice into a nag on
+            // every launch. Same lesson as the first-run import offer.
+            rsterm.invoke('rs:settings.update', { logNoticeShown: true });
+            window.Forms.showBanner('warn',
+                `Sessions are logged to ${info.dir} from the moment they connect. ` +
+                'That is on by default, because a change window nobody recorded is ' +
+                'the worst kind of surprise - but it is your disk, so here is where ' +
+                'they go. Turn logging off for one session or a whole folder in its ' +
+                'editor, or move the folder in Settings.',
+                [
+                    { label: 'Open the Folder', onClick: () => rsterm.invoke('rs:logs.reveal') },
+                    { label: 'Settings', onClick: () => window.SettingsUI.openSettings() },
+                ],
+                { key: 'logging-notice' });
+        } catch (_) { /* a notice, never worth an error of its own */ }
+    }
+    noticeLogging();
+
     document.getElementById('highlights-btn').addEventListener('click', () => {
         window.HighlightRulesUI.openEditor();
     });

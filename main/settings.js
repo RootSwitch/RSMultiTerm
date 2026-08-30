@@ -61,6 +61,11 @@ const DEFAULTS = {
     // The one-time "this machine has PuTTY sessions - import them?" offer.
     // True once it has been shown, whatever was chosen.
     importOfferShown: false,
+    // The one-time "sessions are being logged, here is where" notice. On
+    // by default is a defensible choice; on by default and NEVER SAID is
+    // how someone finds a folder of transcripts months later and feels
+    // spied on. Said once, plainly, with the controls attached.
+    logNoticeShown: false,
     // OSC 52: let a remote program (tmux, vim, kitty's kitten) put text on
     // the LOCAL clipboard. Write is the useful, low-risk half and is on by
     // default. Read - a remote asking what is ON the clipboard - is an
@@ -132,6 +137,7 @@ function sanitize(patch) {
         delete out.editorCommand;
     }
     if ('importOfferShown' in out) out.importOfferShown = !!out.importOfferShown;
+    if ('logNoticeShown' in out) out.logNoticeShown = !!out.logNoticeShown;
     // Renderer-shaped structure that lands on disk and is iterated later:
     // hold it to exactly [{name, nodeIds:[...]}] and drop the rest.
     if ('broadcastGroups' in out) {
