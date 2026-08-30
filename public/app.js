@@ -240,6 +240,24 @@
     document.getElementById('broadcast-groups-btn').addEventListener('click', (e) => {
         window.MultiExec.groupsMenu(e.currentTarget.getBoundingClientRect());
     });
+    // Logging is ON by default, which is a feature - and a feature that
+    // writes files without saying so reads as a surprise later, when
+    // someone finds a folder of them. The sidebar line said it first, but
+    // the file browser replaces that pane, so on any device with SFTP it
+    // was never on screen. This button always is.
+    const logsBtn = document.getElementById('logs-btn');
+    async function refreshLogsButton() {
+        try {
+            const info = await rsterm.invoke('rs:logs.info');
+            logsBtn.title = `Sessions are being logged to ${info.dir}\n\n` +
+                'Click to open the folder. Turn logging off for a session or a ' +
+                'folder in its editor, or change where logs go in Settings.';
+        } catch (_) { /* main is still starting; the tooltip fills in later */ }
+    }
+    logsBtn.addEventListener('click', () => rsterm.invoke('rs:logs.reveal'));
+    rsterm.on('rs:evt.settings-changed', refreshLogsButton);
+    refreshLogsButton();
+
     document.getElementById('highlights-btn').addEventListener('click', () => {
         window.HighlightRulesUI.openEditor();
     });

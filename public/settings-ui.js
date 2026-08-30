@@ -106,10 +106,13 @@
         const editorLabel = document.createElement('label');
         editorLabel.textContent = 'External editor';
         editorRow.append(editorLabel, fEditor, editorBrowse);
+        // Default first. The stamp is genuinely useful during a change
+        // window and genuinely in the way when searching a folder of logs
+        // later, so it stays a choice rather than a policy.
         const fTimestamps = select([
+            { value: 'no', label: 'No timestamps (the log stays easy to search)' },
             { value: 'yes', label: 'Timestamp each log line' },
-            { value: 'no', label: 'No timestamps' },
-        ], s.logTimestamps === false ? 'no' : 'yes');
+        ], s.logTimestamps === true ? 'yes' : 'no');
         // Session sync: one tree kept in step with another copy of it -
         // a laptop and a workstation over a NAS share, or a group on SMB.
         // Configured here rather than behind a button of its own, because

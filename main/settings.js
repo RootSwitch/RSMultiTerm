@@ -42,7 +42,13 @@ const DEFAULTS = {
     // Edit-and-sync hands files to this. null = whatever the OS opens the
     // file type with; a path here points at a specific editor executable.
     editorCommand: null,
-    logTimestamps: true,
+    // Off by default: a timestamp on every line makes the log hostile to
+    // the tool you read logs with. Searching a folder of them for a date or
+    // a time would match every line of every file. The session's start time
+    // lives in the filename and in the log's own header, which is the part
+    // worth keeping; per-line stamps stay one setting away for the change
+    // window where they earn it.
+    logTimestamps: false,
     teamSync: { filePath: null, pollSeconds: 60, checkOnFocus: true },
     // Off by default: a sweep of a few hundred devices looks like a port
     // scan to security monitoring, so it happens when a human asks.

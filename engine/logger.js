@@ -57,6 +57,22 @@ class SessionLogger {
         this.basePath = n === 1 ? base : `${base}--${n}`;
         this.stream = fs.createWriteStream(this.basePath + ext, { flags: 'a' });
         this.stream.on('error', () => { this.failed = true; this.stream = null; });
+        this._header(now, null);
+    }
+
+    // What this file is and when it started. One line, so it costs nothing
+    // to a search over a folder of logs - unlike a stamp on every line -
+    // and it means a log that has been renamed or copied still says what it
+    // is. NOT written in raw mode: that mode promises the exact bytes the
+    // device sent, and a line this app invented is not one of them.
+    _header(when, part) {
+        if (this.opts.mode === 'raw' || !this.stream) return;
+        // A quick connect names the session after the host, so without
+        // this the header reads '10.50.1.7 (10.50.1.7)'.
+        const who = this.opts.host && this.opts.host !== this.opts.sessionName
+            ? `${this.opts.sessionName} (${this.opts.host})` : this.opts.sessionName;
+        this.stream.write(`--- RSMultiTerm log: ${who}` +
+            (part ? ` part ${part}` : '') + ` - ${stamp(when).replace(/[[\]]/g, '').trim()} ---\n`);
     }
 
     _rotate() {
@@ -66,6 +82,7 @@ class SessionLogger {
         const ext = this.opts.mode === 'raw' ? '.raw.log' : '.log';
         this.stream = fs.createWriteStream(`${this.basePath}--part${this.part}${ext}`, { flags: 'a' });
         this.stream.on('error', () => { this.failed = true; this.stream = null; });
+        this._header(new Date(), this.part);
         this.bytes = 0;
     }
 

@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+- **Logs no longer timestamp every line, by default.** A date on every
+  line makes a folder of logs hostile to the tool you read logs with:
+  searching for a date or a time matches everything. The start time now
+  lives in a one-line header at the top of each file (it was already in
+  the filename), and per-line stamps stay one setting away for the
+  change window where they earn their keep. Settings > Log timestamps,
+  unchanged for anyone who already set it.
+- **A Logs button in the toolbar.** Logging is on by default, which is
+  deliberate - but the only thing saying so lived in the sessions
+  sidebar, which the file browser replaces, so on any device with SFTP
+  it was invisible. The button always is. Its tooltip names the folder
+  and how to turn logging off; clicking opens the folder.
+
 ## 1.0.2 - 2026-08-27
 
 One fix, for a paper cut that had been there since well before 1.0.0
