@@ -1072,3 +1072,4 @@ label { color: var(--se-txt-dim); }
 }
 .banner.warn { background: color-mix(in srgb, var(--se-warn) 18%, var(--se-panel)); }
 .banner.error { background: color-mix(in srgb, var(--se-down) 18%, var(--se-panel)); }
+.banner.info { background: color-mix(in srgb, var(--se-accent) 14%, var(--se-panel)); }

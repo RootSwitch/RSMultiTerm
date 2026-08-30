@@ -1014,7 +1014,10 @@
         for (const a of actions) {
             const btn = document.createElement('button');
             btn.textContent = a.label;
-            btn.addEventListener('click', () => { a.onClick(); banner.remove(); });
+            btn.addEventListener('click', () => {
+                a.onClick();
+                if (!a.keepOpen) banner.remove();
+            });
             banner.appendChild(btn);
         }
         const x = document.createElement('button');

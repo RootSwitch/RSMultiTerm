@@ -272,14 +272,15 @@
             // two would otherwise turn a one-time notice into a nag on
             // every launch. Same lesson as the first-run import offer.
             rsterm.invoke('rs:settings.update', { logNoticeShown: true });
-            window.Forms.showBanner('warn',
-                `Sessions are logged to ${info.dir} from the moment they connect. ` +
-                'That is on by default, because a change window nobody recorded is ' +
-                'the worst kind of surprise - but it is your disk, so here is where ' +
-                'they go. Turn logging off for one session or a whole folder in its ' +
-                'editor, or move the folder in Settings.',
+            window.Forms.showBanner('info',
+                `Terminal sessions are logged to ${info.dir} by default. ` +
+                'You can change the directory or logging setting in Settings.',
                 [
-                    { label: 'Open the Folder', onClick: () => rsterm.invoke('rs:logs.reveal') },
+                    // Opening the folder is CHECKING what was just said, not
+                    // acknowledging it - the banner stays until it is dealt
+                    // with deliberately.
+                    { label: 'Open the Folder', keepOpen: true,
+                        onClick: () => rsterm.invoke('rs:logs.reveal') },
                     { label: 'Settings', onClick: () => window.SettingsUI.openSettings() },
                 ],
                 { key: 'logging-notice' });

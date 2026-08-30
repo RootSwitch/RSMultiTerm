@@ -9,11 +9,13 @@
   the filename), and per-line stamps stay one setting away for the
   change window where they earn their keep. Settings > Log timestamps,
   unchanged for anyone who already set it.
-- **A first-run notice about logging.** On the first launch, one
-  dismissible banner says sessions are being logged, names the folder,
-  and offers to open it or take you to Settings. Shown once, whatever
-  you do with it. The toolbar button only helps someone who thinks to
-  look; this reaches the person who would not have thought to.
+- **A first-run notice about logging.** On the first launch, one banner
+  says where terminal sessions are being logged and that Settings can
+  change it, with buttons to open the folder or go there. Shown once,
+  whatever you do with it. Opening the folder leaves the banner up - you
+  were checking, not finishing - so only Settings or the x take it down.
+  The toolbar button helps whoever thinks to look; this reaches the
+  person who would not have thought to.
 - **A Logs button in the toolbar.** Logging is on by default, which is
   deliberate - but the only thing saying so lived in the sessions
   sidebar, which the file browser replaces, so on any device with SFTP
