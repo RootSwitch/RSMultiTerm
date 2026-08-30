@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 1.0.3 - 2026-08-30
+
+Logging, on three fronts: it says what it is doing, it stays out of
+the way of the tools you read logs with, and it is one click from the
+toolbar. Prompted by an audit of where a set of apps write files
+before handing them to other people.
+
 - **Logs no longer timestamp every line, by default.** A date on every
   line makes a folder of logs hostile to the tool you read logs with:
   searching for a date or a time matches everything. The start time now
