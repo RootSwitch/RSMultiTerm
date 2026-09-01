@@ -402,14 +402,20 @@
     // decorative controls live.
     function extrasMenu(anchor) {
         const r = anchor.getBoundingClientRect();
-        const items = [
-            { label: 'Play Bricks', onClick: () => start('bricks', { play: true, area: settings.area }) },
-            { label: 'Play Aliens', onClick: () => start('aliens', { play: true, area: settings.area }) },
-            { label: 'Play Snake', onClick: () => start('snake', { play: true, area: settings.area }) },
-            { label: 'Play Blocks', onClick: () => start('blocks', { play: true, area: settings.area }) },
-            null,
-        ];
-        for (const [id, st] of Object.entries(STYLES)) {
+        // Both lists are DERIVED and sorted. Derived, so a style marked
+        // playable cannot be forgotten here (Blocks was added to four
+        // places); sorted, because the order was previously "whichever was
+        // written first", which is findable only by the person who wrote
+        // it. Fifteen effects in authoring order is a list you scan twice.
+        const byLabel = (a, b) => a[1].label.localeCompare(b[1].label);
+        const all = Object.entries(STYLES).sort(byLabel);
+        const items = [];
+        for (const [id, st] of all.filter(([, st2]) => st2.playable)) {
+            items.push({ label: `Play ${st.label}`,
+                onClick: () => start(id, { play: true, area: settings.area }) });
+        }
+        items.push(null);
+        for (const [id, st] of all) {
             items.push({ label: `Effect: ${st.label}`, onClick: () => start(id, { area: settings.area }) });
         }
         items.push(null, {
@@ -487,7 +493,7 @@
     // Bricks: every word on screen is a brick, where it is. An automatic
     // paddle plays until the screen is clear, then the screen is re-read.
     STYLES.bricks = {
-        label: 'Bricks', screen: true, mood: 'lively',
+        label: 'Bricks', screen: true, mood: 'lively', playable: true,
         init(env) {
             const words = (env.screen ? env.screen.words : []).filter((w) => w.text.length > 0);
             const bricks = words.map((w, i) => ({ ...w, alive: true, tone: i % 3 }));
@@ -803,7 +809,7 @@
     // a flawless bot is boring to watch. Lives are infinite; this is a
     // screensaver, not a game.
     STYLES.aliens = {
-        label: 'Aliens', screen: true, mood: 'lively',
+        label: 'Aliens', screen: true, mood: 'lively', playable: true,
         init(env) {
             return STYLES.aliens.wave(env, { waves: 0, ship: null, bombs: [], lasers: [], bursts: [] });
         },
@@ -1134,7 +1140,7 @@
     // deliberately simple greedy chase, which is more watchable than a
     // perfect solver - and takes the keyboard when started from Extras.
     STYLES.snake = {
-        label: 'Snake', screen: true, mood: 'lively',
+        label: 'Snake', screen: true, mood: 'lively', playable: true,
         init(env) {
             const cw = 14, chh = 18;
             const cols = Math.max(10, Math.floor(env.w / cw));
@@ -1296,7 +1302,7 @@
     // mode is the game everyone already knows: left/right move, up
     // rotates, down hurries, Space slams.
     STYLES.blocks = {
-        label: 'Blocks', screen: false, mood: 'lively',
+        label: 'Blocks', screen: false, mood: 'lively', playable: true,
         playHint: 'left/right move   up rotates   down hurries   space slams   esc quits',
         // Each piece: rotation states as [x,y] cells, plus which theme
         // color paints it - the board matches the app instead of fighting
@@ -1898,7 +1904,9 @@
         // Whether the OS is asking for reduced motion - shown in Settings,
         // never used to refuse an explicit opt-in.
         reducedMotion: () => reducedMotion,
-        styles: () => Object.entries(STYLES).map(([id, s]) => ({ id, label: s.label, mood: s.mood || 'calm', surprise: s.surprise !== false })),
+        styles: () => Object.entries(STYLES).map(([id, s]) => ({ id, label: s.label,
+            mood: s.mood || 'calm', surprise: s.surprise !== false,
+            playable: !!s.playable })),
         // For probes: which style is up, and whether it is clipped to the
         // terminal area or has taken the window.
         currentStyle: () => (running ? running.id : null),

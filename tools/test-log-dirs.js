@@ -59,18 +59,22 @@ const never = (list, env, label) => {
     assert.deepStrictEqual(logDirCandidates(env), [DOCS]);
 }
 
-// 4. Installed build (no portableDir): beside the exe is legitimate - the
-// install dir is a real place - with Documents as the fallback the
-// writability probe reaches when Program Files is read-only.
+// 4. Installed build (no portableDir): Documents, NEVER the install dir.
+// That directory is the uninstaller's target and each upgrade rewrites
+// it, so logs kept there are deleted by updating or removing the app -
+// and a transcript of a change window has to outlive the binary that
+// wrote it. This was the behavior until 1.0.4 and it was wrong.
 {
     const env = { ...BASE, exeDir: W('Program Files', 'RSMultiTerm') };
-    assert.deepStrictEqual(logDirCandidates(env),
-        [W('Program Files', 'RSMultiTerm', 'logs'), DOCS]);
+    assert.deepStrictEqual(logDirCandidates(env), [DOCS],
+        'an installed build must not log into its own install directory');
 }
 
-// 5. An installed exe somehow ON the desktop still refuses the desktop.
+// 5. Same for a per-user install, which is where the NSIS build actually
+// lands - and the case that was live on the owner's machine.
 {
-    const env = { ...BASE, exeDir: BASE.desktop };
+    const env = { ...BASE,
+        exeDir: W('Users', 'someone', 'AppData', 'Local', 'Programs', 'RSMultiTerm') };
     assert.deepStrictEqual(logDirCandidates(env), [DOCS]);
 }
 

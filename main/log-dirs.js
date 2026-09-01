@@ -16,7 +16,14 @@
 //   in earlier temp folders. Logs are a record, temp is ephemeral by
 //   definition, and no fallback chain may ever marry the two.
 //
-// RSMT_LOGDIR is exempt from both: an explicit override is the user's call.
+// - The install directory. Not a hazard like the other two, a LIFETIME
+//   mismatch: uninstalling removes it and every upgrade rewrites it, so
+//   logs left there are destroyed by routine maintenance. Portable builds
+//   still log beside themselves, because there the folder IS the install
+//   and the user placed it deliberately.
+//
+// RSMT_LOGDIR is exempt from all three: an explicit override is the
+// user's call.
 
 const path = require('path');
 
@@ -47,13 +54,21 @@ function logDirCandidates(env) {
     if (env.envOverride) out.push(env.envOverride);
 
     if (env.isPackaged) {
-        if (env.portableDir) {
-            // Beside the portable exe the USER placed - and only that. The
-            // running exe's own directory is the temp extraction; offering
-            // it as a fallback is how logs ended up ephemeral.
-            if (usable(env.portableDir)) out.push(path.join(env.portableDir, 'logs'));
-        } else if (usable(env.exeDir)) {
-            out.push(path.join(env.exeDir, 'logs'));
+        // Only the PORTABLE build logs beside itself, and only into the
+        // folder the user chose to unzip it in - that is what portable
+        // means: the app and its record travel together on the stick or in
+        // C:\Tools. Its exeDir is the temp extraction and never a
+        // candidate; offering it is how logs ended up ephemeral once.
+        //
+        // An INSTALLED build does not. Its exeDir is the NSIS install
+        // directory, which the uninstaller removes and which each upgrade
+        // rewrites - so logs kept there are deleted by the ordinary act of
+        // updating or removing the program. A transcript of a change
+        // window has to outlive the binary that wrote it, so the installed
+        // build goes to Documents with everything else that is the user's
+        // rather than the app's.
+        if (env.portableDir && usable(env.portableDir)) {
+            out.push(path.join(env.portableDir, 'logs'));
         }
     } else if (env.devDir) {
         out.push(path.join(env.devDir, 'logs'));

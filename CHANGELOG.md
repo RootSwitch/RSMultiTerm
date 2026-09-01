@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- **Installed builds now log to Documents\RSMultiTerm\logs.** They used
+  to log inside their own install folder, which the uninstaller deletes
+  and every upgrade rewrites - so a transcript of a change window could
+  be destroyed by the ordinary act of updating the app. Portable builds
+  are unchanged and still log beside themselves, because there the
+  folder is one you chose. Existing logs are left exactly where they
+  are; nothing moves or deletes them.
+- The Extras menu is sorted, and its Play list is derived from the
+  styles themselves rather than kept in step by hand.
+
 - **Blocks.** Falling tetrads, in the theme's own colors. As an idle
   animation it plays itself - a placement heuristic picks each move and
   walks the piece there, ghost landing spot and all - and under Extras
