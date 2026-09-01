@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 1.0.4 - 2026-09-01
+
+A game, and two things that were always slower or riskier than they
+looked: the portable's launch time, and where an installed build kept
+its logs.
+
 - **Folder-portable.** The `rsmultiterm-portable.txt` marker now works
   beside `RSMultiTerm.exe` in any unzipped folder build, not only with
   the single-file portable - data and logs live beside the exe, fully
