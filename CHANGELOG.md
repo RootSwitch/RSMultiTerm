@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- **Blocks.** Falling tetrads, in the theme's own colors. As an idle
+  animation it plays itself - a placement heuristic picks each move and
+  walks the piece there, ghost landing spot and all - and under Extras
+  > Play Blocks it is the game you already know: left/right move, up
+  rotates, down hurries, Space slams, Esc quits. Seven-bag dealing, so
+  the piece drought that makes randomness feel rigged cannot happen.
+  Fifteen idle styles now; one of the cheapest to draw (0.13 ms/frame).
+
 ## 1.0.3 - 2026-08-30
 
 Logging, on three fronts: it says what it is doing, it stays out of

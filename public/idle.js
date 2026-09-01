@@ -271,7 +271,8 @@
         window.addEventListener('resize', onResize);
         running.raf = requestAnimationFrame(frame);
         setStatus(play
-            ? `${style.label}: arrows or A/D move, Space fires, Esc or a click quits`
+            ? `${style.label}: ${style.playHint ||
+                'arrows or A/D move, Space fires, Esc or a click quits'}`
             : `idle: ${style.label} - any key or mouse movement to return`);
     }
 
@@ -392,7 +393,8 @@
         ctx.fillText(`score ${p.score}`, env.w - 12, 10);
         ctx.textAlign = 'left';
         ctx.fillStyle = c.dim;
-        ctx.fillText('arrows / WASD steer   space fires   esc quits', 12, env.h - 20);
+        ctx.fillText(env.playHint || 'arrows / WASD steer   space fires   esc quits',
+            12, env.h - 20);
     }
 
     // The Extras menu: every effect on demand, and the two games to play.
@@ -404,6 +406,7 @@
             { label: 'Play Bricks', onClick: () => start('bricks', { play: true, area: settings.area }) },
             { label: 'Play Aliens', onClick: () => start('aliens', { play: true, area: settings.area }) },
             { label: 'Play Snake', onClick: () => start('snake', { play: true, area: settings.area }) },
+            { label: 'Play Blocks', onClick: () => start('blocks', { play: true, area: settings.area }) },
             null,
         ];
         for (const [id, st] of Object.entries(STYLES)) {
@@ -1285,6 +1288,285 @@
     // asciiquarium's spirit: fish in both directions, bubbles, and - the
     // screen-aware touch - the words the terminal was showing become the
     // seaweed, swaying at the bottom in the theme's up-color.
+
+    // Blocks: falling tetrads, themed. Idle mode plays ITSELF - a small
+    // placement heuristic (the classic height/lines/holes/bumpiness
+    // weights) picks a target and steers toward it, which is endlessly
+    // watchable in the way of an arcade cabinet running its demo. Play
+    // mode is the game everyone already knows: left/right move, up
+    // rotates, down hurries, Space slams.
+    STYLES.blocks = {
+        label: 'Blocks', screen: false, mood: 'lively',
+        playHint: 'left/right move   up rotates   down hurries   space slams   esc quits',
+        // Each piece: rotation states as [x,y] cells, plus which theme
+        // color paints it - the board matches the app instead of fighting
+        // it.
+        PIECES: [
+            { rots: [[[0,1],[1,1],[2,1],[3,1]], [[2,0],[2,1],[2,2],[2,3]]], color: 'accent' },
+            { rots: [[[1,0],[2,0],[1,1],[2,1]]], color: 'warn' },
+            { rots: [[[1,0],[0,1],[1,1],[2,1]], [[1,0],[1,1],[2,1],[1,2]],
+                [[0,1],[1,1],[2,1],[1,2]], [[1,0],[0,1],[1,1],[1,2]]], color: 'txt' },
+            { rots: [[[1,0],[2,0],[0,1],[1,1]], [[1,0],[1,1],[2,1],[2,2]]], color: 'up' },
+            { rots: [[[0,0],[1,0],[1,1],[2,1]], [[2,0],[1,1],[2,1],[1,2]]], color: 'down' },
+            { rots: [[[0,0],[0,1],[1,1],[2,1]], [[1,0],[2,0],[1,1],[1,2]],
+                [[0,1],[1,1],[2,1],[2,2]], [[1,0],[1,1],[0,2],[1,2]]], color: 'dim' },
+            { rots: [[[2,0],[0,1],[1,1],[2,1]], [[1,0],[1,1],[1,2],[2,2]],
+                [[0,1],[1,1],[2,1],[0,2]], [[0,0],[1,0],[1,1],[1,2]]], color: 'accent' },
+        ],
+        COLS: 10,
+        ROWS: 20,
+
+        cells(piece, rot, x, y) {
+            const shape = piece.rots[rot % piece.rots.length];
+            return shape.map(([cx, cy]) => [cx + x, cy + y]);
+        },
+        fits(s, piece, rot, x, y) {
+            for (const [cx, cy] of STYLES.blocks.cells(piece, rot, x, y)) {
+                if (cx < 0 || cx >= STYLES.blocks.COLS || cy >= STYLES.blocks.ROWS) return false;
+                if (cy >= 0 && s.board[cy][cx]) return false;
+            }
+            return true;
+        },
+        spawn(s, env) {
+            // A 7-bag, like the real thing: every piece once per seven, so
+            // the drought that makes randomness feel broken cannot happen.
+            if (!s.bag.length) {
+                s.bag = [0, 1, 2, 3, 4, 5, 6];
+                for (let i = s.bag.length - 1; i > 0; i--) {
+                    const j = Math.floor(env.rnd() * (i + 1));
+                    const t = s.bag[i]; s.bag[i] = s.bag[j]; s.bag[j] = t;
+                }
+            }
+            s.cur = { idx: s.next, rot: 0, x: 3, y: -1 };
+            s.next = s.bag.pop();
+            s.plan = null;
+            if (!STYLES.blocks.fits(s, STYLES.blocks.PIECES[s.cur.idx], 0, 3, -1)) s.over = 90;
+        },
+        lock(s, env) {
+            const b = STYLES.blocks;
+            const piece = b.PIECES[s.cur.idx];
+            for (const [cx, cy] of b.cells(piece, s.cur.rot, s.cur.x, s.cur.y)) {
+                if (cy < 0) { s.over = 90; return; }
+                s.board[cy][cx] = piece.color;
+            }
+            const kept = s.board.filter((row) => row.some((c) => !c));
+            const cleared = b.ROWS - kept.length;
+            if (cleared) {
+                while (kept.length < b.ROWS) kept.unshift(Array(b.COLS).fill(null));
+                s.board = kept;
+                s.lines += cleared;
+                if (env.play) env.play.score += [0, 100, 300, 500, 800][cleared];
+            }
+            b.spawn(s, env);
+        },
+        // Where this piece rests if dropped in column x at rotation rot.
+        dropY(s, piece, rot, x) {
+            let y = -2;
+            while (STYLES.blocks.fits(s, piece, rot, x, y + 1)) y++;
+            return y;
+        },
+        // The self-player: try every rotation and column, score the board
+        // each would leave, take the best. The weights are the well-known
+        // set that plays essentially forever - the point of a screensaver.
+        think(s) {
+            const b = STYLES.blocks;
+            const piece = b.PIECES[s.cur.idx];
+            let best = null;
+            for (let rot = 0; rot < piece.rots.length; rot++) {
+                for (let x = -2; x < b.COLS; x++) {
+                    const y = b.dropY(s, piece, rot, x);
+                    if (!b.fits(s, piece, rot, x, y)) continue;
+                    const board = s.board.map((row) => row.slice());
+                    for (const [cx, cy] of b.cells(piece, rot, x, y)) {
+                        if (cy >= 0) board[cy][cx] = true;
+                    }
+                    let lines = 0;
+                    for (const row of board) { if (row.every(Boolean)) lines++; }
+                    let height = 0;
+                    let holes = 0;
+                    let bump = 0;
+                    let prev = -1;
+                    for (let cx = 0; cx < b.COLS; cx++) {
+                        let top = b.ROWS;
+                        for (let cy = 0; cy < b.ROWS; cy++) {
+                            if (board[cy][cx]) { top = cy; break; }
+                        }
+                        const h = b.ROWS - top;
+                        height += h;
+                        for (let cy = top + 1; cy < b.ROWS; cy++) {
+                            if (!board[cy][cx]) holes++;
+                        }
+                        if (prev >= 0) bump += Math.abs(h - prev);
+                        prev = h;
+                    }
+                    const score = -0.51 * height + 0.76 * lines - 0.36 * holes - 0.18 * bump;
+                    if (!best || score > best.score) best = { rot, x, score };
+                }
+            }
+            return best || { rot: s.cur.rot, x: s.cur.x };
+        },
+        init(env) {
+            const b = STYLES.blocks;
+            const cell = Math.max(8, Math.floor(Math.min(
+                (env.h - 24) / b.ROWS, env.w / (b.COLS + 12))));
+            const s = {
+                board: Array.from({ length: b.ROWS }, () => Array(b.COLS).fill(null)),
+                bag: [], next: 0, cur: null, plan: null,
+                lines: 0, over: 0, overStay: false,
+                cell,
+                ox: Math.floor((env.w - b.COLS * cell) / 2),
+                oy: Math.floor((env.h - b.ROWS * cell) / 2),
+                fall: 0, moveHeld: -1, rotHeld: false,
+            };
+            b.spawn(s, env);   // fills next from the first bag...
+            b.spawn(s, env);   // ...and deals the first current piece
+            s.over = 0;
+            return s;
+        },
+        frame(ctx, env, s, dt) {
+            const b = STYLES.blocks;
+            const c = env.colors;
+            const p = env.play;
+            ctx.fillStyle = c.night || c.bg;
+            ctx.fillRect(0, 0, env.w, env.h);
+
+            if (s.over > 0) {
+                s.over--;
+                if (s.over === 0) {
+                    if (p) s.overStay = true;
+                    else Object.assign(s, b.init(env));
+                }
+            }
+            const piece = s.cur && b.PIECES[s.cur.idx];
+            const stopped = s.over > 0 || s.overStay;
+
+            if (!stopped && piece) {
+                if (p) {
+                    // The player. Held keys repeat at a walk; edges act now.
+                    s.moveHeld -= dt;
+                    const step = (dx) => {
+                        if (b.fits(s, piece, s.cur.rot, s.cur.x + dx, s.cur.y)) s.cur.x += dx;
+                        s.moveHeld = s.moveHeld < -0.5 ? 0.17 : 0.09;
+                    };
+                    if (p.left && !p.right && s.moveHeld <= 0) step(-1);
+                    if (p.right && !p.left && s.moveHeld <= 0) step(1);
+                    if (!p.left && !p.right) s.moveHeld = -1;
+                    if (p.up && !s.rotHeld) {
+                        // One rotation per press, with the sideways nudge
+                        // that makes rotating against a wall feel fair.
+                        for (const kick of [0, -1, 1, -2, 2]) {
+                            if (b.fits(s, piece, s.cur.rot + 1, s.cur.x + kick, s.cur.y)) {
+                                s.cur.rot = (s.cur.rot + 1) % piece.rots.length;
+                                s.cur.x += kick;
+                                break;
+                            }
+                        }
+                    }
+                    s.rotHeld = p.up;
+                    if (p.fired) {
+                        p.fired = false;
+                        s.cur.y = b.dropY(s, piece, s.cur.rot, s.cur.x);
+                        b.lock(s, env);
+                    }
+                    const speed = Math.max(0.08, 0.8 - Math.floor(s.lines / 10) * 0.07);
+                    s.fall += dt;
+                    if (s.fall >= (p.down ? 0.04 : speed)) {
+                        s.fall = 0;
+                        if (b.fits(s, piece, s.cur.rot, s.cur.x, s.cur.y + 1)) s.cur.y++;
+                        else b.lock(s, env);
+                    }
+                } else {
+                    // The self-player: decide once per piece, then walk it
+                    // there one considered move at a time - watching it
+                    // THINK is the show, and a teleport has no drama.
+                    if (!s.plan) s.plan = b.think(s);
+                    s.fall += dt;
+                    if (s.fall >= 0.06) {
+                        s.fall = 0;
+                        if (s.cur.rot !== s.plan.rot &&
+                            b.fits(s, piece, s.cur.rot + 1, s.cur.x, s.cur.y)) {
+                            s.cur.rot = (s.cur.rot + 1) % piece.rots.length;
+                        } else if (s.cur.x < s.plan.x &&
+                            b.fits(s, piece, s.cur.rot, s.cur.x + 1, s.cur.y)) {
+                            s.cur.x++;
+                        } else if (s.cur.x > s.plan.x &&
+                            b.fits(s, piece, s.cur.rot, s.cur.x - 1, s.cur.y)) {
+                            s.cur.x--;
+                        } else if (b.fits(s, piece, s.cur.rot, s.cur.x, s.cur.y + 1)) {
+                            s.cur.y++;
+                        } else {
+                            b.lock(s, env);
+                        }
+                    }
+                }
+            }
+            if (s.overStay && p && p.fired) {
+                p.fired = false;
+                const score = p.score;
+                Object.assign(s, b.init(env));
+                p.score = score;
+            }
+
+            // The well.
+            ctx.strokeStyle = c.dim;
+            ctx.lineWidth = 1;
+            ctx.strokeRect(s.ox - 1.5, s.oy - 1.5, b.COLS * s.cell + 3, b.ROWS * s.cell + 3);
+            const paint = (cx, cy, color, ghost) => {
+                if (cy < 0) return;
+                ctx.fillStyle = color;
+                ctx.globalAlpha = ghost ? 0.22 : 1;
+                ctx.fillRect(s.ox + cx * s.cell + 1, s.oy + cy * s.cell + 1,
+                    s.cell - 2, s.cell - 2);
+                ctx.globalAlpha = 1;
+            };
+            for (let cy = 0; cy < b.ROWS; cy++) {
+                for (let cx = 0; cx < b.COLS; cx++) {
+                    if (s.board[cy][cx]) paint(cx, cy, c[s.board[cy][cx]] || c.txt);
+                }
+            }
+            if (piece && !stopped) {
+                // The ghost: where it lands, faint - players expect it, and
+                // in idle mode it telegraphs the machine's intention.
+                const gy = b.dropY(s, piece, s.cur.rot, s.cur.x);
+                for (const [cx, cy] of b.cells(piece, s.cur.rot, s.cur.x, gy)) {
+                    paint(cx, cy, c[piece.color] || c.txt, true);
+                }
+                for (const [cx, cy] of b.cells(piece, s.cur.rot, s.cur.x, s.cur.y)) {
+                    paint(cx, cy, c[piece.color] || c.txt);
+                }
+            }
+            // The next piece, parked beside the well.
+            const nx = s.ox + b.COLS * s.cell + Math.floor(s.cell * 1.2);
+            ctx.font = `12px ${c.mono}`;
+            ctx.textBaseline = 'top';
+            ctx.textAlign = 'left';
+            ctx.fillStyle = c.dim;
+            ctx.fillText('next', nx, s.oy);
+            const np = b.PIECES[s.next];
+            for (const [cx, cy] of np.rots[0]) {
+                ctx.fillStyle = c[np.color] || c.txt;
+                ctx.fillRect(nx + cx * s.cell * 0.7, s.oy + 18 + cy * s.cell * 0.7,
+                    s.cell * 0.7 - 2, s.cell * 0.7 - 2);
+            }
+            ctx.fillStyle = c.dim;
+            ctx.fillText(`lines ${s.lines}`, nx, s.oy + 18 + s.cell * 3);
+            if (stopped) {
+                ctx.fillStyle = c.txt;
+                ctx.font = `bold ${Math.max(16, s.cell)}px ${c.mono}`;
+                ctx.textAlign = 'center';
+                ctx.fillText('game over',
+                    s.ox + b.COLS * s.cell / 2, s.oy + b.ROWS * s.cell * 0.42);
+                if (p) {
+                    ctx.font = `12px ${c.mono}`;
+                    ctx.fillStyle = c.dim;
+                    ctx.fillText('space deals again', s.ox + b.COLS * s.cell / 2,
+                        s.oy + b.ROWS * s.cell * 0.42 + s.cell + 8);
+                }
+            }
+            if (p) { env.playHint = STYLES.blocks.playHint; drawHud(ctx, env); }
+        },
+    };
+
     STYLES.aquarium = {
         label: 'Aquarium', screen: true, mood: 'calm',
         init(env) {
