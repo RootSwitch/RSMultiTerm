@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+- **Folder-portable.** The `rsmultiterm-portable.txt` marker now works
+  beside `RSMultiTerm.exe` in any unzipped folder build, not only with
+  the single-file portable - data and logs live beside the exe, fully
+  self-contained, and it starts as fast as an install (~1.8s). The
+  single-file portable re-extracts ~260 MB on every launch by design of
+  its self-extracting stub, which costs about five seconds per start;
+  the README now says so honestly. One refusal: a folder containing the
+  uninstaller is an install, and self-contained data inside an
+  uninstaller's target is the lifetime mistake the log folders just
+  escaped.
+
 - **Installed builds now log to Documents\RSMultiTerm\logs.** They used
   to log inside their own install folder, which the uninstaller deletes
   and every upgrade rewrites - so a transcript of a change window could

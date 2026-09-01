@@ -84,6 +84,29 @@ function forkEngine() {
 // dev run are the same identity.
 if (process.platform === 'win32') app.setAppUserModelId('dev.rootswitch.rsmultiterm');
 
+// Folder-portable: the portable marker honored beside the REAL exe, not
+// only via the env var the single-file stub sets. The stub re-extracts
+// ~260 MB on every launch by design (its NSIS template deletes and
+// unpacks unconditionally), which costs ~5s per start - so the folder
+// build IS the fast portable: unzip win-unpacked anywhere, drop
+// rsmultiterm-portable.txt beside RSMultiTerm.exe, and data and logs
+// live beside it at installed-build speed.
+//
+// One refusal: a directory holding the NSIS uninstaller is an INSTALL,
+// and self-contained data inside an uninstaller's target is the exact
+// lifetime mistake the log folders just escaped - removing the app
+// would remove the sessions and profiles too.
+if (!process.env.PORTABLE_EXECUTABLE_DIR && app.isPackaged) {
+    try {
+        const fs = require('fs');
+        const exeDir = path.dirname(app.getPath('exe'));
+        if (fs.existsSync(path.join(exeDir, 'rsmultiterm-portable.txt')) &&
+            !fs.existsSync(path.join(exeDir, 'Uninstall RSMultiTerm.exe'))) {
+            process.env.PORTABLE_EXECUTABLE_DIR = exeDir;
+        }
+    } catch (_) { /* an unreadable exe dir is just not portable */ }
+}
+
 app.whenReady().then(() => {
     // Data dir resolution: env override (tests) > portable marker beside the
     // exe (fully self-contained on a share or USB stick) > normal userData.

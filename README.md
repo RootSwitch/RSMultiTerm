@@ -71,6 +71,13 @@ For the portable exe, drop a file named `rsmultiterm-portable.txt` next to
 it and all state (sessions, profiles, logs) lives beside the exe instead
 of `%APPDATA%` - fully self-contained on a share or USB stick.
 
+One honest note on the single-file portable: it re-extracts itself on
+every launch (that is how the self-extracting stub works), which costs a
+few seconds per start. For daily use, install it - or use the same
+portable trick on an unzipped folder build: the marker file works beside
+`RSMultiTerm.exe` in any folder, self-contained and starting as fast as
+an install.
+
 ## Quickstart (development)
 
 Needs Node 22+.
