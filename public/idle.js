@@ -548,8 +548,27 @@
             if (b.vy > 0 && b.y + b.r >= paddleY && b.y - b.r <= paddleY + 8 &&
                 b.x >= s.paddleX - b.r && b.x <= s.paddleX + s.paddleW + b.r) {
                 b.y = paddleY - b.r;
-                const hit = (b.x - (s.paddleX + s.paddleW / 2)) / (s.paddleW / 2);
-                const ang = hit * 1.1;
+                let ang;
+                if (env.play) {
+                    // Player's paddle: where the ball lands on it sets the angle.
+                    ang = ((b.x - (s.paddleX + s.paddleW / 2)) / (s.paddleW / 2)) * 1.1;
+                } else {
+                    // Auto paddle: aim the return at the nearest brick still
+                    // standing, with a little slop so the volley is not robotic,
+                    // and never send it near-vertical - a straight-up return is
+                    // how the ball gets trapped bouncing in one cleared column
+                    // while the paddle idles beneath it, clearing nothing.
+                    let target = null, best = Infinity;
+                    for (const br of s.bricks) {
+                        if (!br.alive) continue;
+                        const d = Math.abs((br.x + br.w / 2) - b.x);
+                        if (d < best) { best = d; target = br; }
+                    }
+                    const aim = target ? (target.x + target.w / 2) - b.x : 0;
+                    ang = Math.max(-1.15, Math.min(1.15, aim / (env.w * 0.5)))
+                        + (Math.random() - 0.5) * 0.3;
+                    if (Math.abs(ang) < 0.32) ang = (ang < 0 ? -1 : 1) * 0.32;
+                }
                 b.vx = Math.sin(ang) * s.speed;
                 b.vy = -Math.cos(ang) * s.speed;
             }
@@ -816,7 +835,16 @@
         // Start a wave from whatever is on screen; a blank screen gets a
         // classic 5x11 block of glyphs so there is still something to shoot.
         wave(env, s) {
-            let words = (env.screen ? env.screen.words : []).filter((w) => w.text.length > 0);
+            // Keep the formation out of the ship's lane. Words on the bottom
+            // rows would home there, which put aliens on top of the ship and -
+            // because a settled block whose lowest member is already at ship
+            // level reads as "invaded" - restarted the wave on the very first
+            // frame. So the bottom band is cleared: words below the ceiling are
+            // dropped, and if too few remain the classic block flies in instead.
+            const shipY = env.h - 34;
+            const ceiling = shipY - 40;
+            let words = (env.screen ? env.screen.words : [])
+                .filter((w) => w.text.length > 0 && (w.y + w.h) <= ceiling);
             if (words.length < 6) {
                 words = [];
                 const cw = 11, ch = 20;
@@ -1891,6 +1919,12 @@
 
     window.Idle = {
         start, stop,
+        // Device output counts as activity: a long build scrolling should not
+        // let the screensaver start over the top of it. This only defers the
+        // START while nothing is running - it never stops a running animation,
+        // so a screen that keeps chattering will not make one flicker on and
+        // off, and a screen-aware style folds the new text in as it arrives.
+        note: touch,
         isPlaying: () => !!(running && running.play),
         isRunning: () => !!running,
         // Frames drawn since load - the honest way to measure the loop.

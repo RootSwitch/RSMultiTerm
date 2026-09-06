@@ -344,6 +344,11 @@
             const m = e.data;
             if (!m || typeof m !== 'object') return;
             if (m.t === 'data') {
+                // Device output is activity too - keep the idle screensaver
+                // from starting over the top of a build that is actively
+                // scrolling. Idle.note only defers the start; it never
+                // interrupts a run, so a chatty session will not flicker one.
+                if (window.Idle) window.Idle.note();
                 // Output landing in a BACKGROUND tab is news the user has
                 // not seen; the tab strip says so until they look. Only the
                 // transition is reported - data arrives in bursts, and the

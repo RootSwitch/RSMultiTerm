@@ -521,6 +521,30 @@ assert.ok(/classList\.toggle\('unread'/.test(tabsSrc),
     'updateStatus must paint the unread badge');
 assert.ok(/\.tab\.unread \.tab-label::before/.test(css),
     'style.css must draw the unread dot');
+
+// 29. Device output must count as idle activity, or the screensaver starts
+// over the top of a build that is actively scrolling. term-pane pings Idle on
+// each data burst, and Idle.note is the SAME reset user input uses - so it
+// only defers the start and never stops a running animation (which would
+// flicker one on and off on any chatty session).
+assert.ok(/if \(m\.t === 'data'\) \{[\s\S]{0,320}if \(window\.Idle\) window\.Idle\.note\(\)/.test(termPane),
+    'the data path must treat incoming device output as idle activity (window.Idle.note)');
+assert.ok(/note: touch,/.test(idleSrc),
+    'Idle.note must be the same activity reset as user input, so output only defers the start');
+
+// 30. Aliens keeps its formation out of the ship's lane. Words on the bottom
+// rows used to home at ship level, which put aliens on the ship and restarted
+// the wave on the first settled frame.
+assert.ok(/const ceiling = shipY - 40;[\s\S]{0,160}\(w\.y \+ w\.h\) <= ceiling/.test(idleSrc),
+    'aliens must drop words below the ship-lane ceiling when building a wave');
+
+// 31. The auto (screensaver) Bricks paddle aims its return at a live brick and
+// floors the angle off vertical, or the ball settles into a cleared column
+// bouncing straight up and down with the paddle parked beneath it.
+assert.ok(/Auto paddle: aim the return at the nearest brick/.test(idleSrc),
+    'bricks auto paddle must aim at bricks rather than only tracking the ball');
+assert.ok(/if \(Math\.abs\(ang\) < 0\.32\)/.test(idleSrc),
+    'bricks auto paddle must keep the return off vertical (lateral-angle floor)');
 // Commands-on-connect: a shared file that can type into every reader's
 // devices is an injection channel, so folder defaults must be whitelisted
 // on the way IN - and the engine must cancel its timers when the session
