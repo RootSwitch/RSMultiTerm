@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 1.0.5 - 2026-09-06
+
+Logs that read like the screen, a way out of a changed host key, and three
+idle-animation fixes from daily use.
+
 - **Text logs now record what the screen showed.** The old log was the
   byte stream with the escapes cut out, which kept everything a program
   had erased or redrawn: a corrected typo logged as `echo hxlloello`, a
@@ -20,6 +25,8 @@
   Raw mode is untouched and still byte-exact. Measured against real bash
   5.3 readline and a real apt-get run on Ubuntu 24.04, which are now the
   test fixtures.
+- Quitting now waits for the engine to finish writing its logs (capped at
+  two seconds), so the last line on screen is never lost to the exit.
 - **A changed SSH host key can now be removed from inside the app** - from
   the HOST KEY CHANGED warning itself (Remove Stored Key), or from
   Settings > Known Hosts, which lists every pinned host with its
