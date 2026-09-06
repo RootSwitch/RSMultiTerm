@@ -38,6 +38,10 @@ for (const rel of files) {
     // Vendored third-party files are not house prose; their upstream style
     // must not be able to fail our test chain.
     if (rel.startsWith('public/vendor/')) continue;
+    // Captured terminal byte streams (tools/fixtures/*.bin) are device
+    // output, escapes and all - the point of them is that they are not
+    // clean text.
+    if (rel.startsWith('tools/fixtures/')) continue;
     const file = path.join(ROOT, rel);
     let text;
     try { text = fs.readFileSync(file, 'utf8'); } catch (_) { continue; }

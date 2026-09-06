@@ -8,3 +8,8 @@ public/vendor/** -text
 # Binary assets must not be touched by line-ending conversion.
 *.ico binary
 *.png binary
+
+# Captured terminal byte streams used as test fixtures. The CR/LF pairs
+# and escapes ARE the content; text=auto would normalize them into
+# something else.
+tools/fixtures/** binary

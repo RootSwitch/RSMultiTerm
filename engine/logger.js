@@ -1,11 +1,15 @@
 'use strict';
 // Per-session logging. Taps the transport's RAW data event before batching
-// and flow control, so a paused renderer never gaps a log. Keystrokes are
-// not logged unless logInput is set - passwords get typed at enable prompts.
+// and flow control, so a paused renderer never gaps a log.
 //
 // Modes:
-//   text (default) - ANSI-stripped, line-buffered, optional per-line
-//                    timestamps; the log people actually read.
+//   text (default) - what the terminal SHOWED, line by line, optional
+//                    per-line timestamps; the log people actually read.
+//                    Produced by screen-log.js: the renderer's own terminal
+//                    core, headless, in the logger's seat - so a corrected
+//                    typo, a redrawn paste, a \r progress bar and a nano
+//                    session all log the way they looked, not the way the
+//                    bytes arrived.
 //   raw            - exact bytes as received (.raw.log), full fidelity for
 //                    replaying escape-sequence problems.
 //
@@ -14,7 +18,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { AnsiStripper } = require('./ansi-strip');
+const { ScreenLog } = require('./screen-log');
 
 const ROTATE_BYTES = 50 * 1024 * 1024;
 
@@ -27,20 +31,23 @@ function stamp(d) {
 }
 
 function sanitize(name) {
-    return String(name || 'session').replace(/[<>:"/\\|?*\x00-\x1f]/g, '_').slice(0, 80);
+    return String(name || 'session').replace(/[<>:"/\|?*\x00-\x1f]/g, '_').slice(0, 80);
 }
 
 class SessionLogger {
-    // opts: {dir, sessionName, host, mode:'text'|'raw', timestamps:bool, rotateBytes}
+    // opts: {dir, sessionName, host, mode:'text'|'raw', timestamps:bool,
+    //        rotateBytes, cols, rows, idleMs}
     constructor(opts) {
         this.opts = opts;
         this.stream = null;
         this.bytes = 0;
         this.part = 1;
-        this.pendingLine = '';
-        this.stripper = opts.mode === 'raw' ? null : new AnsiStripper();
         this.failed = false;
         this.basePath = null;
+        this.screen = opts.mode === 'raw' ? null : new ScreenLog({
+            cols: opts.cols, rows: opts.rows, idleMs: opts.idleMs,
+            onLine: (text) => this._line(text),
+        });
     }
 
     _open() {
@@ -86,33 +93,35 @@ class SessionLogger {
         this.bytes = 0;
     }
 
-    write(buf) {
-        if (this.failed) return;
+    _ensureOpen() {
+        if (this.failed) return false;
         if (!this.stream) {
-            try { this._open(); } catch (_) { this.failed = true; return; }
-            if (!this.stream) return;
+            try { this._open(); } catch (_) { this.failed = true; return false; }
+            if (!this.stream) return false;
         }
+        return true;
+    }
 
-        let data;
-        if (this.stripper) {
-            const text = this.stripper.feed(buf);
-            if (!text) return;
-            if (this.opts.timestamps) {
-                // Line-buffered: a timestamp goes at the start of each
-                // completed line; the tail waits for its newline.
-                let s = this.pendingLine + text;
-                const lines = s.split('\n');
-                this.pendingLine = lines.pop();
-                if (!lines.length) return;
-                const now = stamp(new Date());
-                data = lines.map((l) => now + l).join('\n') + '\n';
-            } else {
-                data = text;
-            }
-        } else {
-            data = buf;
-        }
+    write(buf) {
+        if (!this._ensureOpen()) return;
+        if (this.screen) this.screen.write(buf);
+        else this._out(buf);
+    }
 
+    // The terminal's size, so the emulated screen wraps where the real one
+    // does - readline's redraws assume the width the device was told.
+    resize(cols, rows) {
+        if (this.screen) this.screen.resize(cols, rows);
+    }
+
+    // One finished line from the emulated screen.
+    _line(text) {
+        if (!this._ensureOpen()) return;
+        this._out((this.opts.timestamps ? stamp(new Date()) : '') + text + '\n');
+    }
+
+    _out(data) {
+        if (!this.stream) return;
         // A stalled destination must not buffer session output in memory
         // without bound - the log directory can be a network share, and a
         // hung share used to grow the heap for as long as the session
@@ -141,13 +150,11 @@ class SessionLogger {
         if (this.bytes >= (this.opts.rotateBytes || ROTATE_BYTES)) this._rotate();
     }
 
-    close() {
-        if (!this.stream) return Promise.resolve();
-        if (this.pendingLine) {
-            this.stream.write(stamp(new Date()) + this.pendingLine + '\n');
-            this.pendingLine = '';
-        }
-        return new Promise((res) => this.stream.end(res));
+    async close() {
+        // The screen writes its last lines synchronously from inside close().
+        if (this.screen) await this.screen.close();
+        if (!this.stream) return;
+        await new Promise((res) => this.stream.end(res));
     }
 }
 

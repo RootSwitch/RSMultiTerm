@@ -1,0 +1,73 @@
+[?2004huser@host:~$ echo hello
+[?2004lhello
+[?2004huser@host:~$ echo hxllo[K[K[K[Kello
+[?2004lhello
+[?2004huser@host:~$ lss[K
+[?2004lalpha.txt  beta.txt  notes.md
+[?2004huser@host:~$ ls alpha.txt 
+[?2004lalpha.txt
+[?2004huser@host:~$ ls notes.md [K
+[?2004l[?2004huser@host:~$ echo aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa[A[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[CX
+[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[Ca[A
+[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C[C
+[?2004lXaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+[?2004huser@host:~$ echo one \
+[?2004l[?2004h> two
+[?2004lone two
+[?2004huser@host:~$ cat <<EOF
+[?2004l[?2004h> line one
+[?2004l[?2004h> line two
+[?2004l[?2004h> EOF
+[?2004lline one
+line two
+[?2004huser@host:~$ [7mcat <<EOF[27m
+[7mline one[27m
+[7mline two[27m
+[7mEOF[27m[A[A[A[C[C[C[C[C[C[C[C[C[Ccat <<EOF
+line one
+line two
+EOF
+[?2004lline one
+line two
+[?2004huser@host:~$ [7mecho pasted-a[27m
+[7mecho pasted-b[27m[Aecho pasted-a
+echo pasted-b
+[?2004lpasted-a
+pasted-b
+[?2004huser@host:~$ for i in 1 2 3 4 5; do printf '\rprogress %d/5' $i; sleep 0.1; done; echo
+[?2004lprogress 1/5progress 2/5progress 3/5progress 4/5progress 5/5
+[?2004huser@host:~$ nano notes.md
+[?2004l[?2004h[?1049h[22;0;0t[1;24r(B[m[4l[?7h[39;49m[?1h=[?1h=[?25l[39;49m(B[m[H[2J[22;34H(B[0;7m[ Reading... ](B[m[22;33H(B[0;7m[ Read 1 line ](B[m[H(B[0;7m  GNU nano 8.7.1                       notes.md                                 [1;79H(B[m[23d(B[0;7m^G(B[m Help[14G(B[0;7m^O(B[m Write Out (B[0;7m^F(B[m Where Is  (B[0;7m^K(B[m Cut[53G(B[0;7m^T(B[m Execute   (B[0;7m^C(B[m Location[24d(B[0;7m^X(B[m Exit[14G(B[0;7m^R(B[m Read File (B[0;7m^\(B[m Replace   (B[0;7m^U(B[m Paste     (B[0;7m^J(B[m Justify   (B[0;7m^/(B[m Go To Line[2dx[?12l[?25h[?25l[1;49H(B[0;7m*[79G(B[m7[2;21r8[2dM[1;24r[2;1Hhello from nano[3d[?12l[?25h[?25l[23;14H   (B[0;7mM-D(B[m DOS Format  (B[0;7mM-A(B[m Append      (B[0;7mM-B(B[m Backup File (B[0;7m^T(B[m Browse[K[24;2H(B[0;7mC(B[m Cancel       (B[0;7mM-M(B[m Mac Format  (B[0;7mM-P(B[m Prepend     (B[0;7m^Q(B[m Discard buffer[K[23;74H[A(B[0;7mWrite to File: notes.md                                                         [22;24H(B[m[?12l[?25h[?25l[22;33H[1K (B[0;7m[ Writing... ](B[m[K[1;49H(B[0;7m [79G(B[m[22;32H(B[0;7m[ Wrote 2 lines ](B[m[23;14H(B[0;7m^O(B[m Write Out (B[0;7m^F(B[m Where Is  (B[0;7m^K(B[m Cut       (B[0;7m^T(B[m Execute   (B[0;7m^C(B[m Location[24;2H(B[0;7mX(B[m Exit      (B[0;7m^R(B[m Read File (B[0;7m^\(B[m Replace   (B[0;7m^U(B[m Paste     (B[0;7m^J(B[m Justify   (B[0;7m^/(B[m Go To Line[?12l[?25h[3d[?25l[22d[J[24d[?12l[?25h[24;1H[?1049l[23;0;0t[?1l>[?2004l[?2004huser@host:~$ whiptail --msgbox "Restart services during package upgrades without asking?" 8 60
+[?2004l[?1049h[22;0;0t[1;24r[4l[?25l(B[m[37m[40m[1;24r[H[2J[1;1H[97m[44m[K
+[K
+[K
+[K
+[K
+[K
+[K
+[K
+[K
+[K
+[K
+[K
+[K
+[K
+[K
+[K
+[K
+[K
+[K
+[K
+[K
+[K
+[K
+[K[1;1H[9;11H[30m[47m┌──────────────────────────────────────────────────────────┐[10;11H│                                                          │[97m[40m [11;11H[30m[47m│ Restart services during package upgrades without asking? │[97m[40m [12;11H[30m[47m│                                                          │[97m[40m [13;11H[30m[47m│                                                          │[97m[40m [14;11H[30m[47m│                          [37m[41m<Ok>[30m[47m                            │[97m[40m [15;11H[30m[47m│                                                          │[97m[40m [16;11H[30m[47m└──────────────────────────────────────────────────────────┘[97m[40m [17;12H                                                            [14;39H[?12l[?25h[24;1H[37m(B[m[39;49m[K[?1049l[23;0;0t[?2004huser@host:~$ sleep 50^C[?2004l[?2004h[?2004l
+[?2004huser@host:~$ sleep 50
+[?2004l^C
+[?2004huser@host:~$ clear
+[?2004l[H[2J[3J[?2004huser@host:~$ echo after clear
+[?2004lafter clear
+[?2004huser@host:~$ printf '\033[32mup\033[0m \xe2\x94\x8c\xe2\x94\x80\xe2\x94\x90 caf\xc3\xa9\n'
+[?2004l[32mup[0m ┌─┐ café
+[?2004huser@host:~$ exit
+[?2004lexit

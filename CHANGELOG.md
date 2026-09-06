@@ -2,6 +2,39 @@
 
 ## Unreleased
 
+- **Text logs now record what the screen showed.** The old log was the
+  byte stream with the escapes cut out, which kept everything a program
+  had erased or redrawn: a corrected typo logged as `echo hxlloello`, a
+  command cleared with Ctrl-U logged as if it had run, a pasted heredoc
+  logged twice with `EOFcat <<EOF` gluing the copies (readline redraws a
+  multi-line paste with cursor-up moves), every frame of a `
+` progress
+  bar landed on one line - needrestart produced a 12,725-character one -
+  and nano's whole interface arrived as soup. The logger now runs the
+  renderer's own terminal core headless and writes lines as the screen
+  finishes with them: a line goes to the file the moment it scrolls out of
+  view, the rest when the session has been quiet for a moment, before a
+  `clear` (the log keeps history the screen wipes), and at close. Full-
+  screen programs (nano, less, dialogs) leave one note in place of their
+  paint. Long commands are one log line even where the screen wrapped them.
+  Raw mode is untouched and still byte-exact. Measured against real bash
+  5.3 readline and a real apt-get run on Ubuntu 24.04, which are now the
+  test fixtures.
+- **A changed SSH host key can now be removed from inside the app** - from
+  the HOST KEY CHANGED warning itself (Remove Stored Key), or from
+  Settings > Known Hosts, which lists every pinned host with its
+  fingerprint and the date it was trusted. The confirmation is a dialog the
+  main process draws, showing the fingerprint from its own store: the
+  renderer draws and answers its own host-key prompts, so a confirmation it
+  could click through would be no confirmation at all. Removal rather than
+  overwrite, on purpose - the next connection is an ordinary first contact
+  that shows you the new fingerprint before you trust it.
+- Idle animations: Aliens keeps its formation out of the ship's lane and
+  Bricks keeps bricks out of the paddle's, when the screen has text on its
+  bottom rows; the screensaver Bricks paddle aims at bricks instead of
+  parking under a ball bouncing in a cleared column; and device output now
+  counts as activity, so a scrolling build no longer idles out.
+
 ## 1.0.4 - 2026-09-01
 
 A game, and two things that were always slower or riskier than they

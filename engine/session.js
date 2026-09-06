@@ -117,7 +117,10 @@ class Session {
             const m = e.data;
             if (!m || typeof m !== 'object') return;
             if (m.t === 'stdin') this.transport.write(m.data);
-            else if (m.t === 'resize') this.transport.resize(m.cols, m.rows);
+            else if (m.t === 'resize') {
+                this.transport.resize(m.cols, m.rows);
+                if (this.logger) this.logger.resize(m.cols, m.rows);
+            }
             else if (m.t === 'ack') this.flow.ack(m.seq, m.bytes);
         });
         port.start();

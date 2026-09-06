@@ -587,6 +587,28 @@ assert.ok(removeAt !== -1 && closeAt !== -1 && removeAt < closeAt,
     'the mismatch warning must list removal before Close, with Close the primary action');
 assert.ok(!/primary/.test(mismatch.slice(removeAt, closeAt)),
     'Close stays the primary action on a security warning - removal must not be the default');
+// 33. Text logs come from emulation, never from stripping. A stripper keeps
+// what a program erased or redrew - a corrected typo, a Ctrl-U'd command,
+// both copies of a redrawn paste, every frame of a  carriage-return progress bar, nano's
+// whole UI - and the fixtures in tools/fixtures/ show each one. The logger
+// must feed the screen emulator, the engine must tell it the terminal's
+// size, and the emulator must be a real dependency or a packaged build
+// has no text logger at all.
+const loggerNow = fs.readFileSync(path.join(__dirname, '..', 'engine', 'logger.js'), 'utf8');
+assert.ok(/require\('\.\/screen-log'\)/.test(loggerNow) && !/AnsiStripper|ansi-strip/.test(loggerNow),
+    'logger.js text mode must go through screen-log, not an escape stripper');
+const sessionNow = fs.readFileSync(path.join(__dirname, '..', 'engine', 'session.js'), 'utf8');
+assert.ok(/if \(this\.logger\) this\.logger\.resize\(m\.cols, m\.rows\);/.test(sessionNow),
+    "session.js must forward the terminal size to the logger - readline's redraws assume the width the device was told");
+const pkgNow = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8'));
+assert.ok(pkgNow.dependencies && pkgNow.dependencies['@xterm/headless'],
+    '@xterm/headless must be a runtime dependency - a devDependency is not packaged, and the engine needs it');
+assert.ok(!fs.existsSync(path.join(__dirname, '..', 'engine', 'ansi-strip.js')),
+    'the stripper is retired; a copy left behind will get used again');
+assert.ok(fs.existsSync(path.join(__dirname, '..', 'tools', 'fixtures', 'bash-readline.bin')) &&
+    /tools\/fixtures\/\*\* binary/.test(fs.readFileSync(path.join(__dirname, '..', '.gitattributes'), 'utf8')),
+    'the captured fixtures must be marked binary, or text=auto rewrites their CR/LF on commit');
+
 // Commands-on-connect: a shared file that can type into every reader's
 // devices is an injection channel, so folder defaults must be whitelisted
 // on the way IN - and the engine must cancel its timers when the session

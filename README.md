@@ -39,7 +39,7 @@ ssh-copy-id, and session sync that keeps credentials out of shared files.
 
 Also: SSH jump hosts (chainable, pooled - thirty sessions through one
 gateway authenticate once), port forwards (-L, -D SOCKS, -R) over saved
-sessions, per-session logging (ANSI-stripped and timestamped, or raw -
+sessions, per-session logging (what the screen showed, line by line, or raw -
 announced in the sidebar, never silent), OSC 133 semantic prompts (jump
 between commands, copy last output, failed commands flagged red), a
 command palette (Ctrl+Shift+P), snippets with `{{param}}` placeholders,
@@ -129,9 +129,12 @@ neither is what you want.
 
 ## Dependencies
 
-Runtime: `ssh2`, `serialport`. That is the entire tree - everything else is
-Electron itself and vendored static files, auditable in `public/vendor/`
-and hash-checked against their npm originals by `npm test`.
+Runtime: `ssh2`, `serialport`, and `@xterm/headless` - the same terminal
+core the renderer draws with, run headless in the engine so a text log
+records what the screen showed rather than the byte stream with its escapes
+cut out. That is the entire tree - everything else is Electron itself and
+vendored static files, auditable in `public/vendor/` and hash-checked
+against their npm originals by `npm test`.
 
 ## Data and privacy
 

@@ -47,6 +47,15 @@ Two structural consequences shape everything else:
 
 ## Trust boundary 1: the device
 
+**Session logs.** A text log is produced by emulation, not by stripping:
+the renderer's own terminal core reads the stream headless in the engine,
+and the file gets the text of the cells - which can hold printable
+characters only, since C0/C1 controls and every escape are consumed by the
+parser. A text log therefore cannot carry an executable sequence by any
+spelling (raw 8-bit C1, UTF-8-encoded C1, split across chunks), and
+`tools/test-screen-log.js` feeds it those. Raw mode is the exact bytes by
+design and is named `.raw.log` for that reason.
+
 **Escape sequences.** Chrome the app writes into a terminal goes
 through `App.plainText`, which strips C0/C1 bytes, so an error message
 quoting a device's banner cannot emit escapes. OSC 52 *read* - a remote
