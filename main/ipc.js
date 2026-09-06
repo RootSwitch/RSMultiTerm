@@ -1149,6 +1149,42 @@ function wireIpc(engineRef, getWindow, bootConfig) {
     // out with the renderer.
     const hostkeyPending = new Map();
 
+    // Reading the pin store is harmless - it is fingerprints, not secrets.
+    ipcMain.handle('rs:hostkey.list', () => hostkeys.list());
+
+    // Removing a pin is the one action that turns the MISMATCH hard block
+    // back into a friendly first-contact prompt, which is precisely what
+    // somebody in the middle needs. The renderer DRAWS and ANSWERS its own
+    // host-key prompts, so an in-app "are you sure" would be no confirmation
+    // at all under renderer compromise - the same reasoning that put
+    // credential host scoping in main. So main asks, in a window the
+    // renderer cannot draw, and every word of it - host, port, fingerprint -
+    // is read from main's own store rather than taken from the request. The
+    // renderer only gets to say WHICH key it means.
+    ipcMain.handle('rs:hostkey.forget', async (_e, req) => {
+        const host = String((req && req.host) || '');
+        const port = Number(req && req.port) || 22;
+        const entry = hostkeys.get(host, port);
+        if (!entry) return { removed: false, reason: 'not-stored' };
+        const { response } = await dialog.showMessageBox(getWindow(), {
+            type: 'warning',
+            buttons: ['Remove the key', 'Keep it'],
+            defaultId: 1,
+            cancelId: 1,
+            message: `Remove the stored host key for ${host}:${port}?`,
+            detail: `Stored fingerprint:\n${entry.fingerprint}\n\n` +
+                'The next connection to this device is then treated as a first ' +
+                'contact: it shows the new fingerprint and asks you to trust it, ' +
+                'so nothing is accepted behind your back. Do this when you know ' +
+                'why the key changed - a rebuilt, replaced or reimaged device is ' +
+                'the ordinary reason. If you do not know why it changed, that is ' +
+                'the case this warning exists for.',
+        });
+        if (response !== 0) return { removed: false, reason: 'cancelled' };
+        hostkeys.forget(host, port);
+        return { removed: true, host, port };
+    });
+
     ipcMain.on('rs:hostkey.answer', (_e, { checkId, accept, remember }) => {
         const p = hostkeyPending.get(checkId);
         if (!p) return;

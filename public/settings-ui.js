@@ -303,6 +303,19 @@
         osc52Hint.textContent = 'OSC 52: a remote tmux/vim yank reaches your clipboard. ' +
             'Reading your clipboard is always refused, regardless of this setting.';
 
+        // Host keys: the store behind the first-contact prompt and the
+        // HOST KEY CHANGED block. The block tells you to remove the stored
+        // key; this is where you do that when there is no failed connection
+        // in front of you to offer the button.
+        const hostKeysBtn = document.createElement('button');
+        hostKeysBtn.textContent = 'Known Hosts...';
+        hostKeysBtn.addEventListener('click', () => window.Forms.knownHosts());
+        const hostKeysRow = document.createElement('div');
+        hostKeysRow.className = 'field-row';
+        const hostKeysLabel = document.createElement('label');
+        hostKeysLabel.textContent = 'SSH host keys';
+        hostKeysRow.append(hostKeysLabel, hostKeysBtn);
+
         body.append(
             row('Mouse mode', fMouse), hint,
             row('Middle click', fMiddle),
@@ -310,6 +323,7 @@
             termRow, row('Minimum contrast', fContrast), contrastHint,
             row('File browser', fAutoFiles),
             row('Remote clipboard', fOsc52), osc52Hint,
+            hostKeysRow,
             row('Font', fFontFamily), row('Font size', fFontSize),
             row('Font zoom keys', fZoomMod),
             row('Scrollback lines', fScrollback),

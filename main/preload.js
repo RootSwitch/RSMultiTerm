@@ -87,6 +87,8 @@ const INVOKE_ALLOW = new Set([
     'rs:field.syslog',
     'rs:health.stale',
     'rs:health.forget',
+    'rs:hostkey.list',
+    'rs:hostkey.forget',
 ]);
 
 // One-way renderer -> main messages (no response, fire and forget). The

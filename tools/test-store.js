@@ -198,6 +198,38 @@ try {
         'a corrupt known_hosts must stop the app, not silently empty the trust store');
     fs.unlinkSync(path.join(dir, 'known_hosts.json'));
 
+    // 12b. Reading and clearing pins - what the Known Hosts manager and the
+    // "Remove Stored Key" button on the MISMATCH warning are built on.
+    hostkeys.init();
+    hostkeys.trust('10.50.1.7', 22, 'SHA256:aaa', 'ssh-ed25519');
+    hostkeys.trust('core-sw-01', 22, 'SHA256:bbb', 'ssh-rsa');
+    // An IPv6 literal is full of colons and the store key is "host:port",
+    // so the port has to come off the END or the host comes back truncated.
+    hostkeys.trust('fe80::1', 2222, 'SHA256:ccc', 'ssh-ed25519');
+    const listed = hostkeys.list();
+    assert.strictEqual(listed.length, 3);
+    const v6 = listed.find((e) => e.port === 2222);
+    assert.strictEqual(v6.host, 'fe80::1', 'an IPv6 host must survive the round trip');
+    assert.strictEqual(v6.fingerprint, 'SHA256:ccc');
+    assert.ok(v6.addedAt, 'the manager shows when a key was trusted');
+    // get() is what MAIN reads to put a fingerprint in its own dialog - the
+    // renderer must never be the source of that text.
+    assert.strictEqual(hostkeys.get('10.50.1.7', 22).fingerprint, 'SHA256:aaa');
+    assert.strictEqual(hostkeys.get('10.50.1.7', 99), null, 'a different port is a different pin');
+    // Forgetting one pin leaves the others alone, and turns exactly that
+    // host back into a first contact.
+    assert.strictEqual(hostkeys.check('10.50.1.7', 22, 'SHA256:zzz'), 'MISMATCH');
+    hostkeys.forget('10.50.1.7', 22);
+    assert.strictEqual(hostkeys.check('10.50.1.7', 22, 'SHA256:zzz'), 'unknown',
+        'a removed pin must fall back to first contact, not stay a mismatch');
+    assert.strictEqual(hostkeys.list().length, 2, 'only the named pin is removed');
+    assert.strictEqual(hostkeys.check('core-sw-01', 22, 'SHA256:bbb'), 'known');
+    // ...and it is gone from disk, not just from memory.
+    hostkeys.init();
+    assert.strictEqual(hostkeys.isKnown('10.50.1.7', 22), false, 'the removal is persisted');
+    assert.strictEqual(hostkeys.isKnown('core-sw-01', 22), true);
+    fs.unlinkSync(path.join(dir, 'known_hosts.json'));
+
     // 13. Shape validation. A file that PARSES but is the wrong shape used
     // to sail through both loaders and throw somewhere later - and for
     // highlights that "later" was inside app.whenReady, so a mangled

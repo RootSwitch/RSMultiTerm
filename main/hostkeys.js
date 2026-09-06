@@ -46,4 +46,25 @@ function forget(host, port) {
     store.save('known_hosts', known);
 }
 
-module.exports = { init, fingerprintOf, check, trust, forget, isKnown };
+// One pinned entry, for main to read when it needs to SHOW a fingerprint in
+// a dialog of its own. The renderer must never be the source of that text.
+function get(host, port) {
+    return known[`${host}:${port}`] || null;
+}
+
+// Every pinned host, for the manager UI. The key is "host:port" and a bare
+// IPv6 address is full of colons, so the port is split off the END.
+function list() {
+    return Object.entries(known).map(([key, v]) => {
+        const at = key.lastIndexOf(':');
+        return {
+            host: at > 0 ? key.slice(0, at) : key,
+            port: at > 0 ? Number(key.slice(at + 1)) : null,
+            fingerprint: v.fingerprint,
+            keyType: v.keyType || null,
+            addedAt: v.addedAt || null,
+        };
+    }).sort((a, b) => a.host.localeCompare(b.host) || (a.port || 0) - (b.port || 0));
+}
+
+module.exports = { init, fingerprintOf, check, trust, forget, isKnown, get, list };

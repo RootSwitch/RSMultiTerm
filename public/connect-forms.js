@@ -986,8 +986,83 @@
             'background:var(--se-input);border:1px solid var(--se-border);border-radius:4px;';
         fp.textContent = `offered: ${fingerprint}`;
         body.append(p, fp);
-        open('SECURITY WARNING', body, [{ label: 'Close', primary: true }], { modal: true });
+        // The old dialog said "remove the stored key" and left you to find
+        // out where that lived - which is nowhere, from in here. The button
+        // is on the warning itself, and it is NOT the primary one: the
+        // default action on a key that changed for no known reason is to
+        // walk away and go and look at the device.
+        open('SECURITY WARNING', body, [
+            {
+                label: 'Remove Stored Key',
+                onClick: () => { forgetHostKey(host, port); },
+            },
+            { label: 'Close', primary: true },
+        ], { modal: true });
     });
+
+    // Ask main to drop a pin. Main draws its own confirmation - see the
+    // handler - so all this reports is what main decided.
+    async function forgetHostKey(host, port) {
+        const r = await rsterm.invoke('rs:hostkey.forget', { host, port });
+        if (r && r.removed) {
+            showBanner('info', `Stored host key for ${host}:${port} removed. ` +
+                'Reconnect to see the new fingerprint and trust it.', [], { key: 'hostkey' });
+        } else if (r && r.reason === 'not-stored') {
+            showBanner('info', `No stored host key for ${host}:${port}.`, [], { key: 'hostkey' });
+        }
+        return !!(r && r.removed);
+    }
+
+    // The place to look when you want to clear one WITHOUT a failed connect
+    // in front of you - reached from Settings.
+    function knownHosts() {
+        const body = document.createElement('div');
+        const list = document.createElement('div');
+        const hint = document.createElement('p');
+        hint.style.cssText = 'margin:0 0 10px;color:var(--se-txt-dim);font-size:11px;';
+        hint.textContent = 'The SSH host keys this app has pinned. Removing one makes the ' +
+            'next connection to that device a first contact: it shows the new fingerprint ' +
+            'and asks you to trust it.';
+        body.append(hint, list);
+
+        const render = async () => {
+            const rows = await rsterm.invoke('rs:hostkey.list');
+            list.textContent = '';
+            if (!rows.length) {
+                const empty = document.createElement('p');
+                empty.style.color = 'var(--se-txt-dim)';
+                empty.textContent = 'No host keys stored yet. The first SSH connection to a ' +
+                    'device asks you to trust its fingerprint, and that is what lands here.';
+                list.appendChild(empty);
+                return;
+            }
+            for (const e of rows) {
+                const r = document.createElement('div');
+                r.style.cssText = 'display:flex;align-items:center;gap:8px;padding:6px 0;' +
+                    'border-bottom:1px solid var(--se-border);';
+                const who = document.createElement('div');
+                who.style.cssText = 'flex:1;min-width:0;';
+                const name = document.createElement('div');
+                name.style.cssText = 'font-family:var(--mt-mono);';
+                name.textContent = `${e.host}:${e.port}`;
+                const meta = document.createElement('div');
+                meta.style.cssText = 'font-family:var(--mt-mono);font-size:11px;' +
+                    'color:var(--se-txt-dim);overflow:hidden;text-overflow:ellipsis;';
+                const when = e.addedAt ? ` - trusted ${String(e.addedAt).slice(0, 10)}` : '';
+                meta.textContent = e.fingerprint + when;
+                who.append(name, meta);
+                const del = document.createElement('button');
+                del.textContent = 'Remove';
+                del.addEventListener('click', async () => {
+                    if (await forgetHostKey(e.host, e.port)) render();
+                });
+                r.append(who, del);
+                list.appendChild(r);
+            }
+        };
+        render();
+        open('Known Hosts', body, [{ label: 'Close', primary: true }], { wide: true });
+    }
 
     // --- tiny banner helper -----------------------------------------------
     // opts.key: a banner with the same key REPLACES the previous one
@@ -1044,5 +1119,5 @@
     }
 
     window.Forms = { editSession, editFolder, manageProfiles, showBanner, clearBanner,
-        askCredentials, saveSessionDialog, installKeyDialog, offerNewProfile };
+        askCredentials, saveSessionDialog, installKeyDialog, offerNewProfile, knownHosts };
 })();

@@ -545,6 +545,38 @@ assert.ok(/Auto paddle: aim the return at the nearest brick/.test(idleSrc),
     'bricks auto paddle must aim at bricks rather than only tracking the ball');
 assert.ok(/if \(Math\.abs\(ang\) < 0\.32\)/.test(idleSrc),
     'bricks auto paddle must keep the return off vertical (lateral-angle floor)');
+// 32. Dropping a pinned host key is the one action that turns the MISMATCH
+// hard block back into a first-contact prompt the renderer can answer
+// itself - so the confirmation must be one MAIN draws, from data MAIN reads
+// out of its own store. An in-app "are you sure" would be drawn and clicked
+// by the same compromised renderer that asked, which is no confirmation at
+// all (the reasoning that put credential host scoping in main).
+const forgetHandler = ipcSrc.slice(
+    ipcSrc.indexOf("ipcMain.handle('rs:hostkey.forget'"),
+    ipcSrc.indexOf("ipcMain.on('rs:hostkey.answer'"));
+assert.ok(forgetHandler.length > 200, 'the rs:hostkey.forget handler must exist in main');
+assert.ok(/dialog\.showMessageBox\(/.test(forgetHandler),
+    'removing a pinned host key must be confirmed in a dialog main draws, not the renderer');
+assert.ok(/hostkeys\.get\(host, port\)/.test(forgetHandler) &&
+    /entry\.fingerprint/.test(forgetHandler),
+    "the confirmation must show main's OWN stored fingerprint, never a string the renderer passed");
+assert.ok(forgetHandler.indexOf('hostkeys.forget(') > forgetHandler.indexOf('showMessageBox('),
+    'the key may only be dropped AFTER the dialog is answered');
+assert.ok(/if \(response !== 0\) return/.test(forgetHandler),
+    'anything but the explicit confirm button must leave the key in place');
+// The warning that says "remove the stored key" must offer the way to do it,
+// and must not make it the default action.
+const connectFormsSrc = fs.readFileSync(path.join(PUBLIC, 'connect-forms.js'), 'utf8');
+const mismatch = connectFormsSrc.slice(connectFormsSrc.indexOf('rs:evt.hostkey-mismatch'));
+assert.ok(/label: 'Remove Stored Key'/.test(mismatch),
+    'the HOST KEY CHANGED warning must offer the removal it tells you to perform');
+// indexOf, not a regex spanning newlines - that has torn before.
+const removeAt = mismatch.indexOf("label: 'Remove Stored Key'");
+const closeAt = mismatch.indexOf("{ label: 'Close', primary: true }");
+assert.ok(removeAt !== -1 && closeAt !== -1 && removeAt < closeAt,
+    'the mismatch warning must list removal before Close, with Close the primary action');
+assert.ok(!/primary/.test(mismatch.slice(removeAt, closeAt)),
+    'Close stays the primary action on a security warning - removal must not be the default');
 // Commands-on-connect: a shared file that can type into every reader's
 // devices is an injection channel, so folder defaults must be whitelisted
 // on the way IN - and the engine must cancel its timers when the session
