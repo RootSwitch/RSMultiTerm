@@ -150,11 +150,16 @@ class SessionLogger {
         if (this.bytes >= (this.opts.rotateBytes || ROTATE_BYTES)) this._rotate();
     }
 
-    async close() {
-        // The screen writes its last lines synchronously from inside close().
-        if (this.screen) await this.screen.close();
-        if (!this.stream) return;
-        await new Promise((res) => this.stream.end(res));
+    // Idempotent: a second close() waits for the same completion. The
+    // screen writes its last lines from inside its close().
+    close() {
+        if (this._closing) return this._closing;
+        this._closing = (async () => {
+            if (this.screen) await this.screen.close();
+            if (!this.stream) return;
+            await new Promise((res) => this.stream.end(res));
+        })();
+        return this._closing;
     }
 }
 

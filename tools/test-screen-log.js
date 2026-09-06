@@ -244,6 +244,22 @@ async function oracle(buf, cols = 80, rows = 24) {
     ]);
     for (const l of await run(hostile)) assert.ok(!CONTROL.test(l), 'control byte in the log: ' + JSON.stringify(l));
 
+    // 21. close() twice: both callers wait for the same final flush, and the
+    // tail is written once. The engine closes a logger from the transport's
+    // close event AND from session.close(); a second call that resolved
+    // early would let the engine exit mid-flush.
+    {
+        const lines = [];
+        const log = new ScreenLog({ rows: 3, idleMs: 0, onLine: (t) => lines.push(t) });
+        log.write(Buffer.from('x\r\n'.repeat(2000) + 'tail'));
+        const a = log.close();
+        const b = log.close();
+        assert.strictEqual(a, b, 'one completion for both callers');
+        await b;
+        assert.strictEqual(lines.length, 2001, 'everything, including the cursor row, once');
+        assert.strictEqual(lines[2000], 'tail');
+    }
+
     console.log('ok - screen log (real readline + apt fixtures vs an independent reading, chunk-split, ' +
-        'trim tracking, 3J, clear, wrap join, alt-screen note, resize, close, hostile bytes)');
+        'trim tracking, 3J, clear, wrap join, alt-screen note, resize, close x2, hostile bytes)');
 })().catch((e) => { console.error('FAIL -', e.stack || e.message); process.exit(1); });

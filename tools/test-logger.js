@@ -115,6 +115,24 @@ function onlyFile(dir, ext) {
             'a rolled part says which part it is');
     }
 
+    // 5. The engine closes a logger twice - from the transport's close
+    // event and from session.close(). Both must wait for the final flush,
+    // and the tail must land once.
+    {
+        const dir = path.join(box, 'twice');
+        const CRLF = String.fromCharCode(13, 10);
+        const log = new SessionLogger({ dir, sessionName: 'sw', host: 'h',
+            mode: 'text', timestamps: false });
+        log.write(Buffer.from('first' + CRLF + 'tail-line'));
+        const a = log.close();
+        const b = log.close();
+        assert.strictEqual(a, b, 'one completion for both callers');
+        await b;
+        const lines = read(onlyFile(dir, '.log')).split(String.fromCharCode(10)).filter(Boolean);
+        assert.deepStrictEqual(lines.slice(1), ['first', 'tail-line'],
+            'the line still on the cursor row is written at close, once');
+    }
+
     console.log('ok - session logging (header not per-line stamps by default, ' +
         'stamps when asked, raw stays byte-exact, rotated parts self-describe)');
 })().then(

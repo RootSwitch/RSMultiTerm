@@ -244,9 +244,24 @@ app.whenReady().then(() => {
     }
 });
 
-app.on('before-quit', () => {
+app.on('before-quit', (e) => {
+    // Quitting kills the engine with the app, and the engine's shutdown is
+    // asynchronous: it closes every session, and each session's logger
+    // writes its last screenful on close. Hold the quit until the engine
+    // has exited on its own - it does, once everything is closed - and go
+    // regardless after a short cap, so a hung transport cannot pin the
+    // window open. The second pass through here (from the quit below)
+    // finds `quitting` set and lets it through.
+    if (quitting) return;
     quitting = true;
-    if (engineRef.proc) engineRef.proc.postMessage({ t: 'shutdown' });
+    const proc = engineRef.proc;
+    if (!proc) return;
+    e.preventDefault();
+    let done = false;
+    const go = () => { if (done) return; done = true; clearTimeout(cap); app.quit(); };
+    const cap = setTimeout(go, 2000);
+    proc.once('exit', go);
+    proc.postMessage({ t: 'shutdown' });
 });
 
 app.on('window-all-closed', () => app.quit());

@@ -609,6 +609,17 @@ assert.ok(fs.existsSync(path.join(__dirname, '..', 'tools', 'fixtures', 'bash-re
     /tools\/fixtures\/\*\* binary/.test(fs.readFileSync(path.join(__dirname, '..', '.gitattributes'), 'utf8')),
     'the captured fixtures must be marked binary, or text=auto rewrites their CR/LF on commit');
 
+// 34. Quitting must wait for the engine. Its shutdown is asynchronous - it
+// closes every session, and each logger writes its last screenful on
+// close - and Electron kills the utility process with the app. Without the
+// hold, the tail of every log is a race the log loses on a fast machine.
+const mainNow = fs.readFileSync(path.join(__dirname, '..', 'main', 'main.js'), 'utf8');
+const bq = mainNow.slice(mainNow.indexOf("app.on('before-quit'"), mainNow.indexOf("app.on('window-all-closed'"));
+assert.ok(bq.indexOf('e.preventDefault()') !== -1 && bq.indexOf("proc.once('exit', go)") !== -1,
+    'before-quit must hold the quit until the engine has exited');
+assert.ok(bq.indexOf('setTimeout(go') !== -1,
+    'and give up after a cap, so a hung transport cannot pin the window open');
+
 // Commands-on-connect: a shared file that can type into every reader's
 // devices is an injection channel, so folder defaults must be whitelisted
 // on the way IN - and the engine must cancel its timers when the session

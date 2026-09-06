@@ -138,11 +138,14 @@ class ScreenLog {
         });
     }
 
+    // One completion, however many times it is asked for: the engine closes
+    // a logger from the transport's close event AND from session.close(),
+    // and the second caller must wait for the flush, not skip it.
     close() {
-        if (this.closed) return Promise.resolve();
+        if (this.closing) return this.closing;
         this.closed = true;
         if (this.idle) { clearTimeout(this.idle); this.idle = null; }
-        return new Promise((resolve) => {
+        this.closing = new Promise((resolve) => {
             this.term.write('', () => {
                 const b = this._normal();
                 this._commit(this._lastContentRow(b) + 1, false);
@@ -150,6 +153,7 @@ class ScreenLog {
                 resolve();
             });
         });
+        return this.closing;
     }
 
     _armIdle() {
