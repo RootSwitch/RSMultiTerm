@@ -545,6 +545,16 @@ assert.ok(/Auto paddle: aim the return at the nearest brick/.test(idleSrc),
     'bricks auto paddle must aim at bricks rather than only tracking the ball');
 assert.ok(/if \(Math\.abs\(ang\) < 0\.32\)/.test(idleSrc),
     'bricks auto paddle must keep the return off vertical (lateral-angle floor)');
+// Bricks keeps the paddle lane clear for the same reason Aliens keeps the
+// ship's lane clear: a brick below the paddle can never be hit, so it is
+// drawn over the paddle for the whole run and the board never completes.
+assert.ok(/const ceiling = env\.h \* 0\.66;[\s\S]{0,200}\(w\.y \+ w\.h\) <= ceiling/.test(idleSrc),
+    'bricks must drop words below the ceiling, leaving the ball and paddle lane clear');
+// ...and the rebuild that follows an empty board must not rescan every
+// terminal buffer on every frame.
+assert.ok(/s\.reseedIn -= dt;/.test(idleSrc) && /s\.reseedIn = 1;/.test(idleSrc),
+    'the bricks reseed must be on a timer - resample() per frame scans every terminal');
+
 // 32. Dropping a pinned host key is the one action that turns the MISMATCH
 // hard block back into a first-contact prompt the renderer can answer
 // itself - so the confirmation must be one MAIN draws, from data MAIN reads

@@ -495,11 +495,20 @@
     STYLES.bricks = {
         label: 'Bricks', screen: true, mood: 'lively', playable: true,
         init(env) {
-            const words = (env.screen ? env.screen.words : []).filter((w) => w.text.length > 0);
+            // Keep the bottom of the field clear, the way Aliens keeps the
+            // ship's lane clear. Words down at paddle height became bricks
+            // the ball can never reach - it resets the moment it goes past
+            // the paddle - so they sat there for the whole run, drawn over
+            // the paddle, and the board could never complete. The ceiling
+            // sits just above where the ball is served, so it always starts
+            // in open space rather than inside a brick.
+            const ceiling = env.h * 0.66;
+            const words = (env.screen ? env.screen.words : [])
+                .filter((w) => w.text.length > 0 && (w.y + w.h) <= ceiling);
             const bricks = words.map((w, i) => ({ ...w, alive: true, tone: i % 3 }));
             const paddleW = Math.max(80, env.w * 0.08);
             return {
-                bricks, paddleW,
+                bricks, paddleW, reseedIn: 0,
                 paddleX: env.w / 2 - paddleW / 2,
                 ball: { x: env.w / 2, y: env.h * 0.7, vx: 180, vy: -260, r: 5 },
                 speed: 320,
@@ -605,8 +614,17 @@
                 ctx.fillText(br.text, br.x, br.y + 2);
             }
             if (alive === 0) {
-                const fresh = STYLES.bricks.init({ ...env, screen: resample() });
-                if (fresh.bricks.length) Object.assign(s, fresh);
+                // Board cleared: read the screen again and rebuild. On a
+                // timer, not every frame - resample() walks every visible
+                // terminal's buffer, and a screen with nothing above the
+                // ceiling to make bricks from would otherwise do that
+                // thirty times a second forever.
+                s.reseedIn -= dt;
+                if (s.reseedIn <= 0) {
+                    s.reseedIn = 1;
+                    const fresh = STYLES.bricks.init({ ...env, screen: resample() });
+                    if (fresh.bricks.length) Object.assign(s, fresh);
+                }
             }
 
             // Paddle and ball.
