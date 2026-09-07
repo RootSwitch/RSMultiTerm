@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 1.0.6 - 2026-09-07
+
+Three fixes from testing 1.0.5, one of them a button that did nothing.
+
 - **Remove Stored Key now works.** In 1.0.5 the button closed the warning
   and did nothing: the main-process handler referenced the dialog module
   without importing it, threw, and the failure was swallowed. Fixed, the
