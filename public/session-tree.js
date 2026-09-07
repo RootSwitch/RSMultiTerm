@@ -710,6 +710,15 @@ ${describeAge(ageDays)}.` + NOT_PROBED;
             e.preventDefault();
             blankMenu(e);
         });
+        // A click on the blank space beneath the rows clears the selection.
+        // Without this, once a folder fills the pane there was no way OUT
+        // of it, and "+ Folder" kept landing inside.
+        treeBox.addEventListener('click', (e) => {
+            if (e.target.closest && e.target.closest('.tree-row, .tree-details')) return;
+            if (!selected.size) return;
+            selected.clear();
+            render();
+        });
         // Dropping on the blank space under the rows moves to the top level.
         treeBox.addEventListener('dragover', (e) => {
             if (!dragIds || (e.target.closest && e.target.closest('.tree-row'))) return;

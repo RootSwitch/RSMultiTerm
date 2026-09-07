@@ -1166,7 +1166,21 @@ function wireIpc(engineRef, getWindow, bootConfig) {
         const port = Number(req && req.port) || 22;
         const entry = hostkeys.get(host, port);
         if (!entry) return { removed: false, reason: 'not-stored' };
-        const { response } = await dialog.showMessageBox(getWindow(), {
+        // Required here, per handler, like every other dialog in this file.
+        // 1.0.5 shipped without this line: the handler threw ReferenceError,
+        // the invoke rejected, and the button did nothing - and the smoke
+        // probe never reached this point because nothing headless can click
+        // a native dialog. `show` is bound BEFORE the hook below is read, so
+        // a smoke run still executes the reference even when it answers
+        // the question itself.
+        const { dialog } = require('electron');
+        const show = dialog.showMessageBox.bind(dialog);
+        // Dev-only test hook: a smoke run answers the confirmation from the
+        // environment ('remove' or 'keep'). Never honored in a packaged build.
+        const auto = require('./dev-hooks').devOnlyHook('RSMT_SMOKE_CONFIRM');
+        const { response } = auto
+            ? { response: auto === 'remove' ? 0 : 1 }
+            : await show(getWindow(), {
             type: 'warning',
             buttons: ['Remove the key', 'Keep it'],
             defaultId: 1,

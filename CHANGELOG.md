@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+- **Remove Stored Key now works.** In 1.0.5 the button closed the warning
+  and did nothing: the main-process handler referenced the dialog module
+  without importing it, threw, and the failure was swallowed. Fixed, the
+  failure is now shown as an error banner if it ever recurs, and the smoke
+  suite exercises the real removal end to end. Until you update, the
+  stored keys live in `known_hosts.json` in the app's data folder and can
+  be edited by hand.
+- "Create a New Profile..." from a Credentials dropdown now adds and
+  selects the new profile without closing and reopening the editor.
+- New Session and New Folder dialogs show where the item is going, with
+  Top level on offer - a big selected folder no longer traps new folders
+  inside it - and clicking blank space in the session tree clears the
+  selection.
+
 ## 1.0.5 - 2026-09-06
 
 Logs that read like the screen, a way out of a changed host key, and three

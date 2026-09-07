@@ -131,7 +131,7 @@ assert.ok(/app\.isPackaged/.test(devHooks) && /return null/.test(devHooks),
 // these env vars go through the gate.
 const countOf = (hay, needle) => hay.split(needle).length - 1;
 for (const [file, hook] of [['main.js', 'RSMT_SMOKE_PROBE'], ['ipc.js', 'RSMT_SMOKE_SAVETEXT'],
-    ['ssh-keys.js', 'RSMT_SSH_DIR']]) {
+    ['ipc.js', 'RSMT_SMOKE_CONFIRM'], ['ssh-keys.js', 'RSMT_SSH_DIR']]) {
     const src = fs.readFileSync(path.join(__dirname, '..', 'main', file), 'utf8');
     assert.ok(countOf(src, "devOnlyHook('" + hook + "')") >= 1,
         `${file} must read ${hook} through devOnlyHook`);
@@ -565,12 +565,14 @@ const forgetHandler = ipcSrc.slice(
     ipcSrc.indexOf("ipcMain.handle('rs:hostkey.forget'"),
     ipcSrc.indexOf("ipcMain.on('rs:hostkey.answer'"));
 assert.ok(forgetHandler.length > 200, 'the rs:hostkey.forget handler must exist in main');
-assert.ok(/dialog\.showMessageBox\(/.test(forgetHandler),
+// The call is bound first (`show`) so a smoke run evaluates the `dialog`
+// reference even when it auto-answers - see section 35.
+assert.ok(forgetHandler.indexOf('dialog.showMessageBox') !== -1 && forgetHandler.indexOf('show(getWindow(), {') !== -1,
     'removing a pinned host key must be confirmed in a dialog main draws, not the renderer');
 assert.ok(/hostkeys\.get\(host, port\)/.test(forgetHandler) &&
     /entry\.fingerprint/.test(forgetHandler),
     "the confirmation must show main's OWN stored fingerprint, never a string the renderer passed");
-assert.ok(forgetHandler.indexOf('hostkeys.forget(') > forgetHandler.indexOf('showMessageBox('),
+assert.ok(forgetHandler.indexOf('hostkeys.forget(') > forgetHandler.indexOf('show(getWindow(), {'),
     'the key may only be dropped AFTER the dialog is answered');
 assert.ok(/if \(response !== 0\) return/.test(forgetHandler),
     'anything but the explicit confirm button must leave the key in place');
@@ -619,6 +621,35 @@ assert.ok(bq.indexOf('e.preventDefault()') !== -1 && bq.indexOf("proc.once('exit
     'before-quit must hold the quit until the engine has exited');
 assert.ok(bq.indexOf('setTimeout(go') !== -1,
     'and give up after a cap, so a hung transport cannot pin the window open');
+
+// 35. The 1.0.5 bugs from the owner's testing, each pinned where it lived.
+// (a) rs:hostkey.forget referenced `dialog` without requiring it - every
+// dialog in ipc.js is required per handler - so the handler threw, the
+// invoke rejected, and the button silently did nothing. The renderer must
+// also SURFACE a rejected removal instead of swallowing it.
+const forgetNow = ipcSrc.slice(ipcSrc.indexOf("ipcMain.handle('rs:hostkey.forget'"), ipcSrc.indexOf("ipcMain.on('rs:hostkey.answer'"));
+assert.ok(forgetNow.indexOf("const { dialog } = require('electron');") !== -1,
+    "rs:hostkey.forget must require `dialog` itself - it is not in ipc.js's module scope");
+assert.ok(forgetNow.indexOf('dialog.showMessageBox.bind(dialog)') !== -1 &&
+    forgetNow.indexOf('dialog.showMessageBox.bind(dialog)') < forgetNow.indexOf("devOnlyHook('RSMT_SMOKE_CONFIRM')"),
+    'the dialog reference must be evaluated BEFORE the smoke auto-answer is read, so a smoke run still executes it');
+const cfNow = fs.readFileSync(path.join(PUBLIC, 'connect-forms.js'), 'utf8');
+const forgetUi = cfNow.slice(cfNow.indexOf('async function forgetHostKey('), cfNow.indexOf('function knownHosts('));
+assert.ok(forgetUi.indexOf("showBanner('error'") !== -1,
+    'a rejected key removal must be shown as an error banner, never an unhandled rejection');
+// (b) "Create a New Profile..." from a credentials dropdown must hand the
+// saved profile back, or the dropdown never gains the entry.
+assert.ok(cfNow.indexOf('done({ name: fName.value.trim() });') !== -1 && cfNow.indexOf('                            done();') === -1,
+    'editProfile must call done() WITH the saved profile');
+// (c) A new session or folder says where it is going, with Top level on
+// offer - and a click on blank tree space clears the selection.
+assert.ok(cfNow.indexOf('function locationPicker(') !== -1 && cfNow.split("row('Location', fLocation)").length - 1 === 2,
+    'both New Session and New Folder must offer a Location picker');
+assert.ok(cfNow.indexOf("{ value: '', label: 'Top level' }") !== -1, 'Top level must be a choice');
+const treeNow = fs.readFileSync(path.join(PUBLIC, 'session-tree.js'), 'utf8');
+assert.ok(treeNow.indexOf('A click on the blank space beneath the rows clears the selection') !== -1 &&
+    treeNow.indexOf("treeBox.addEventListener('click'") !== -1,
+    'the tree must clear its selection on a blank-space click');
 
 // Commands-on-connect: a shared file that can type into every reader's
 // devices is an injection channel, so folder defaults must be whitelisted

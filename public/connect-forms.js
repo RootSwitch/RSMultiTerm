@@ -7,6 +7,25 @@
 (function () {
     const { open, row, input, select } = window.Modals;
 
+    // Where a NEW node goes. The tree puts it inside the selected folder,
+    // which is right until the selection is a folder that fills the pane
+    // and there is nothing blank left to click to get out of it. So the
+    // dialog says where it is going and lets you change it.
+    function locationPicker(nodes, parentId) {
+        const options = [{ value: '', label: 'Top level' }];
+        const walk = (pid, depth) => {
+            const kids = Object.values(nodes)
+                .filter((n) => n.type === 'folder' && (n.parentId || null) === pid)
+                .sort((a, b) => a.name.localeCompare(b.name));
+            for (const n of kids) {
+                options.push({ value: n.id, label: `${' '.repeat(depth * 3)}${n.name}` });
+                walk(n.id, depth + 1);
+            }
+        };
+        walk(null, 0);
+        return select(options, parentId || '');
+    }
+
     // --- session editor ---------------------------------------------------
     async function editSession(node, parentId) {
         const isNew = !node;
@@ -14,6 +33,7 @@
 
         const profiles = await rsterm.invoke('rs:profiles.list');
         const nodes = await rsterm.invoke('rs:tree.get');
+        const fLocation = isNew ? locationPicker(nodes, node.parentId) : null;
         const eff = !isNew ? await rsterm.invoke('rs:tree.effective', { id: node.id }) : null;
 
         const inheritLabel = (field, fallback) => {
@@ -108,6 +128,7 @@
                 'time - every connect, reconnects included. Inherits from the folder.'));
         syncSerial();
 
+        if (fLocation) body.prepend(row('Location', fLocation));
         open(isNew ? 'New Session' : `Edit ${node.name}`, body, [
             { label: 'Cancel' },
             {
@@ -124,6 +145,7 @@
                     const jump = fJump.value === '' ? null : (fJump.value === '-' ? null : fJump.value);
                     rsterm.invoke('rs:tree.upsert', {
                         ...node,
+                        parentId: fLocation ? (fLocation.value || null) : (node.parentId || null),
                         name: fName.value.trim(),
                         host: fHost.value.trim(),
                         transport: fTransport.value || null,
@@ -149,6 +171,7 @@
         node = node || { type: 'folder', parentId: parentId || null, name: '', defaults: {} };
         const d = node.defaults || {};
         const profiles = await rsterm.invoke('rs:profiles.list');
+        const fLocation = isNew ? locationPicker(await rsterm.invoke('rs:tree.get'), node.parentId) : null;
 
         const body = document.createElement('div');
         const fName = input(node.name, 'Core - HQ');
@@ -179,6 +202,7 @@
                 'Typed into every session in this folder a moment after it connects. ' +
                 'A session with its own commands overrides this. Never published to a sync file.'));
 
+        if (fLocation) body.prepend(row('Location', fLocation));
         open(isNew ? 'New Folder' : `Edit ${node.name}`, body, [
             { label: 'Cancel' },
             {
@@ -194,6 +218,7 @@
                     }
                     rsterm.invoke('rs:tree.upsert', {
                         ...node,
+                        parentId: fLocation ? (fLocation.value || null) : (node.parentId || null),
                         name: fName.value.trim(),
                         defaults: {
                             ...d,
@@ -512,7 +537,10 @@
                         if (wantsKeyPass) patch.keyPassphrase = fKeyPass.value;
                         if (m === 'key' && fKeyStore.value !== 'dpapi') patch.clearKeyPassphrase = true;
                         rsterm.invoke('rs:profiles.upsert', patch).then(() => {
-                            done();
+                            // The dropdown that opened this editor adds and
+                            // selects the new profile by name; done() with
+                            // nothing meant it never did.
+                            done({ name: fName.value.trim() });
                             m2.close();
                         }, (err) => {
                             // A malformed host pattern is refused in main;
@@ -1003,7 +1031,16 @@
     // Ask main to drop a pin. Main draws its own confirmation - see the
     // handler - so all this reports is what main decided.
     async function forgetHostKey(host, port) {
-        const r = await rsterm.invoke('rs:hostkey.forget', { host, port });
+        let r;
+        try {
+            r = await rsterm.invoke('rs:hostkey.forget', { host, port });
+        } catch (err) {
+            // A rejected invoke used to vanish into an unhandled rejection,
+            // which is how 1.0.5's broken button looked like it had worked.
+            showBanner('error', `Could not remove the stored key for ${host}:${port}: ` +
+                String((err && err.message) || err), [], { key: 'hostkey' });
+            return false;
+        }
         if (r && r.removed) {
             showBanner('info', `Stored host key for ${host}:${port} removed. ` +
                 'Reconnect to see the new fingerprint and trust it.', [], { key: 'hostkey' });
