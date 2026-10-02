@@ -253,7 +253,7 @@
         // serves - the three keys everybody guesses first.
         const play = !!(opts && opts.play);
         env.play = play ? { left: false, right: false, up: false, down: false, fire: false, fired: false, score: 0 } : null;
-        running = { canvas, ctx, style, env, region, state: style.init(env), raf: 0, lastFrame: 0,
+        running = { canvas, ctx, style, env, region, state: style.init(env), raf: 0, lastFrame: 0, lastTick: 0,
             id, play, areaChoice,
             // Only "Surprise me" rotates - a chosen style changing itself
             // would be the app overruling the choice. A game never does.
@@ -328,7 +328,7 @@
     function onVisibility() {
         if (!running) return;
         if (document.hidden) cancelAnimationFrame(running.raf);
-        else { running.lastFrame = 0; running.raf = requestAnimationFrame(frame); }
+        else { running.lastFrame = 0; running.lastTick = 0; running.raf = requestAnimationFrame(frame); }
     }
     function onResize() {
         if (!running) return;
@@ -354,7 +354,17 @@
         // Wall-clock, not the rAF timestamp: this is a minutes-scale
         // deadline and the loop stops dead while the window is hidden.
         if (running.rotateAt && Date.now() >= running.rotateAt) { rotate(); return; }
-        if (running.lastFrame && now - running.lastFrame < 1000 / FPS_CAP) return;
+        // Draw on whichever display tick lands nearest the FPS_CAP deadline.
+        // The gate used to skip any tick that arrived even slightly early,
+        // and where ticks come just under 33ms apart - an RDP session's 32Hz
+        // display adapter - that was every other tick, so every style drew
+        // at 16fps. Measured in the app: Aliens lasers moved 34px a frame
+        // and passed straight through 15px-tall words. Half a tick of slack
+        // picks the nearest tick instead: 32Hz draws every tick, 60Hz every
+        // second one, 144Hz every fifth. tools/test-idle.js pins the rates.
+        const tick = running.lastTick ? now - running.lastTick : 0;
+        running.lastTick = now;
+        if (running.lastFrame && now - running.lastFrame + tick / 2 < 1000 / FPS_CAP) return;
         const dt = running.lastFrame ? Math.min(0.1, (now - running.lastFrame) / 1000) : 1 / FPS_CAP;
         running.lastFrame = now;
         const { ctx, region } = running;
@@ -1023,7 +1033,7 @@
 
             // --- projectiles -----------------------------------------------
             for (const b of s.bombs) b.y += b.vy * dt;
-            for (const l of s.lasers) l.y += l.vy * dt;
+            for (const l of s.lasers) { l.from = l.y; l.y += l.vy * dt; }
             if (ship.dead <= 0) {
                 const hit = s.bombs.find((b) => Math.abs(b.x - ship.x) < shipW / 2 && b.y >= shipY - 8 && b.y <= shipY + 12);
                 if (hit) {
@@ -1032,17 +1042,28 @@
                     s.bursts.push({ x: ship.x, y: shipY, t: 0.6, big: true });
                 }
             }
+            // A laser is tested along the whole stretch it covered this
+            // frame, not only where it landed. It moves 18px a frame at 30fps
+            // and a word is 15px tall at a 13px font, so the landing-point
+            // test let lasers step clean over words - and since every laser
+            // starts at the same height and moves the same distance, a row
+            // sitting between two landing heights could not be hit at all
+            // until the block dropped at an edge. The word struck is the
+            // first one on the way up: the lowest box the stretch touches.
             for (const l of s.lasers) {
-                if (l.y < -10) continue;
+                if (l.from < -10) continue;
+                let struck = null;
                 for (const a of s.aliens) {
                     if (a.state === 'dead' || a.state === 'arriving') continue;
-                    if (l.x >= a.x && l.x <= a.x + a.w && l.y >= a.y && l.y <= a.y + a.h) {
-                        a.state = 'dead';
-                        if (env.play) env.play.score += 10;
-                        l.y = -99;
-                        s.bursts.push({ x: a.x + a.w / 2, y: a.y + a.h / 2, t: 0.35, big: false });
-                        break;
-                    }
+                    if (l.x < a.x || l.x > a.x + a.w) continue;
+                    if (l.y > a.y + a.h || l.from < a.y) continue;
+                    if (!struck || a.y + a.h > struck.y + struck.h) struck = a;
+                }
+                if (struck) {
+                    struck.state = 'dead';
+                    if (env.play) env.play.score += 10;
+                    l.y = -99;
+                    s.bursts.push({ x: struck.x + struck.w / 2, y: struck.y + struck.h / 2, t: 0.35, big: false });
                 }
             }
             s.bombs = s.bombs.filter((b) => b.y < env.h + 20);

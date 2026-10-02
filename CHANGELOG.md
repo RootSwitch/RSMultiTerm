@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+- **Aliens lasers no longer pass through words.** A laser was only
+  checked where it landed each frame, and it moves farther per frame than
+  a word is tall, so every laser could step over a row that sat between
+  its landing heights - lasers visibly went through the middle of a word
+  until the block turned at an edge and dropped. Lasers are now checked
+  along the whole distance they cover, and strike the lowest word in
+  their way.
+- **Idle animations draw at their intended 30fps over Remote Desktop.**
+  The frame cap skipped any display refresh that arrived slightly early,
+  which on a 32Hz Remote Desktop display was every other one, so every
+  animation ran at 16fps; on a 60Hz monitor it wavered between 20 and 30.
+  The cap now draws on the refresh nearest each frame's deadline.
+
 ## 1.0.6 - 2026-09-07
 
 Three fixes from testing 1.0.5, one of them a button that did nothing.
