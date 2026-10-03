@@ -25,7 +25,8 @@
         const tc = s.terminalColors || { mode: 'theme', background: null };
         const fTermMode = select([
             { value: 'theme', label: 'Follow the app theme' },
-            { value: 'dark', label: 'Always dark' },
+            { value: 'theme-dark', label: 'Follow the app theme, kept dark' },
+            { value: 'dark', label: 'Always dark, classic colors' },
             { value: 'custom', label: 'Custom Color...' },
         ], tc.mode || 'theme');
         const fTermBg = document.createElement('input');

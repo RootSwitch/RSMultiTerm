@@ -98,14 +98,24 @@
     // The xterm palette, resolved from settings + the active app theme.
     // mode 'theme' follows the chosen palette (--se-input is the same surface
     // the pane chrome uses, so the terminal stops being a dark hole in a
-    // light theme); 'dark' pins the original; 'custom' takes a chosen color
-    // and derives a readable foreground for it.
+    // light theme); 'theme-dark' follows it too but stays dark, a light
+    // theme's terminal going to that theme's night (Colors.keptDark); 'dark'
+    // pins the original; 'custom' takes a chosen color and derives a
+    // readable foreground for it.
     function terminalTheme() {
         const cfg = appSettings.terminalColors || { mode: 'theme' };
         let background, foreground, accent;
 
         if (cfg.mode === 'dark') {
             ({ background, foreground, accent } = DARK);
+        } else if (cfg.mode === 'theme-dark') {
+            accent = cssVar('--se-accent', DARK.accent);
+            ({ background, foreground } = window.Colors.keptDark({
+                input: cssVar('--se-input', DARK.background),
+                panel: cssVar('--se-panel', '#262a33'),
+                txt: cssVar('--se-txt', DARK.foreground),
+                accent,
+            }));
         } else if (cfg.mode === 'custom' && cfg.background) {
             background = cfg.background;
             foreground = window.Colors.isLight(background) ? '#1b1e25' : '#e6e9ef';

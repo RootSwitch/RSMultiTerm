@@ -78,5 +78,25 @@
 
     function clearCache() { cache.clear(); }
 
-    window.Colors = { hexToRgb, rgbToHex, luminance, contrast, isLight, readable, rgba, clearCache };
+    // A theme's color at night: a near-black tint of its accent, so a light
+    // theme's dark surface still reads as that theme - Sakura a dark plum,
+    // Glacier a dark navy - rather than as the classic grey-blue. The idle
+    // animations' night sky and the terminal's "kept dark" mode share it, so
+    // the screensaver and the terminal it covers agree.
+    function night(accent) {
+        const a = hexToRgb(accent) || { r: 60, g: 80, b: 120 };
+        return rgbToHex({ r: a.r * 0.14, g: a.g * 0.14, b: a.b * 0.14 });
+    }
+
+    // The terminal surface for "Follow the app theme, kept dark": a dark
+    // theme's own colors, and for a light theme its night, written in its
+    // light panel color - the theme turned inside out. tools/test-colors.js
+    // holds every built-in theme to dark and readable here.
+    function keptDark({ input, panel, txt, accent }) {
+        if (!isLight(input)) return { background: input, foreground: txt };
+        return { background: night(accent), foreground: isLight(panel) ? panel : '#e6e9ef' };
+    }
+
+    window.Colors = { hexToRgb, rgbToHex, luminance, contrast, isLight, readable, rgba, clearCache,
+        night, keptDark };
 })();

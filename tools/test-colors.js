@@ -100,4 +100,52 @@ assert.strictEqual(C.hexToRgb('#12345'), null, 'malformed hex rejected');
 assert.strictEqual(C.rgba('#4c8bf5', 0.35), 'rgba(76, 139, 245, 0.35)');
 assert.ok(C.rgba('bogus', 0.35).startsWith('rgba('), 'bad input still yields a color');
 
-console.log('ok - color maths (light/dark detection, contrast correction, hue identity)');
+// 9. A theme's night is a near-black tint of its accent - 14% of each
+// channel - the same color the idle animations paint their sky with.
+assert.strictEqual(C.night('#e58aab'), '#201318', 'Sakura at night is a dark plum');
+assert.strictEqual(C.night('#2f6fd0'), '#07101d', 'Glacier at night is a dark navy');
+assert.ok(!C.isLight(C.night('#ffffff')), 'even a white accent makes a dark night');
+assert.strictEqual(C.night('bogus'), C.night('#3c5078'), 'a bad accent still yields a night');
+
+// 10. "Follow the app theme, kept dark" must be dark and readable for EVERY
+// built-in theme: a light theme goes to its night in its own light panel
+// color, a dark theme keeps exactly what it had. The palettes come from
+// themes.js itself (run with just enough of a document to load), on top of
+// the :root defaults in style.css, which is what a theme does not override.
+const css = fs.readFileSync(path.join(__dirname, '..', 'public', 'style.css'), 'utf8');
+const rootBlock = css.slice(css.indexOf(':root {'), css.indexOf('}', css.indexOf(':root {')));
+const defaults = {};
+for (const m of rootBlock.matchAll(/(--se-[a-z0-9-]+):\s*(#[0-9a-fA-F]{3,6})\s*;/g)) defaults[m[1]] = m[2];
+const themeBox = {
+    window: {},
+    document: { documentElement: { style: { setProperty() {}, removeProperty() {} } } },
+    localStorage: { getItem: () => null, setItem() {} },
+};
+vm.createContext(themeBox);
+vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'public', 'themes.js'), 'utf8'), themeBox);
+const THEMES = themeBox.window.Themes.THEMES;
+let lightCount = 0;
+for (const [key, theme] of Object.entries(THEMES)) {
+    const v = { ...defaults, ...theme.vars };
+    const out = C.keptDark({ input: v['--se-input'], panel: v['--se-panel'],
+        txt: v['--se-txt'], accent: v['--se-accent'] });
+    assert.ok(!C.isLight(out.background), `${key}: kept dark must be dark, got ${out.background}`);
+    if (C.isLight(v['--se-input'])) {
+        // The colors kept dark CHOOSES must be AAA-readable. A dark theme's
+        // own pair is the theme's design (Solarized Dark sits at 6.3:1 on
+        // purpose) and is only required to come through unchanged.
+        const ratio = C.contrast(C.hexToRgb(out.foreground), C.hexToRgb(out.background));
+        assert.ok(ratio >= 7, `${key}: kept dark text must be AAA-readable, got ${ratio.toFixed(1)}:1`);
+        lightCount++;
+        assert.strictEqual(out.background, C.night(v['--se-accent']), `${key}: a light theme goes to its night`);
+        assert.strictEqual(out.foreground, v['--se-panel'], `${key}: written in its own panel color`);
+    } else {
+        assert.strictEqual(out.background, v['--se-input'], `${key}: a dark theme keeps its background`);
+        assert.strictEqual(out.foreground, v['--se-txt'], `${key}: and its text`);
+    }
+}
+assert.ok(lightCount >= 5 && Object.keys(THEMES).length >= 20,
+    `expected the full theme set with its light themes, got ${Object.keys(THEMES).length} and ${lightCount}`);
+
+console.log(`ok - color maths (light/dark detection, contrast correction, hue identity, ` +
+    `kept dark across ${Object.keys(THEMES).length} themes, ${lightCount} of them light)`);

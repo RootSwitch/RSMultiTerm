@@ -726,9 +726,26 @@ assert.ok(!/\bteam\b/i.test(pkg.description),
     'package.json description still says "team" - it is stamped into the exe ' +
     'and shown by Windows, and the feature is called session sync now');
 
+// 36. "Follow the app theme, kept dark" must be a real setting, not a
+// decorative one: offered in Settings, consulted by the terminal palette
+// through Colors.keptDark, and sharing its night with the idle animations
+// so the screensaver and the terminal it covers agree.
+{
+    const darkSettingsSrc = fs.readFileSync(path.join(PUBLIC, 'settings-ui.js'), 'utf8');
+    const darkPaneSrc = fs.readFileSync(path.join(PUBLIC, 'term-pane.js'), 'utf8');
+    const darkIdleSrc = fs.readFileSync(path.join(PUBLIC, 'idle.js'), 'utf8');
+    assert.ok(darkSettingsSrc.indexOf("{ value: 'theme-dark', label: 'Follow the app theme, kept dark' }") >= 0,
+        'Settings must offer the kept-dark terminal mode');
+    const branch = darkPaneSrc.indexOf("cfg.mode === 'theme-dark'");
+    assert.ok(branch >= 0 && darkPaneSrc.indexOf('window.Colors.keptDark(', branch) > branch,
+        'terminalTheme must consult the kept-dark mode through Colors.keptDark');
+    assert.ok(darkIdleSrc.indexOf('c.ground = window.Colors.night(c.accent);') >= 0,
+        'the idle animations must take their night from Colors.night, the same as the terminal');
+}
+
 console.log(`ok - ui invariants (hidden rule, outside-click menus, clipboard perms, ` +
     `no default menu, wheel zoom, remote-name sanitizing, gated dev hooks, idle overlay-only, ` +
     `exe metadata, shared menus, focus handback, contrast floor, broadcast truth, no orphan sessions, ` +
-    `armed-tab growth, focus trap, scp discipline, low-batch pins, shape guards, failure surfacing, ` +
+    `armed-tab growth, focus trap, scp discipline, low-batch pins, shape guards, failure surfacing, kept-dark mode, ` +
     `${styleIds.length} idle styles mooded, unread badges, on-connect discipline, watch triggers, four-state dots, ` +
     `${scripts.length} scripts, ${wired.size} wired ids)`);

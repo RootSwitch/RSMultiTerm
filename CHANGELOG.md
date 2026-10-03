@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- **A dark terminal that keeps the theme's colors.** Settings > Terminal
+  colors has a new choice, "Follow the app theme, kept dark". On a dark
+  theme it changes nothing; on a light theme the terminal goes dark in that
+  theme's own colors - Sakura a dark plum with pale pink text, Glacier a
+  dark navy - the same night sky the idle animations already paint. The
+  old dark choice is now labeled "Always dark, classic colors".
 - **Aliens lasers no longer pass through words.** A laser was only
   checked where it landed each frame, and it moves farther per frame than
   a word is tall, so every laser could step over a row that sat between

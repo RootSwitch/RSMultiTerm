@@ -122,9 +122,7 @@
         // over the terminal's own words and should look like it.
         const light = window.Colors && window.Colors.isLight(c.bg);
         if (light) {
-            const a = window.Colors.hexToRgb(c.accent) || { r: 60, g: 80, b: 120 };
-            c.ground = window.Colors.rgbToHex({
-                r: Math.round(a.r * 0.14), g: Math.round(a.g * 0.14), b: Math.round(a.b * 0.14) });
+            c.ground = window.Colors.night(c.accent);
             c.ink = '#f2f2f2';
             c.inkDim = c.accent;
         } else {
