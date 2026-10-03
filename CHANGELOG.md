@@ -14,6 +14,13 @@
   which on a 32Hz Remote Desktop display was every other one, so every
   animation ran at 16fps; on a 60Hz monitor it wavered between 20 and 30.
   The cap now draws on the refresh nearest each frame's deadline.
+- **Snake hears every tap.** It only looked at which arrow keys were held
+  down at the moment it moved a square, so a quick tap that started and
+  ended between two moves was ignored - about a third to half of short
+  taps, depending on frame rate - and two quick turns in a row almost
+  never both landed. Key presses are now remembered in order and used one
+  per move, up to three waiting at a time. Holding a direction works as
+  before.
 - **`npm run bench:idle` reports real frame rates and per-frame costs.**
   It divided by every display refresh, including the ones the frame cap
   skips, so on a 60Hz monitor it showed twice the true frame rate and half

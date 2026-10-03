@@ -17,6 +17,11 @@
 //      a 45-second run. Now the whole stretch is tested, and the word
 //      struck is the lowest one in the way.
 //
+//   3. SNAKE HEARS EVERY TAP. Snake read the arrow keys HELD at the moment
+//      it moved a step, so a tap that began and ended between two steps
+//      was lost: a 60ms tap steered 48-67% of the time depending on frame
+//      rate. Presses are now queued as they happen and spent one per step.
+//
 // Usage: node tools/test-idle.js
 
 const fs = require('fs');
@@ -38,9 +43,10 @@ function seeded(seed) {
     return () => { x = (x * 1664525 + 1013904223) >>> 0; return x / 4294967296; };
 }
 
-function load() {
+function load(style = 'aliens', opts = { area: 'window' }) {
     let rafCb = null;
     let drawn = 0;
+    const handlers = {};
     const noop = () => {};
     // Every canvas call is a no-op except the full-window background fill,
     // which every frame Aliens draws starts with - so it counts frames.
@@ -61,7 +67,8 @@ function load() {
         document: {
             hidden: false, documentElement: {}, body: { appendChild: noop },
             createElement: el, getElementById: () => null, querySelector: () => null,
-            addEventListener: noop, removeEventListener: noop,
+            addEventListener: (type, fn) => { (handlers[type] = handlers[type] || []).push(fn); },
+            removeEventListener: noop,
         },
         innerWidth: W, innerHeight: H,
         matchMedia: () => ({ matches: false }),
@@ -79,8 +86,13 @@ function load() {
     vm.createContext(sb);
     vm.runInContext(SRC, sb, { filename: 'idle.js' });
     const Idle = sb.Idle;
-    Idle.start('aliens', { area: 'window' });
-    return { Idle, tick: (now) => { if (rafCb) rafCb(now); }, drawn: () => drawn };
+    Idle.start(style, opts);
+    // A key event through the overlay's own capture-phase handler.
+    const key = (type, code) => {
+        const e = { type, code, key: code, preventDefault: noop, stopImmediatePropagation: noop };
+        for (const fn of handlers[type] || []) fn(e);
+    };
+    return { Idle, tick: (now) => { if (rafCb) rafCb(now); }, drawn: () => drawn, key };
 }
 
 // --- 1. frame pacing ------------------------------------------------------
@@ -189,6 +201,96 @@ for (const period of [1000 / 32, 1000 / 16]) {
     w.fire(400, 400);   // 20px left of the word
     w.run(1200, 1000 / 32);
     check('a laser beside a word passes it', w.words[0].state !== 'dead', w.words[0].state);
+}
+
+// --- 3. snake controls ---------------------------------------------------
+// Snake in play mode, heading right, with key events arriving BETWEEN frames
+// at the given times. Returns the headings it took, in order, as letters.
+function steer(hz, keys, setup) {
+    const t = load('snake', { play: true, area: 'window' });
+    const period = 1000 / hz;
+    let now = 5000;
+    t.tick(now);
+    const s = t.Idle.debugState();
+    s.dir = { x: 1, y: 0 };
+    if (setup) setup(s);
+    const events = keys.map(([at, type, code]) => ({ at: now + at, type, code }))
+        .sort((a, b) => a.at - b.at);
+    const seen = [];
+    const end = now + 1500;
+    while (now < end) {
+        now += period;
+        while (events.length && events[0].at <= now) { const e = events.shift(); t.key(e.type, e.code); }
+        t.tick(now);
+        const d = t.Idle.debugState().dir;
+        const h = d.x === 1 ? 'R' : d.x === -1 ? 'L' : d.y === -1 ? 'U' : 'D';
+        if (seen[seen.length - 1] !== h) seen.push(h);
+    }
+    return seen.join('');
+}
+const tap = (at, code, len) => [[at, 'keydown', code], [at + len, 'keyup', code]];
+
+console.log('snake controls');
+{
+    // A 40ms tap at many phases against the step: every one must steer.
+    const rnd = seeded(4242);
+    for (const hz of [16, 30, 32]) {
+        let missed = 0;
+        for (let i = 0; i < 60; i++) {
+            if (!steer(hz, tap(200 + rnd() * 300, 'ArrowUp', 40)).includes('U')) missed++;
+        }
+        check(`every short tap steers at ${hz}fps`, missed === 0, `${missed} of 60 taps lost`);
+    }
+}
+{
+    // Up then left, both inside one step: both turns land, in order.
+    const rnd = seeded(77);
+    let failed = 0;
+    for (let i = 0; i < 40; i++) {
+        const at = 200 + rnd() * 300;
+        const h = steer(30, [...tap(at, 'ArrowUp', 30), ...tap(at + 40, 'ArrowLeft', 30)]);
+        if (!h.includes('RUL')) failed++;
+    }
+    check('a quick double turn lands both turns', failed === 0, `${failed} of 40 lost a turn`);
+}
+{
+    // A press back into the neck is dropped without blocking the next one.
+    const h = steer(30, [...tap(300, 'ArrowLeft', 30), ...tap(320, 'ArrowUp', 30)]);
+    check('a reversal is dropped and the next press still turns', h === 'RU', h);
+}
+{
+    // Held keys still steer: Left held from the start is illegal while
+    // heading right, then takes effect the moment an Up tap makes it legal.
+    const h = steer(30, [[200, 'keydown', 'ArrowLeft'], ...tap(400, 'ArrowUp', 30), [1200, 'keyup', 'ArrowLeft']]);
+    check('a held direction applies once it becomes legal', h === 'RUL', h);
+}
+{
+    // A mash of six presses between two frames plays out as three turns at
+    // most. (The cap is on presses WAITING: a mash that spans a step lets
+    // that step spend one, which is fine.) Frames at 30fps fall every
+    // 33.3ms from the start, so 301-323ms sits between the frames at 300
+    // and 333. The presses zigzag up and away, so no turn they make can run
+    // the snake into itself - a crash restarts it heading right, which would
+    // read as one more turn.
+    const keys = [];
+    ['ArrowUp', 'ArrowLeft', 'ArrowUp', 'ArrowRight', 'ArrowUp', 'ArrowLeft']
+        .forEach((code, i) => keys.push(...tap(301 + i * 4, code, 2)));
+    const h = steer(30, keys);
+    check('the queue is bounded: a mash plays out as three turns', h === 'RULU', h);
+}
+{
+    // A held key's auto-repeat must not fill the queue and crowd out a real
+    // press: only the first keydown of a hold is a press. (Up is let go as
+    // Left is tapped; held any longer, it would rightly turn the snake back
+    // up once that was legal again.)
+    const repeats = [200, 230, 260, 290, 320].map((at) => [at, 'keydown', 'ArrowUp']);
+    const h = steer(30, [...repeats, ...tap(330, 'ArrowLeft', 30), [335, 'keyup', 'ArrowUp']]);
+    check('auto-repeat does not crowd out a real press', h === 'RUL', h);
+}
+{
+    // Presses made during a crash are not orders for the next snake.
+    const h = steer(30, tap(100, 'ArrowUp', 30), (s) => { s.dead = 6; });
+    check('presses during a crash are cleared on restart', !h.includes('U'), h);
 }
 
 if (failures) {
