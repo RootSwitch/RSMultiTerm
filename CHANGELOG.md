@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 1.0.7 - 2026-10-03
+
+A dark terminal for light themes, and idle animations that stay visible,
+keep a steady pace, and hear every keypress.
+
 - **A dark terminal that keeps the theme's colors.** Settings > Terminal
   colors has a new choice, "Follow the app theme, kept dark". On a dark
   theme it changes nothing; on a light theme the terminal goes dark in that
