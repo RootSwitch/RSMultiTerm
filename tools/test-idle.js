@@ -22,6 +22,11 @@
 //      was lost: a 60ms tap steered 48-67% of the time depending on frame
 //      rate. Presses are now queued as they happen and spent one per step.
 //
+//   4. SNAKE KEEPS ITS PACE. A step reset the clock to zero and threw the
+//      leftover time away, so steps could only land on whole frames and the
+//      speed depended on the display: 8 squares a second at 16fps, 10.6 at
+//      32fps. It is now ten a second everywhere.
+//
 // Usage: node tools/test-idle.js
 
 const fs = require('fs');
@@ -291,6 +296,49 @@ console.log('snake controls');
     // Presses made during a crash are not orders for the next snake.
     const h = steer(30, tap(100, 'ArrowUp', 30), (s) => { s.dead = 6; });
     check('presses during a crash are cleared on restart', !h.includes('U'), h);
+}
+
+// --- 4. snake pace ---------------------------------------------------------
+// Snake left to itself on an endless board (no wall to crash into), heading
+// right with no input: every step moves the head one square, so the head's
+// x is the step count. Returns the step times in ms.
+function snakeSteps(hz, seconds, jitter) {
+    const t = load('snake', { play: true, area: 'window' });
+    const rnd = seeded(hz * 31);
+    const period = 1000 / hz;
+    let now = 5000;
+    t.tick(now);
+    const s = t.Idle.debugState();
+    s.cols = 1e6;
+    s.dir = { x: 1, y: 0 };
+    s.food = [];
+    const times = [];
+    let x = s.body[0].x;
+    const end = now + seconds * 1000;
+    while (now < end) {
+        now += period + (jitter ? (rnd() - 0.5) * 2 * jitter : 0);
+        t.tick(now);
+        const nx = t.Idle.debugState().body[0].x;
+        for (let i = x; i < nx; i++) times.push(now);
+        x = nx;
+    }
+    return times;
+}
+
+console.log('snake pace');
+for (const hz of [16, 20, 25, 30, 32, 50, 60, 75, 90, 120, 144, 165, 240]) {
+    const n = snakeSteps(hz, 20, 0.25).length / 20;
+    check(`ten squares a second at ${hz}Hz`, Math.abs(n - 10) <= 0.2, n.toFixed(2) + '/s');
+}
+{
+    // And evenly: at 60Hz the loop draws every 33.3ms, so every step must
+    // be exactly three frames after the last - never slipping to a fourth
+    // because three frames summed to 99.999ms.
+    const times = snakeSteps(60, 10, 0.25);
+    const gaps = times.slice(1).map((v, i) => v - times[i]);
+    const odd = gaps.filter((g) => Math.abs(g - 100) > 2);
+    check('at 60Hz every step is three frames apart', odd.length === 0,
+        `${odd.length} of ${gaps.length} gaps off, e.g. ${odd.slice(0, 3).map((g) => g.toFixed(1)).join(', ')}ms`);
 }
 
 if (failures) {

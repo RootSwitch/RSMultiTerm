@@ -21,6 +21,11 @@
   never both landed. Key presses are now remembered in order and used one
   per move, up to three waiting at a time. Holding a direction works as
   before.
+- **Snake moves at the same speed on every display.** Each move threw away
+  the time left over from the last one, so its speed depended on the
+  screen's refresh rate - anywhere from 8 to nearly 11 squares a second.
+  It is now 10 a second everywhere, the speed a 60Hz monitor always
+  showed, and the moves are evenly spaced.
 - **`npm run bench:idle` reports real frame rates and per-frame costs.**
   It divided by every display refresh, including the ones the frame cap
   skips, so on a 60Hz monitor it showed twice the true frame rate and half

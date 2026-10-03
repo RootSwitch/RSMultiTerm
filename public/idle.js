@@ -1270,7 +1270,10 @@
             return {
                 cw, ch: chh, cols, rows, glyphs, food,
                 body: [head], dir: { x: 1, y: 0 }, grow: 4,
-                step: 0, every: 0.085, dead: 0, eaten: 0,
+                // Ten squares a second: the pace it has always shown on a
+                // 60Hz monitor (see the stepping in frame for why the old
+                // 0.085 never actually ran at 85ms).
+                step: 0, every: 0.1, dead: 0, eaten: 0,
             };
         },
         frame(ctx, env, s, dt) {
@@ -1278,9 +1281,21 @@
             ctx.fillStyle = c.bg;
             ctx.fillRect(0, 0, env.w, env.h);
 
+            // A fixed pace whatever the frame rate. Resetting the clock to
+            // zero on each step threw away the time already past the
+            // deadline, so a step could only land on whole frames: 85ms
+            // became 94ms at 32fps, 100ms at 30 and 125ms at 16, and the
+            // snake's speed depended on the display. Now the leftover time
+            // carries over, and a step lands on whichever frame is nearest
+            // its deadline - half a frame of slack, the same rule as the
+            // FPS_CAP gate - so 30fps steps on every third frame exactly
+            // instead of slipping to a fourth on rounding.
             s.step += dt;
-            if (s.step >= s.every) {
-                s.step = 0;
+            let steps = 0;
+            while (s.step + dt / 2 >= s.every) {
+                s.step -= s.every;
+                // A long stall is not a fast-forward.
+                if (++steps > 3) { s.step = 0; break; }
                 if (s.dead > 0) {
                     // A beat on the crash, then start over.
                     s.dead--;
