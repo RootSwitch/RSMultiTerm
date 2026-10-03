@@ -26,6 +26,14 @@
   screen's refresh rate - anywhere from 8 to nearly 11 squares a second.
   It is now 10 a second everywhere, the speed a 60Hz monitor always
   showed, and the moves are evenly spaced.
+- **Pipes and Blocks keep a steady pace on every display too.** They
+  had the same frame-rate dependence as Snake: Pipes drew anywhere from
+  10 to 16 segments a second, and Blocks' own play, soft drop and held-key
+  repeat varied the same way, as did its game-over pause, which was
+  counted in frames (3 seconds at 60Hz, nearly 6 at 16fps). All of them
+  now run at the speeds a 60Hz monitor showed, everywhere. Also fixed: a
+  hard drop at a low frame rate with Down held could move the next piece
+  a row before it appeared.
 - **`npm run bench:idle` reports real frame rates and per-frame costs.**
   It divided by every display refresh, including the ones the frame cap
   skips, so on a 60Hz monitor it showed twice the true frame rate and half

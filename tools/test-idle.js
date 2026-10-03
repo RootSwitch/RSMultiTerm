@@ -27,6 +27,10 @@
 //      speed depended on the display: 8 squares a second at 16fps, 10.6 at
 //      32fps. It is now ten a second everywhere.
 //
+//   5. PIPES AND BLOCKS KEEP THEIR PACE, by the same rule (stepsDue): Pipes'
+//      segments, Blocks' self-player, soft drop and held-key repeat, and
+//      Blocks' game-over pause, which was counted in frames.
+//
 // Usage: node tools/test-idle.js
 
 const fs = require('fs');
@@ -339,6 +343,141 @@ for (const hz of [16, 20, 25, 30, 32, 50, 60, 75, 90, 120, 144, 165, 240]) {
     const odd = gaps.filter((g) => Math.abs(g - 100) > 2);
     check('at 60Hz every step is three frames apart', odd.length === 0,
         `${odd.length} of ${gaps.length} gaps off, e.g. ${odd.slice(0, 3).map((g) => g.toFixed(1)).join(', ')}ms`);
+}
+
+// --- 5. pipes and blocks pace ---------------------------------------------
+// Drive a style at a refresh rate; `each` may adjust the state before every
+// frame, `read` samples it after. Returns [{ now, v }].
+function paced(style, opts, hz, seconds, setup, each, read) {
+    const t = load(style, opts);
+    const rnd = seeded(hz * 53);
+    const period = 1000 / hz;
+    let now = 5000;
+    t.tick(now);
+    if (setup) setup(t.Idle.debugState(), t);
+    // A first sample before any frame, so a step on the very first frame
+    // still shows as a change.
+    const out = [{ now, v: read(t.Idle.debugState()) }];
+    const end = now + seconds * 1000;
+    while (now < end) {
+        now += period + (rnd() - 0.5) * 0.5;
+        if (each) each(t.Idle.debugState());
+        t.tick(now);
+        out.push({ now, v: read(t.Idle.debugState()) });
+    }
+    return out;
+}
+// Frames on which a step happened, judged by a changed signature.
+function stepTimes(samples) {
+    const times = [];
+    for (let i = 1; i < samples.length; i++) {
+        if (samples[i].v !== samples[i - 1].v) times.push(samples[i].now);
+    }
+    return times;
+}
+const RATES = [16, 20, 25, 30, 32, 50, 60, 75, 90, 120, 144, 165, 240];
+const emptyBoard = (s) => { for (const row of s.board) row.fill(null); };
+const pieceSig = (s) => `${s.cur && s.cur.idx}:${s.cur && s.cur.x}:${s.cur && s.cur.y}:${s.cur && s.cur.rot}:${s.lines}:${s.bag.length}`;
+
+console.log('pipes and blocks pace');
+{
+    // Pipes: every step draws one segment per pipe. A huge budget means the
+    // screen never resets mid-count.
+    const pipeSteps = (hz, secs) => paced('pipes', { area: 'window' }, hz, secs,
+        (s) => { s.budget = Infinity; }, null, (s) => s.drawn / s.pipes.length);
+    for (const hz of RATES) {
+        const smp = pipeSteps(hz, 10);
+        const n = (smp[smp.length - 1].v - smp[0].v) / 10;
+        check(`pipes: fifteen segments a second at ${hz}Hz`, Math.abs(n - 15) <= 0.3, n.toFixed(2) + '/s');
+    }
+    const times = stepTimes(pipeSteps(60, 6));
+    const gaps = times.slice(1).map((v, i) => v - times[i]);
+    const odd = gaps.filter((g) => Math.abs(g - 1000 / 15) > 2);
+    check('pipes: at 60Hz every step is two frames apart', odd.length === 0,
+        `${odd.length} of ${gaps.length} gaps off, e.g. ${odd.slice(0, 3).map((g) => g.toFixed(1)).join(', ')}ms`);
+}
+{
+    // Blocks playing itself: every step is exactly one move - rotate, slide,
+    // drop or lock - so a changed piece signature is a step. The board is
+    // emptied every frame so it can never top out mid-count.
+    const selfSteps = (hz, secs) => stepTimes(paced('blocks', { area: 'window' }, hz, secs,
+        null, emptyBoard, pieceSig));
+    for (const hz of RATES) {
+        const n = selfSteps(hz, 10).length / 10;
+        check(`blocks self-play: fifteen moves a second at ${hz}Hz`, Math.abs(n - 15) <= 0.3, n.toFixed(2) + '/s');
+    }
+    const times = selfSteps(60, 6);
+    const gaps = times.slice(1).map((v, i) => v - times[i]);
+    const odd = gaps.filter((g) => Math.abs(g - 1000 / 15) > 2);
+    check('blocks self-play: at 60Hz every move is two frames apart', odd.length === 0,
+        `${odd.length} of ${gaps.length} gaps off, e.g. ${odd.slice(0, 3).map((g) => g.toFixed(1)).join(', ')}ms`);
+}
+{
+    // Soft drop: Down held, so every step drops a row or locks the piece.
+    for (const hz of [16, 30, 32, 60, 144]) {
+        const n = stepTimes(paced('blocks', { play: true, area: 'window' }, hz, 10,
+            (s, t) => t.key('keydown', 'ArrowDown'), emptyBoard, pieceSig)).length / 10;
+        check(`blocks soft drop: fifteen rows a second at ${hz}Hz`, Math.abs(n - 15) <= 0.3, n.toFixed(2) + '/s');
+    }
+}
+{
+    // Held Right: one move at once, the next 0.2s later, then ten a second.
+    // The piece is put back at the left wall whenever it nears the right
+    // one, so the hold never runs out of room.
+    // Moves are counted against the position just before each frame, so a
+    // move on the same frame as a put-back still counts.
+    for (const hz of [16, 30, 32, 60, 144]) {
+        let pre = 0;
+        let count = 0;
+        const smp = paced('blocks', { play: true, area: 'window' }, hz, 6,
+            (s, t) => { s.cur.x = 0; s.cur.rot = 0; t.key('keydown', 'ArrowRight'); },
+            (s) => { emptyBoard(s); if (s.cur.x >= 5) s.cur.x = 0; pre = s.cur.x; },
+            (s) => { if (s.cur.x > pre) count++; return count; });
+        const moves = stepTimes(smp);
+        const first = moves[1] - moves[0];
+        const rate = (moves.length - 2) / ((moves[moves.length - 1] - moves[1]) / 1000);
+        const half = 500 / Math.min(hz, 30);
+        check(`blocks held key: first repeat after 0.2s at ${hz}Hz`, Math.abs(first - 200) <= half + 1,
+            first.toFixed(1) + 'ms');
+        check(`blocks held key: then ten moves a second at ${hz}Hz`, Math.abs(rate - 10) <= 0.25,
+            rate.toFixed(2) + '/s');
+    }
+}
+{
+    // The game-over pause is three seconds, not 90 frames. A full board and
+    // the square piece make the very next lock end the game. (Not just any
+    // piece: the flat bar lies wholly on the top row, so locking it there
+    // completes every row, clears the board, and the game goes on.)
+    for (const hz of [16, 60]) {
+        const smp = paced('blocks', { area: 'window' }, hz, 6, (s) => {
+            for (const row of s.board) row.fill('accent');
+            s.cur = { idx: 1, rot: 0, x: 3, y: -1 };
+            s.plan = null;
+        }, null, (s) => s.over > 0);
+        const start = smp.find((x) => x.v);
+        const endAt = start && smp.find((x) => x.now > start.now && !x.v);
+        const secs = start && endAt ? (endAt.now - start.now) / 1000 : null;
+        check(`blocks game over: a three-second pause at ${hz}Hz`, secs !== null && Math.abs(secs - 3) <= 0.07,
+            secs === null ? 'pause never ended' : secs.toFixed(2) + 's');
+    }
+}
+{
+    // A hard drop locks the piece; the new piece must not be moved by
+    // gravity in the same frame, measured against the old piece's shape.
+    // Down held at 16fps is the case that needs the guard: one frame is
+    // most of a soft-drop step, so a fresh clock is due at once.
+    const t = load('blocks', { play: true, area: 'window' });
+    let now = 5000;
+    t.tick(now);
+    const s = t.Idle.debugState();
+    const before = s.cur;
+    t.key('keydown', 'ArrowDown');
+    t.key('keydown', 'Space');
+    now += 1000 / 16;
+    t.tick(now);
+    const after = t.Idle.debugState().cur;
+    check('blocks hard drop: the new piece starts at the top', after !== before && after.y === -1,
+        `new piece at y=${after.y}`);
 }
 
 if (failures) {

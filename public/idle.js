@@ -470,6 +470,27 @@
 
     const STYLES = {};
 
+    // How many fixed-pace steps fall due this frame, for the styles that move
+    // on a clock (Snake, Pipes, Blocks). s[key] keeps the time left over - or
+    // owed - after each step, so the pace holds at any frame rate; resetting
+    // it to zero instead threw that time away, a step could only land on a
+    // whole frame, and the speed depended on the display (Snake ran at 8
+    // squares a second at 16fps and 10.65 at 32fps). A step lands on
+    // whichever frame is nearest its deadline - half a frame of slack, the
+    // FPS_CAP gate's rule - so 30fps steps every third frame exactly instead
+    // of slipping to a fourth when three frames sum to 99.999ms. More than
+    // `max` steps owed (a stall) are forgiven, not fast-forwarded.
+    function stepsDue(s, key, every, dt, max = 3) {
+        s[key] += dt;
+        let n = 0;
+        while (s[key] + dt / 2 >= every) {
+            if (n === max) { s[key] = 0; break; }
+            s[key] -= every;
+            n++;
+        }
+        return n;
+    }
+
     // Rain: columns of glyphs falling in the theme's accent. The glyphs are
     // whatever the terminals were showing - your own hostnames and IPs
     // coming down, which is the whole reason it does not look like a film.
@@ -1172,13 +1193,19 @@
             }
             // Fixed cadence: pipes advance on a clock, not per frame, or
             // they scribble the screen full in a second on a fast machine.
-            s.step += dt;
-            const stepEvery = 0.055;
-            if (s.step < stepEvery) return;
-            s.step = 0;
+            // Fifteen segments a second, the pace a 60Hz monitor always
+            // showed (the old 0.055 landed on every second frame there);
+            // stepsDue keeps it at any frame rate.
+            const steps = stepsDue(s, 'step', 1 / 15, dt);
+            if (!steps) return;
 
             ctx.font = `${s.ch}px ${c.mono}`;
             ctx.textBaseline = 'top';
+            for (let i = 0; i < steps; i++) STYLES.pipes.advance(ctx, env, s);
+        },
+        // One segment per pipe, and a fresh screen once it is full enough.
+        advance(ctx, env, s) {
+            const c = env.colors;
             // 0=up 1=right 2=down 3=left. The glyph is chosen by the turn:
             // straight runs get a line, turns get the matching corner.
             const STRAIGHT = ['│', '─', '│', '─'];
@@ -1271,8 +1298,8 @@
                 cw, ch: chh, cols, rows, glyphs, food,
                 body: [head], dir: { x: 1, y: 0 }, grow: 4,
                 // Ten squares a second: the pace it has always shown on a
-                // 60Hz monitor (see the stepping in frame for why the old
-                // 0.085 never actually ran at 85ms).
+                // 60Hz monitor (see stepsDue for why the old 0.085 never
+                // actually ran at 85ms).
                 step: 0, every: 0.1, dead: 0, eaten: 0,
             };
         },
@@ -1281,21 +1308,9 @@
             ctx.fillStyle = c.bg;
             ctx.fillRect(0, 0, env.w, env.h);
 
-            // A fixed pace whatever the frame rate. Resetting the clock to
-            // zero on each step threw away the time already past the
-            // deadline, so a step could only land on whole frames: 85ms
-            // became 94ms at 32fps, 100ms at 30 and 125ms at 16, and the
-            // snake's speed depended on the display. Now the leftover time
-            // carries over, and a step lands on whichever frame is nearest
-            // its deadline - half a frame of slack, the same rule as the
-            // FPS_CAP gate - so 30fps steps on every third frame exactly
-            // instead of slipping to a fourth on rounding.
-            s.step += dt;
-            let steps = 0;
-            while (s.step + dt / 2 >= s.every) {
-                s.step -= s.every;
-                // A long stall is not a fast-forward.
-                if (++steps > 3) { s.step = 0; break; }
+            // A fixed pace whatever the frame rate: see stepsDue.
+            const steps = stepsDue(s, 'step', s.every, dt);
+            for (let i = 0; i < steps; i++) {
                 if (s.dead > 0) {
                     // A beat on the crash, then start over.
                     s.dead--;
@@ -1304,6 +1319,7 @@
                         // Keys mashed during the crash are not orders for
                         // the new snake.
                         if (env.play) env.play.presses.length = 0;
+                        break;
                     }
                 } else {
                     STYLES.snake.advance(env, s);
@@ -1427,6 +1443,11 @@
     // mode is the game everyone already knows: left/right move, up
     // rotates, down hurries, Space slams.
     STYLES.blocks = {
+        // Seconds. The step intervals are the paces a 60Hz monitor always
+        // showed - the old 0.06, 0.04, 0.17 and 0.09 landed on whole frames
+        // there - and stepsDue now holds them on any display. The game-over
+        // pause was 90 FRAMES: 3s at 60Hz, nearly 6s at 16fps.
+        PACE: { selfPlay: 1 / 15, softDrop: 1 / 15, firstRepeat: 0.2, repeat: 0.1, over: 3 },
         label: 'Blocks', screen: false, mood: 'lively', playable: true,
         playHint: 'left/right move   up rotates   down hurries   space slams   esc quits',
         // Each piece: rotation states as [x,y] cells, plus which theme
@@ -1471,13 +1492,13 @@
             s.cur = { idx: s.next, rot: 0, x: 3, y: -1 };
             s.next = s.bag.pop();
             s.plan = null;
-            if (!STYLES.blocks.fits(s, STYLES.blocks.PIECES[s.cur.idx], 0, 3, -1)) s.over = 90;
+            if (!STYLES.blocks.fits(s, STYLES.blocks.PIECES[s.cur.idx], 0, 3, -1)) s.over = STYLES.blocks.PACE.over;
         },
         lock(s, env) {
             const b = STYLES.blocks;
             const piece = b.PIECES[s.cur.idx];
             for (const [cx, cy] of b.cells(piece, s.cur.rot, s.cur.x, s.cur.y)) {
-                if (cy < 0) { s.over = 90; return; }
+                if (cy < 0) { s.over = STYLES.blocks.PACE.over; return; }
                 s.board[cy][cx] = piece.color;
             }
             const kept = s.board.filter((row) => row.some((c) => !c));
@@ -1562,8 +1583,9 @@
             ctx.fillRect(0, 0, env.w, env.h);
 
             if (s.over > 0) {
-                s.over--;
-                if (s.over === 0) {
+                s.over -= dt;
+                if (s.over <= 0) {
+                    s.over = 0;
                     if (p) s.overStay = true;
                     else Object.assign(s, b.init(env));
                 }
@@ -1574,13 +1596,19 @@
             if (!stopped && piece) {
                 if (p) {
                     // The player. Held keys repeat at a walk; edges act now.
+                    // The repeat keeps its leftover time and fires on the
+                    // nearest frame, like stepsDue, so it walks at the same
+                    // pace on any display. -1 means no key was held: the
+                    // first press moves at once and arms the longer delay.
                     s.moveHeld -= dt;
                     const step = (dx) => {
                         if (b.fits(s, piece, s.cur.rot, s.cur.x + dx, s.cur.y)) s.cur.x += dx;
-                        s.moveHeld = s.moveHeld < -0.5 ? 0.17 : 0.09;
+                        s.moveHeld = s.moveHeld < -0.5 ? b.PACE.firstRepeat
+                            : Math.max(s.moveHeld, -b.PACE.repeat) + b.PACE.repeat;
                     };
-                    if (p.left && !p.right && s.moveHeld <= 0) step(-1);
-                    if (p.right && !p.left && s.moveHeld <= 0) step(1);
+                    const due = s.moveHeld <= dt / 2;
+                    if (p.left && !p.right && due) step(-1);
+                    if (p.right && !p.left && due) step(1);
                     if (!p.left && !p.right) s.moveHeld = -1;
                     if (p.up && !s.rotHeld) {
                         // One rotation per press, with the sideways nudge
@@ -1594,26 +1622,33 @@
                         }
                     }
                     s.rotHeld = p.up;
+                    let slammed = false;
                     if (p.fired) {
                         p.fired = false;
                         s.cur.y = b.dropY(s, piece, s.cur.rot, s.cur.x);
                         b.lock(s, env);
+                        // The next piece starts its own clock - and gravity
+                        // must not run this frame, when `piece` is still the
+                        // shape that just landed and s.cur the one that has
+                        // just appeared.
+                        s.fall = 0;
+                        slammed = true;
                     }
                     const speed = Math.max(0.08, 0.8 - Math.floor(s.lines / 10) * 0.07);
-                    s.fall += dt;
-                    if (s.fall >= (p.down ? 0.04 : speed)) {
+                    const drops = slammed ? 0 : stepsDue(s, 'fall', p.down ? b.PACE.softDrop : speed, dt);
+                    for (let i = 0; i < drops; i++) {
+                        if (b.fits(s, piece, s.cur.rot, s.cur.x, s.cur.y + 1)) { s.cur.y++; continue; }
+                        b.lock(s, env);
                         s.fall = 0;
-                        if (b.fits(s, piece, s.cur.rot, s.cur.x, s.cur.y + 1)) s.cur.y++;
-                        else b.lock(s, env);
+                        break;
                     }
                 } else {
                     // The self-player: decide once per piece, then walk it
                     // there one considered move at a time - watching it
                     // THINK is the show, and a teleport has no drama.
                     if (!s.plan) s.plan = b.think(s);
-                    s.fall += dt;
-                    if (s.fall >= 0.06) {
-                        s.fall = 0;
+                    const moves = stepsDue(s, 'fall', b.PACE.selfPlay, dt);
+                    for (let i = 0; i < moves; i++) {
                         if (s.cur.rot !== s.plan.rot &&
                             b.fits(s, piece, s.cur.rot + 1, s.cur.x, s.cur.y)) {
                             s.cur.rot = (s.cur.rot + 1) % piece.rots.length;
@@ -1626,7 +1661,10 @@
                         } else if (b.fits(s, piece, s.cur.rot, s.cur.x, s.cur.y + 1)) {
                             s.cur.y++;
                         } else {
+                            // A new piece and a fresh plan, on the same clock:
+                            // the show keeps its rhythm from piece to piece.
                             b.lock(s, env);
+                            break;
                         }
                     }
                 }
