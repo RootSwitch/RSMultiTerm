@@ -14,6 +14,10 @@
   which on a 32Hz Remote Desktop display was every other one, so every
   animation ran at 16fps; on a 60Hz monitor it wavered between 20 and 30.
   The cap now draws on the refresh nearest each frame's deadline.
+- **`npm run bench:idle` reports real frame rates and per-frame costs.**
+  It divided by every display refresh, including the ones the frame cap
+  skips, so on a 60Hz monitor it showed twice the true frame rate and half
+  the true drawing cost per frame. It now counts frames actually drawn.
 
 ## 1.0.6 - 2026-09-07
 

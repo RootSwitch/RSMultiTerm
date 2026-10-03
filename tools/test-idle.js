@@ -111,6 +111,22 @@ for (const hz of [50, 75, 90, 120, 144, 165, 240]) {
     check(hz + 'Hz draws close to the cap (24-40fps)', fps >= 24 && fps <= 40, fps.toFixed(1) + 'fps');
 }
 
+// frameCost() is what tools/bench-idle.js divides by, so it must count the
+// frames DRAWN. It used to count display ticks: at 60Hz the gate skips every
+// other one, which doubled the bench's fps and halved its cost per frame.
+for (const hz of [60, 144]) {
+    const t = load();
+    let now = 5000;
+    t.tick(now);
+    const before = t.Idle.frameCost().frames;
+    const drawnBefore = t.drawn();
+    for (let i = 0; i < hz * 10; i++) { now += 1000 / hz; t.tick(now); }
+    const counted = t.Idle.frameCost().frames - before;
+    const drawn = t.drawn() - drawnBefore;
+    check(`frameCost counts frames drawn, not display ticks (${hz}Hz)`, counted === drawn,
+        `${counted} counted, ${drawn} drawn`);
+}
+
 // --- 2. lasers ------------------------------------------------------------
 // A world with only the given words, no dives, no fire from the ship, and
 // a march at its slowest (no word lost yet), so nothing slides out from

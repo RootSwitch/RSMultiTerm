@@ -340,6 +340,13 @@
         running.state = running.style.init(running.env);
     }
 
+    // Display ticks seen, and frames actually drawn. They differ by the
+    // FPS_CAP gate - at 60Hz it skips every other tick, at 144Hz four in
+    // five - so anything reporting a frame rate or a per-frame cost must
+    // read `frames`. It used to count ticks, which doubled the fps
+    // tools/bench-idle.js printed on a 60Hz display and halved the draw
+    // cost it reported per frame. `ticks` paces the dialog check only.
+    let ticks = 0;
     let frames = 0;
     // Cumulative time spent INSIDE the styles' own drawing, for
     // tools/bench-idle.js. Two clock reads at 30fps is not a cost worth
@@ -350,7 +357,7 @@
         if (!running) return;
         running.raf = requestAnimationFrame(frame);
         // A dialog the app raised must never sit hidden under an animation.
-        if ((frames++ & 15) === 0 && document.querySelector('.modal-backdrop')) { stop(); return; }
+        if ((ticks++ & 15) === 0 && document.querySelector('.modal-backdrop')) { stop(); return; }
         // Wall-clock, not the rAF timestamp: this is a minutes-scale
         // deadline and the loop stops dead while the window is hidden.
         if (running.rotateAt && Date.now() >= running.rotateAt) { rotate(); return; }
@@ -381,6 +388,7 @@
         const t0 = performance.now();
         running.style.frame(ctx, running.env, running.state, dt);
         frameMs += performance.now() - t0;
+        frames++;
         if (region) ctx.restore();
     }
 
