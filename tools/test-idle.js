@@ -31,11 +31,13 @@
 //      segments, Blocks' self-player, soft drop and held-key repeat, and
 //      Blocks' game-over pause, which was counted in frames.
 //
-//   6. THE PALETTE READS ON THE TERMINAL IT COVERS. A light theme "kept
+//   6. THE PALETTE READS ON WHAT IT IS DRAWN ON. A light theme "kept
 //      dark" (or under "Always dark") handed the animations its own dark
 //      colors on a near-black night: Mono's text at 1.3:1, so Aliens' ship,
-//      lasers and divers all but vanished. Every built-in theme in every
-//      terminal mode is checked here.
+//      lasers and divers all but vanished. The styles that paint their own
+//      night (`ground: true`) had the same problem on every light theme.
+//      Every built-in theme in every terminal mode is checked, for a style
+//      over the terminal and a style on its night.
 //
 // Usage: node tools/test-idle.js
 
@@ -500,7 +502,7 @@ vm.createContext(themeBox);
 vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'public', 'themes.js'), 'utf8'), themeBox);
 const ALL_THEMES = themeBox.window.Themes.THEMES;
 
-function paletteFor(vars, bg, fg) {
+function paletteFor(vars, bg, fg, style = 'aliens') {
     const noop = () => {};
     const ctx = new Proxy({}, { get(t, k) { if (k === 'measureText') return () => ({ width: 7 }); return k in t ? t[k] : noop; },
         set(t, k, v) { t[k] = v; return true; } });
@@ -521,7 +523,7 @@ function paletteFor(vars, bg, fg) {
     vm.createContext(sb);
     vm.runInContext(COLORS_SRC, sb, { filename: 'colors.js' });
     vm.runInContext(SRC, sb, { filename: 'idle.js' });
-    sb.Idle.start('aliens', { area: 'window' });
+    sb.Idle.start(style, { area: 'window' });
     return { colors: sb.Idle.debugColors(), C: sb.Colors };
 }
 
@@ -540,10 +542,22 @@ console.log('animation palette against the terminal');
             dark: { bg: '#1b1e25', fg: '#e6e9ef' },
         };
         for (const [mode, { bg, fg }] of Object.entries(modes)) {
-            const { colors: c, C } = paletteFor(v, bg, fg);
-            const ratio = (x) => C.contrast(C.hexToRgb(x), C.hexToRgb(c.bg));
-            const tag = `${key}/${mode}`;
-            if (C.isLight(v['--se-input']) !== C.isLight(bg)) {
+          // Aliens draws over the terminal; Pipes paints its own night.
+          for (const [style, onGround] of [['aliens', false], ['pipes', true]]) {
+            const { colors: c, C } = paletteFor(v, bg, fg, style);
+            const surface = onGround ? c.ground : c.bg;
+            const ratio = (x) => C.contrast(C.hexToRgb(x), C.hexToRgb(surface));
+            const tag = `${key}/${mode}/${style}`;
+            if (C.isLight(bg) && c.ground !== C.night(v['--se-accent'])) {
+                fails.push(`${tag}: the night is ${c.ground}, not the theme's own ${C.night(v['--se-accent'])}`);
+            }
+            if (C.isLight(v['--se-input']) !== C.isLight(surface)) {
+                // Where the colors are chosen for the surface, the ink a
+                // night-painting style writes with must read too. (A theme
+                // on its own surface keeps its design: Solarized Dark's text
+                // sits at 6.3:1 on purpose.)
+                if (onGround && ratio(c.ink) < 7) fails.push(`${tag}: ink ${c.ink} at ${ratio(c.ink).toFixed(1)}:1`);
+                if (onGround && ratio(c.inkDim) < 3) fails.push(`${tag}: inkDim ${c.inkDim} at ${ratio(c.inkDim).toFixed(1)}:1`);
                 mismatched++;
                 if (ratio(c.txt) < 7) fails.push(`${tag}: text ${c.txt} at ${ratio(c.txt).toFixed(1)}:1`);
                 for (const k of ['accent', 'up', 'down', 'warn']) {
@@ -557,12 +571,32 @@ console.log('animation palette against the terminal');
                 }
                 if (c.dim !== v['--se-txt-dim']) fails.push(`${tag}: dim changed to ${c.dim} though the theme fits its terminal`);
             }
+          }
         }
     }
-    check(`a theme on the other kind of terminal reads (${mismatched} cases)`,
+    check(`a palette on the other kind of surface reads (${mismatched} cases)`,
         !fails.some((f) => !f.includes('though')), fails.filter((f) => !f.includes('though')).slice(0, 4).join('; '));
-    check(`a theme on its own kind of terminal is left exactly as it is (${matched} cases)`,
+    check(`a palette on its own kind of surface is left exactly as it is (${matched} cases)`,
         !fails.some((f) => f.includes('though')), fails.filter((f) => f.includes('though')).slice(0, 4).join('; '));
+}
+
+{
+    // Every style that paints the night (or borrows a style that does)
+    // declares `ground: true`, and no other does: the flag is what picks
+    // the palette that reads on it.
+    const bodies = {};
+    const parts = SRC.split(/\n    STYLES\.(\w+) = \{/);
+    for (let i = 1; i < parts.length; i += 2) bodies[parts[i]] = parts[i + 1].split('\n    STYLES.')[0];
+    const paints = (id, seen = new Set()) => {
+        if (seen.has(id)) return false;
+        seen.add(id);
+        const b = bodies[id] || '';
+        if (/c\.ground/.test(b)) return true;
+        return [...b.matchAll(/STYLES\.(\w+)\.frame\(/g)].some((m) => paints(m[1], seen));
+    };
+    const wrong = Object.keys(bodies).filter((id) => paints(id) !== /\bground: true\b/.test(bodies[id].split('\n')[1] || ''));
+    check('the styles that paint the night are the ones flagged ground: true', wrong.length === 0,
+        `mismatched: ${wrong.join(', ')}`);
 }
 
 if (failures) {

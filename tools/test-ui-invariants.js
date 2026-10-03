@@ -739,7 +739,8 @@ assert.ok(!/\bteam\b/i.test(pkg.description),
     const branch = darkPaneSrc.indexOf("cfg.mode === 'theme-dark'");
     assert.ok(branch >= 0 && darkPaneSrc.indexOf('window.Colors.keptDark(', branch) > branch,
         'terminalTheme must consult the kept-dark mode through Colors.keptDark');
-    assert.ok(darkIdleSrc.indexOf('c.ground = window.Colors.night(c.accent);') >= 0,
+    assert.ok(darkIdleSrc.indexOf('const C = window.Colors;') >= 0 &&
+        darkIdleSrc.indexOf('c.ground = light ? C.night(c.accent) : c.bg;') >= 0,
         'the idle animations must take their night from Colors.night, the same as the terminal');
 }
 

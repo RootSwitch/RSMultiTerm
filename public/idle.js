@@ -100,7 +100,9 @@
     }, CHECK_EVERY_MS);
 
     // --- theme + screen sampling -------------------------------------------
-    function themeColors() {
+    // onGround: the style paints its own night (a `ground: true` style),
+    // not over the terminal - so its colors must read against that night.
+    function themeColors(onGround) {
         const cs = getComputedStyle(document.documentElement);
         const v = (name, fallback) => (cs.getPropertyValue(name) || '').trim() || fallback;
         const c = {
@@ -113,37 +115,47 @@
             dim: v('--se-txt-dim', '#8a95a5'),
             mono: v('--mt-mono', 'monospace'),
         };
-        // A theme's colors are picked for its own surface. When the terminal
-        // is the other kind - a light theme "kept dark", or "Always dark"
-        // under one - they land on a background they were never meant for:
-        // Mono's #222222 text and #333333 accent on a near-black night, where
-        // Aliens' ship, lasers and diving words all but vanished (1.3:1).
-        // Then the text is the terminal's own foreground, readable on its
-        // background by construction, and every other color is lifted (or
-        // deepened, the other way round) until it reads against it, hue kept.
-        // A color that already reads is left exactly as the theme has it.
-        const C = window.Colors;
-        const themeLight = C && C.isLight(v('--se-input', '#1b1e25'));
-        if (C && window.TermPanes && themeLight !== C.isLight(c.bg)) {
-            c.txt = (window.TermPanes.currentForeground && window.TermPanes.currentForeground()) ||
-                C.readable(c.txt, c.bg, 7);
-            for (const k of ['accent', 'up', 'down', 'warn']) c[k] = C.readable(c[k], c.bg, 4.5);
-            c.dim = C.readable(c.dim, c.bg, 3);
-        }
         // Takeover styles (stars, snow, fire) want night. On a light theme
         // the terminal background is paper, and white flakes on paper is a
         // flashbang - so the ground becomes a near-black tint of the theme's
-        // accent (Sakura gets a dark pink night, Glacier a dark blue one),
-        // and the ink is the accent itself rather than the theme's dark text.
+        // accent (Sakura gets a dark pink night, Glacier a dark blue one).
         // Screen-aware styles keep the real background: they are drawing
-        // over the terminal's own words and should look like it.
-        const light = window.Colors && window.Colors.isLight(c.bg);
+        // over the terminal's own words and should look like it. The night
+        // comes from the theme's OWN accent, before anything below adjusts
+        // it, so it is the same night a kept-dark terminal shows.
+        const C = window.Colors;
+        const light = C && C.isLight(c.bg);
+        c.ground = light ? C.night(c.accent) : c.bg;
+
+        // A theme's colors are picked for its own surface. When the style
+        // paints on the other kind - a light theme's terminal kept dark (or
+        // under "Always dark"), or any light theme's night ground - they land
+        // on a background they were never meant for: Mono's #222222 text
+        // and #333333 accent on a near-black night, where Aliens' ship,
+        // lasers and divers all but vanished (1.3:1), and Pipes drew Mono's
+        // pipes at 1.6:1. Then the text is a color made for that surface -
+        // the terminal's own foreground over the terminal, the theme's light
+        // panel color on its night (what a kept-dark terminal writes in) -
+        // and every other color is lifted (or deepened, the other way round)
+        // until it reads against it, hue kept. A color that already reads is
+        // left exactly as the theme has it.
+        const surface = onGround ? c.ground : c.bg;
+        const themeLight = C && C.isLight(v('--se-input', '#1b1e25'));
+        if (C && themeLight !== C.isLight(surface)) {
+            const panel = v('--se-panel', '#262a33');
+            const fg = onGround
+                ? (C.isLight(panel) ? panel : null)
+                : (window.TermPanes && window.TermPanes.currentForeground &&
+                    window.TermPanes.currentForeground());
+            c.txt = fg || C.readable(c.txt, surface, 7);
+            for (const k of ['accent', 'up', 'down', 'warn']) c[k] = C.readable(c[k], surface, 4.5);
+            c.dim = C.readable(c.dim, surface, 3);
+        }
+        // Ink, for the styles that write on the night.
         if (light) {
-            c.ground = window.Colors.night(c.accent);
             c.ink = '#f2f2f2';
             c.inkDim = c.accent;
         } else {
-            c.ground = c.bg;
             c.ink = c.txt;
             c.inkDim = c.dim;
         }
@@ -258,7 +270,7 @@
         if (region && screen) shiftScreen(screen, -region.x, -region.y);
         const env = {
             w: region ? region.w : canvas.width, h: region ? region.h : canvas.height,
-            colors: themeColors(),
+            colors: themeColors(!!style.ground),
             screen,
             rnd: Math.random,
         };
@@ -776,7 +788,7 @@
     // Starfield: the warp. Depth picks the glyph, so far stars are dots and
     // near ones are hashes streaking past.
     STYLES.starfield = {
-        label: 'Starfield', screen: false, mood: 'calm',
+        label: 'Starfield', screen: false, mood: 'calm', ground: true,
         init(env) {
             const mk = () => ({ x: (Math.random() - 0.5) * 2, y: (Math.random() - 0.5) * 2, z: Math.random() });
             return { stars: Array.from({ length: 420 }, mk), mk, speed: 0.35 };
@@ -807,7 +819,7 @@
     // Snow: the chill one. Flakes drift, sway, and settle into a drift along
     // the bottom edge that slowly grows.
     STYLES.snow = {
-        label: 'Snow', screen: false, mood: 'calm',
+        label: 'Snow', screen: false, mood: 'calm', ground: true,
         init(env) {
             const mk = () => ({
                 x: Math.random() * env.w, y: -Math.random() * env.h,
@@ -849,7 +861,7 @@
     // picks both the glyph and the color - the theme's own colors, so Ember
     // burns orange, Phosphor green, and Classic is a blue flame.
     STYLES.fire = {
-        label: 'Fire', screen: false, mood: 'lively',
+        label: 'Fire', screen: false, mood: 'lively', ground: true,
         init(env) {
             const cw = 10, ch = 16;
             const cols = Math.ceil(env.w / cw), rows = Math.ceil(env.h / ch);
@@ -1167,7 +1179,7 @@
     // whole thing clears and starts over - which is exactly the rhythm of
     // the original, and the reason it is hypnotic rather than busy.
     STYLES.pipes = {
-        label: 'Pipes', screen: false, mood: 'calm',
+        label: 'Pipes', screen: false, mood: 'calm', ground: true,
         init(env) {
             // cw and ch are corrected on the first frame from the font's
             // real metrics. Box-drawing glyphs only join into continuous
@@ -1752,7 +1764,7 @@
     };
 
     STYLES.aquarium = {
-        label: 'Aquarium', screen: true, mood: 'calm',
+        label: 'Aquarium', screen: true, mood: 'calm', ground: true,
         init(env) {
             const palette = ['accent', 'up', 'warn', 'txt', 'down'];
             const fish = Array.from({ length: 9 + Math.floor(Math.random() * 5) }, () => {
@@ -1836,7 +1848,7 @@
     // per color bucket keep it to a handful of fillText calls per row, the
     // trick the donut uses.
     STYLES.plasma = {
-        label: 'Plasma', screen: false, mood: 'lively',
+        label: 'Plasma', screen: false, mood: 'lively', ground: true,
         init(env) {
             const chh = 16;
             return {
@@ -1889,7 +1901,7 @@
     // style that is also a tool, which is why "Surprise me" never picks it
     // unless it is ticked on purpose: a surprise clock is just a clock.
     STYLES.clock = {
-        label: 'Big Clock (24h)', screen: false, mood: 'calm', surprise: false,
+        label: 'Big Clock (24h)', screen: false, mood: 'calm', surprise: false, ground: true,
         // Segments per digit: [top, topL, topR, mid, botL, botR, bottom].
         DIGITS: {
             0: [1, 1, 1, 0, 1, 1, 1], 1: [0, 0, 1, 0, 0, 1, 0],
@@ -1975,7 +1987,7 @@
     // entry rather than a setting, so both live in the Extras list and the
     // picker like everything else.
     STYLES.clock12 = {
-        label: 'Big Clock (12h)', screen: false, mood: 'calm', surprise: false,
+        label: 'Big Clock (12h)', screen: false, mood: 'calm', surprise: false, ground: true,
         init(env) {
             const st = STYLES.clock.init(env);
             st.twelve = true;
@@ -1989,7 +2001,7 @@
     // corner EXACTLY gets the burst everybody has waited a whole meeting
     // for. The epsilon is honest - a near-miss is a near-miss.
     STYLES.dvd = {
-        label: 'Logo Bounce', screen: false, mood: 'calm',
+        label: 'Logo Bounce', screen: false, mood: 'calm', ground: true,
         init(env) {
             return {
                 x: Math.random() * (env.w - 180) + 20,

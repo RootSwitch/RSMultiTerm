@@ -16,6 +16,12 @@
   under a light theme), the animations now draw text in the terminal's own
   text color and lighten the other colors until they read, keeping their
   hue. Themes that already match their terminal look exactly as before.
+- **The full-screen animations read on light themes too.** Starfield,
+  Snow, Fire, Pipes, Aquarium, Plasma, the clocks and Logo Bounce paint
+  their own night sky over a light theme, but drew on it with the theme's
+  dark colors: on Mono, half the pipes, the dim stars and snowflakes,
+  Fire's middle tones and the clock's date line were all but invisible.
+  They now get colors chosen for the night they draw on, by the same rule.
 - **Aliens lasers no longer pass through words.** A laser was only
   checked where it landed each frame, and it moves farther per frame than
   a word is tall, so every laser could step over a row that sat between
