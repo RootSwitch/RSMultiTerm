@@ -8,6 +8,14 @@
   theme's own colors - Sakura a dark plum with pale pink text, Glacier a
   dark navy - the same night sky the idle animations already paint. The
   old dark choice is now labeled "Always dark, classic colors".
+- **Idle animations stay visible on a light theme kept dark.** They drew
+  with the theme's own colors, which a light theme picks for a light
+  background - on the new dark terminal, Mono's ship, lasers and diving
+  words in Aliens were near-black on near-black. When the terminal is the
+  opposite kind of background from the theme (kept dark, or "Always dark"
+  under a light theme), the animations now draw text in the terminal's own
+  text color and lighten the other colors until they read, keeping their
+  hue. Themes that already match their terminal look exactly as before.
 - **Aliens lasers no longer pass through words.** A laser was only
   checked where it landed each frame, and it moves farther per frame than
   a word is tall, so every laser could step over a row that sat between

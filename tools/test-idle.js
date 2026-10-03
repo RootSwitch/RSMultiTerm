@@ -31,6 +31,12 @@
 //      segments, Blocks' self-player, soft drop and held-key repeat, and
 //      Blocks' game-over pause, which was counted in frames.
 //
+//   6. THE PALETTE READS ON THE TERMINAL IT COVERS. A light theme "kept
+//      dark" (or under "Always dark") handed the animations its own dark
+//      colors on a near-black night: Mono's text at 1.3:1, so Aliens' ship,
+//      lasers and divers all but vanished. Every built-in theme in every
+//      terminal mode is checked here.
+//
 // Usage: node tools/test-idle.js
 
 const fs = require('fs');
@@ -478,6 +484,85 @@ console.log('pipes and blocks pace');
     const after = t.Idle.debugState().cur;
     check('blocks hard drop: the new piece starts at the top', after !== before && after.y === -1,
         `new piece at y=${after.y}`);
+}
+
+// --- 6. the palette against the terminal ---------------------------------
+// idle.js with the real colors.js beside it, a theme's CSS variables, and a
+// terminal reporting the background and text it would draw with.
+const COLORS_SRC = fs.readFileSync(path.join(__dirname, '..', 'public', 'colors.js'), 'utf8');
+const STYLE_CSS = fs.readFileSync(path.join(__dirname, '..', 'public', 'style.css'), 'utf8');
+const ROOT_BLOCK = STYLE_CSS.slice(STYLE_CSS.indexOf(':root {'), STYLE_CSS.indexOf('}', STYLE_CSS.indexOf(':root {')));
+const CSS_DEFAULTS = {};
+for (const m of ROOT_BLOCK.matchAll(/(--se-[a-z0-9-]+):\s*(#[0-9a-fA-F]{3,6})\s*;/g)) CSS_DEFAULTS[m[1]] = m[2];
+const themeBox = { window: {}, document: { documentElement: { style: { setProperty() {}, removeProperty() {} } } },
+    localStorage: { getItem: () => null, setItem() {} } };
+vm.createContext(themeBox);
+vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'public', 'themes.js'), 'utf8'), themeBox);
+const ALL_THEMES = themeBox.window.Themes.THEMES;
+
+function paletteFor(vars, bg, fg) {
+    const noop = () => {};
+    const ctx = new Proxy({}, { get(t, k) { if (k === 'measureText') return () => ({ width: 7 }); return k in t ? t[k] : noop; },
+        set(t, k, v) { t[k] = v; return true; } });
+    const el = () => ({ classList: { add: noop, remove: noop }, remove: noop, getContext: () => ctx,
+        getBoundingClientRect: () => ({ left: 0, top: 0, right: 0, bottom: 0, width: 0, height: 0 }) });
+    const sb = {
+        document: { hidden: false, documentElement: {}, body: { appendChild: noop }, createElement: el,
+            getElementById: () => null, querySelector: () => null, addEventListener: noop, removeEventListener: noop },
+        innerWidth: W, innerHeight: H, matchMedia: () => ({ matches: false }),
+        addEventListener: noop, removeEventListener: noop,
+        getComputedStyle: () => ({ getPropertyValue: (n) => vars[n] || '' }),
+        rsterm: { invoke: () => ({ then: (f) => f({}) }), on: noop },
+        requestAnimationFrame: () => 1, cancelAnimationFrame: noop,
+        setInterval: () => 0, clearInterval: noop, setTimeout: () => 0, clearTimeout: noop, performance,
+    };
+    sb.window = sb;
+    sb.TermPanes = { currentBackground: () => bg, currentForeground: () => fg };
+    vm.createContext(sb);
+    vm.runInContext(COLORS_SRC, sb, { filename: 'colors.js' });
+    vm.runInContext(SRC, sb, { filename: 'idle.js' });
+    sb.Idle.start('aliens', { area: 'window' });
+    return { colors: sb.Idle.debugColors(), C: sb.Colors };
+}
+
+console.log('animation palette against the terminal');
+{
+    const fails = [];
+    let mismatched = 0, matched = 0;
+    for (const [key, theme] of Object.entries(ALL_THEMES)) {
+        const v = { ...CSS_DEFAULTS, ...theme.vars };
+        const probe = paletteFor(v, '#000000', '#ffffff').C;
+        // What the terminal draws with in each mode (term-pane.js).
+        const modes = {
+            theme: { bg: v['--se-input'], fg: v['--se-txt'] },
+            'theme-dark': (() => { const k = probe.keptDark({ input: v['--se-input'], panel: v['--se-panel'],
+                txt: v['--se-txt'], accent: v['--se-accent'] }); return { bg: k.background, fg: k.foreground }; })(),
+            dark: { bg: '#1b1e25', fg: '#e6e9ef' },
+        };
+        for (const [mode, { bg, fg }] of Object.entries(modes)) {
+            const { colors: c, C } = paletteFor(v, bg, fg);
+            const ratio = (x) => C.contrast(C.hexToRgb(x), C.hexToRgb(c.bg));
+            const tag = `${key}/${mode}`;
+            if (C.isLight(v['--se-input']) !== C.isLight(bg)) {
+                mismatched++;
+                if (ratio(c.txt) < 7) fails.push(`${tag}: text ${c.txt} at ${ratio(c.txt).toFixed(1)}:1`);
+                for (const k of ['accent', 'up', 'down', 'warn']) {
+                    if (ratio(c[k]) < 4.5) fails.push(`${tag}: ${k} ${c[k]} at ${ratio(c[k]).toFixed(1)}:1`);
+                }
+                if (ratio(c.dim) < 3) fails.push(`${tag}: dim ${c.dim} at ${ratio(c.dim).toFixed(1)}:1`);
+            } else {
+                matched++;
+                for (const k of ['accent', 'up', 'down', 'warn', 'txt']) {
+                    if (c[k] !== v['--se-' + k]) fails.push(`${tag}: ${k} changed to ${c[k]} though the theme fits its terminal`);
+                }
+                if (c.dim !== v['--se-txt-dim']) fails.push(`${tag}: dim changed to ${c.dim} though the theme fits its terminal`);
+            }
+        }
+    }
+    check(`a theme on the other kind of terminal reads (${mismatched} cases)`,
+        !fails.some((f) => !f.includes('though')), fails.filter((f) => !f.includes('though')).slice(0, 4).join('; '));
+    check(`a theme on its own kind of terminal is left exactly as it is (${matched} cases)`,
+        !fails.some((f) => f.includes('though')), fails.filter((f) => f.includes('though')).slice(0, 4).join('; '));
 }
 
 if (failures) {

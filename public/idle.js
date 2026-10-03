@@ -113,6 +113,23 @@
             dim: v('--se-txt-dim', '#8a95a5'),
             mono: v('--mt-mono', 'monospace'),
         };
+        // A theme's colors are picked for its own surface. When the terminal
+        // is the other kind - a light theme "kept dark", or "Always dark"
+        // under one - they land on a background they were never meant for:
+        // Mono's #222222 text and #333333 accent on a near-black night, where
+        // Aliens' ship, lasers and diving words all but vanished (1.3:1).
+        // Then the text is the terminal's own foreground, readable on its
+        // background by construction, and every other color is lifted (or
+        // deepened, the other way round) until it reads against it, hue kept.
+        // A color that already reads is left exactly as the theme has it.
+        const C = window.Colors;
+        const themeLight = C && C.isLight(v('--se-input', '#1b1e25'));
+        if (C && window.TermPanes && themeLight !== C.isLight(c.bg)) {
+            c.txt = (window.TermPanes.currentForeground && window.TermPanes.currentForeground()) ||
+                C.readable(c.txt, c.bg, 7);
+            for (const k of ['accent', 'up', 'down', 'warn']) c[k] = C.readable(c[k], c.bg, 4.5);
+            c.dim = C.readable(c.dim, c.bg, 3);
+        }
         // Takeover styles (stars, snow, fire) want night. On a light theme
         // the terminal background is paper, and white flakes on paper is a
         // flashbang - so the ground becomes a near-black tint of the theme's
@@ -2068,6 +2085,9 @@
         // The running style's state, for probes that want to assert on
         // behavior (a wave thinned, a diver launched) rather than pixels.
         debugState: () => (running ? running.state : null),
+        // The palette the running style was handed, for probes and tests that
+        // check what it draws with.
+        debugColors: () => (running ? running.env.colors : null),
         // Whether the OS is asking for reduced motion - shown in Settings,
         // never used to refuse an explicit opt-in.
         reducedMotion: () => reducedMotion,

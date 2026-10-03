@@ -151,6 +151,12 @@
     function currentBackground() {
         return terminalTheme().background;
     }
+    // And its text color, readable on that background by construction - the
+    // idle animations borrow it when the theme's own text was picked for the
+    // other kind of surface.
+    function currentForeground() {
+        return terminalTheme().foreground;
+    }
 
     // Re-palette every live terminal: theme change, or a settings change.
     function refreshTheme() {
@@ -525,7 +531,7 @@
 
     window.TermPanes = {
         create, attachPort, mount, setState, destroy, panes, checkSavable,
-        refreshTheme, currentBackground, isDead, isReady,
+        refreshTheme, currentBackground, currentForeground, isDead, isReady,
         promptLines, lastCommandOutput, zoom, saveOutput,
         // null means "following Settings", so anything else is a zoom the
         // user can be offered a way out of.
