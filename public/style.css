@@ -307,6 +307,10 @@ label { color: var(--se-txt-dim); }
     outline: 1px dashed var(--se-warn);
     outline-offset: -2px;
 }
+/* Drag-to-reorder: a line where the dragged items will land - above or
+   below the row, among its siblings. */
+.tree-row.drop-before { box-shadow: inset 0 2px 0 var(--se-accent); }
+.tree-row.drop-after { box-shadow: inset 0 -2px 0 var(--se-accent); }
 .tree-row:hover { background: var(--se-panel-2); }
 .tree-row.selected { background: color-mix(in srgb, var(--se-accent) 25%, var(--se-panel)); }
 .tree-arrow { width: 12px; color: var(--se-txt-dim); flex: none; }

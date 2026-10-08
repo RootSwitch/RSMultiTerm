@@ -109,6 +109,47 @@ function move(id, parentId, order) {
     persist();
 }
 
+// Set the children of `parentId` to `ids`, in that order, in ONE write: a
+// drag to a position or a sort renumbers a whole folder, and doing it as a
+// move() per node meant a disk write and a tree-changed repaint for every
+// sibling. Items listed from elsewhere move in. Children of parentId left
+// out of the list keep their relative order after the listed ones, so a
+// renderer working from a slightly stale tree cannot drop anything. Refuses
+// - throws, for the renderer to show - anything but a list of distinct,
+// existing ids, a parent that is not a folder, and a folder moved into
+// itself or its own subtree.
+function reorder(parentId, ids) {
+    parentId = parentId || null;
+    if (!Array.isArray(ids) || ids.length > 10000 ||
+        !ids.every((id) => typeof id === 'string' && !UNSAFE_IDS.has(id) && get(id))) {
+        throw new Error('reorder needs a list of existing node ids');
+    }
+    if (new Set(ids).size !== ids.length) throw new Error('reorder ids must be distinct');
+    if (parentId !== null && (typeof parentId !== 'string' || (get(parentId) || {}).type !== 'folder')) {
+        throw new Error('reorder target must be a folder');
+    }
+    for (const id of ids) {
+        let p = parentId;
+        const seen = new Set();
+        while (p) {
+            if (p === id || seen.has(p)) throw new Error('a folder cannot move into itself or its own contents');
+            seen.add(p);
+            p = (get(p) || {}).parentId;
+        }
+    }
+    const listed = new Set(ids);
+    const rest = Object.values(tree.nodes)
+        .filter((n) => (n.parentId || null) === parentId && !listed.has(n.id))
+        .sort((a, b) => (a.order || 0) - (b.order || 0))
+        .map((n) => n.id);
+    [...ids, ...rest].forEach((id, i) => {
+        const n = tree.nodes[id];
+        n.parentId = parentId;
+        n.order = i;
+    });
+    persist();
+}
+
 // Bulk edit with tri-state semantics: for each field, undefined = keep,
 // null = clear to inherit, value = set explicitly.
 function bulkEdit(ids, patch) {
@@ -220,6 +261,6 @@ function replaceAll(newNodes) {
 }
 
 module.exports = {
-    init, onChange, nodes, get, upsert, remove, move, bulkEdit,
+    init, onChange, nodes, get, upsert, remove, move, reorder, bulkEdit,
     effective, resolveDescriptor, newId, INHERITABLE, replaceAll,
 };

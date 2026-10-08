@@ -262,11 +262,47 @@ try {
     fs.unlinkSync(path.join(dir, 'sessions.json'));
     sessions.init();   // back to a clean tree for anything after this
 
+    // Reorder: a folder's children set in one write - a drag to a position
+    // or a sort renumbers a whole folder, and a move() per node was a disk
+    // write and a repaint for every sibling.
+    let writes = 0;
+    sessions.onChange(() => { writes++; });
+    const rf = sessions.upsert({ type: 'folder', name: 'Lab', parentId: null });
+    const [ra, rb, rc] = ['a', 'b', 'c'].map((name) =>
+        sessions.upsert({ type: 'session', name, parentId: rf.id, host: '192.0.2.1' }));
+    const loose = sessions.upsert({ type: 'session', name: 'loose', parentId: null, host: '192.0.2.2' });
+    const kidsOf = (pid) => Object.values(sessions.nodes())
+        .filter((n) => (n.parentId || null) === pid && n.type === 'session')
+        .sort((x, y) => x.order - y.order).map((n) => n.name);
+    writes = 0;
+    sessions.reorder(rf.id, [rc.id, ra.id, rb.id]);
+    assert.deepStrictEqual(kidsOf(rf.id), ['c', 'a', 'b'], 'children take the listed order');
+    assert.strictEqual(writes, 1, 'a reorder is one write, not one per node');
+    sessions.reorder(rf.id, [rc.id, loose.id, ra.id, rb.id]);
+    assert.deepStrictEqual(kidsOf(rf.id), ['c', 'loose', 'a', 'b'], 'an item from elsewhere moves in at its place');
+    assert.strictEqual(sessions.get(loose.id).parentId, rf.id);
+    sessions.reorder(rf.id, [rb.id]);
+    assert.deepStrictEqual(kidsOf(rf.id), ['b', 'c', 'loose', 'a'],
+        'children left out keep their order after the listed ones - a stale list drops nothing');
+    const orders = Object.values(sessions.nodes()).filter((n) => n.parentId === rf.id)
+        .map((n) => n.order).sort((x, y) => x - y);
+    assert.deepStrictEqual(orders, orders.map((_o, i) => i),
+        'a reorder numbers the whole folder 0..n-1 - no two children share a place');
+    const sub = sessions.upsert({ type: 'folder', name: 'Sub', parentId: rf.id });
+    assert.throws(() => sessions.reorder(rf.id, ['no-such-id']), /existing node ids/);
+    assert.throws(() => sessions.reorder(rf.id, 'abc'), /existing node ids/);
+    assert.throws(() => sessions.reorder(rf.id, ['__proto__']), /existing node ids/);
+    assert.throws(() => sessions.reorder(rf.id, [ra.id, ra.id]), /distinct/);
+    assert.throws(() => sessions.reorder(ra.id, [rb.id]), /must be a folder/);
+    assert.throws(() => sessions.reorder(sub.id, [rf.id]), /into itself/);
+    assert.deepStrictEqual(kidsOf(rf.id), ['b', 'c', 'loose', 'a'], 'a refused reorder changes nothing');
+    assert.strictEqual(sessions.get(rf.id).parentId, null, 'and moves nothing');
+
     // A key that is not a setting is not stored, whatever it claims.
     settings.update({ notASetting: 'hello' });
     assert.strictEqual('notASetting' in settings.get(), false, 'unknown keys must be refused');
 
-    console.log('ok - store + session tree (13 scenarios incl. logging tri-state, BOM, settings clamps, hostkeys fail-closed, shape guards)');
+    console.log('ok - store + session tree (14 scenarios incl. logging tri-state, BOM, settings clamps, hostkeys fail-closed, shape guards, one-write reorder)');
 } finally {
     fs.rmSync(dir, { recursive: true, force: true });
 }

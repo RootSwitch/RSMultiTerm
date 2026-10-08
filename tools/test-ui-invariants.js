@@ -744,9 +744,37 @@ assert.ok(!/\bteam\b/i.test(pkg.description),
         'the idle animations must take their night from Colors.night, the same as the terminal');
 }
 
+// 37. Reordering the session tree must be real end to end: both drag
+// handlers plan the drop the same way, a placed drop and a sort go through
+// the one-write rs:tree.reorder (allowed by the preload, handled in main),
+// the two Sort menu items open the dialog, and the drop line is drawn.
+{
+    const reTree = fs.readFileSync(path.join(PUBLIC, 'session-tree.js'), 'utf8');
+    const rePreload = fs.readFileSync(path.join(__dirname, '..', 'main', 'preload.js'), 'utf8');
+    const reIpc = fs.readFileSync(path.join(__dirname, '..', 'main', 'ipc.js'), 'utf8');
+    const reCss = fs.readFileSync(path.join(PUBLIC, 'style.css'), 'utf8');
+    const overAt = reTree.indexOf("el.addEventListener('dragover', (e) => {\n            const plan = dropPlan(e, el, node);");
+    const dropAt = reTree.indexOf("el.addEventListener('drop', (e) => {\n            const plan = dropPlan(e, el, node);");
+    assert.ok(overAt >= 0 && dropAt >= 0, 'dragover and drop must both plan the drop with dropPlan');
+    assert.ok(reTree.indexOf("else placeNodes(ids, node, plan.zone);") >= 0,
+        'a before/after drop must place the items, not just move them into the folder');
+    const reorderCalls = reTree.split("rsterm.invoke('rs:tree.reorder'").length - 1;
+    assert.ok(reorderCalls >= 2, 'placing and sorting must both go through rs:tree.reorder');
+    assert.ok(rePreload.indexOf("'rs:tree.reorder',") >= 0, 'the preload must allow rs:tree.reorder');
+    assert.ok(reIpc.indexOf("ipcMain.handle('rs:tree.reorder'") >= 0, 'main must handle rs:tree.reorder');
+    assert.ok(reTree.indexOf("{ label: 'Sort A to Z...', disabled: childrenOf(node.id).length < 2,") >= 0 &&
+        reTree.indexOf("onClick: () => sortDialog(node.id) });") >= 0,
+        'a folder\'s menu must offer Sort A to Z');
+    assert.ok(reTree.indexOf("label: 'Sort Top Level A to Z...',") >= 0 &&
+        reTree.indexOf("onClick: () => sortDialog(null),") >= 0,
+        'the blank-area menu must offer Sort Top Level A to Z');
+    assert.ok(/\.tree-row\.drop-before\s*\{/.test(reCss) && /\.tree-row\.drop-after\s*\{/.test(reCss),
+        'style.css must draw the line a placed drop lands on');
+}
+
 console.log(`ok - ui invariants (hidden rule, outside-click menus, clipboard perms, ` +
     `no default menu, wheel zoom, remote-name sanitizing, gated dev hooks, idle overlay-only, ` +
     `exe metadata, shared menus, focus handback, contrast floor, broadcast truth, no orphan sessions, ` +
-    `armed-tab growth, focus trap, scp discipline, low-batch pins, shape guards, failure surfacing, kept-dark mode, ` +
+    `armed-tab growth, focus trap, scp discipline, low-batch pins, shape guards, failure surfacing, kept-dark mode, tree reorder, ` +
     `${styleIds.length} idle styles mooded, unread badges, on-connect discipline, watch triggers, four-state dots, ` +
     `${scripts.length} scripts, ${wired.size} wired ids)`);

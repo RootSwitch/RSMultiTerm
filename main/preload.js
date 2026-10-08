@@ -31,6 +31,7 @@ const INVOKE_ALLOW = new Set([
     'rs:tree.upsert',
     'rs:tree.delete',
     'rs:tree.move',
+    'rs:tree.reorder',
     'rs:tree.bulkEdit',
     'rs:tree.effective',
     'rs:highlights.get',

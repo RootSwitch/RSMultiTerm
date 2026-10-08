@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- **Saved sessions can be put in any order.** Drag a session onto another
+  session and it lands above or below it (top or bottom half of the row);
+  drag a folder onto another folder's top or bottom edge to place it, or
+  onto its middle to move it inside. A line shows where it will land.
+  Dropping anywhere else works as before. A folder's right-click menu has
+  "Sort A to Z...", and the empty area below the list has "Sort Top Level
+  A to Z...", each with the option to sort the folders inside too.
+  Folders stay above sessions, and numbers sort as numbers (sw2 before
+  sw10). The order is part of what session sync carries.
+
 ## 1.0.7 - 2026-10-03
 
 A dark terminal for light themes, and idle animations that stay visible,

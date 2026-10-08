@@ -157,6 +157,7 @@ function wireIpc(engineRef, getWindow, bootConfig) {
     ipcMain.handle('rs:tree.upsert', (_e, node) => sessionStore.upsert(node));
     ipcMain.handle('rs:tree.delete', (_e, { ids }) => sessionStore.remove(ids));
     ipcMain.handle('rs:tree.move', (_e, { id, parentId, order }) => sessionStore.move(id, parentId, order));
+    ipcMain.handle('rs:tree.reorder', (_e, { parentId, ids }) => sessionStore.reorder(parentId, ids));
     ipcMain.handle('rs:tree.bulkEdit', (_e, { ids, patch }) => sessionStore.bulkEdit(ids, patch));
     ipcMain.handle('rs:tree.effective', (_e, { id }) => sessionStore.effective(id));
 

@@ -209,6 +209,7 @@ ${describeAge(ageDays)}.` + NOT_PROBED;
                 el.appendChild(dot);
             }
 
+            el.dataset.nodeId = node.id;
             el.addEventListener('click', (e) => handleSelect(node, e));
             armRowDrag(el, node);
             el.addEventListener('contextmenu', (e) => {
@@ -407,6 +408,100 @@ ${describeAge(ageDays)}.` + NOT_PROBED;
         return node.type === 'folder' ? node.id : (node.parentId || null);
     }
 
+    // Where a drop on this row would put what is being dragged, or null when
+    // it cannot go there. Sessions dropped on a session land before or after
+    // it (top or bottom half of the row); folders dropped on a folder land
+    // before it (top quarter), after it (bottom quarter) or inside (middle).
+    // An expanded folder with contents showing has no "after": the line
+    // would sit above its first child and read as "inside", so that quarter
+    // means inside. Anything else - a session on a folder, a mix - keeps the
+    // original meaning: into the folder, or into the session's folder, at
+    // the bottom.
+    function dropPlan(e, el, node) {
+        if (!dragIds || !dragIds.length) return null;
+        const kinds = new Set(dragIds.map((id) => (nodes[id] || {}).type));
+        let zone = 'into';
+        if (kinds.size === 1 && kinds.has(node.type)) {
+            const r = el.getBoundingClientRect();
+            const y = (e.clientY - r.top) / (r.height || 1);
+            if (node.type === 'session') zone = y < 0.5 ? 'before' : 'after';
+            else if (y < 0.25) zone = 'before';
+            else if (y > 0.75 && !(expanded.has(node.id) && childrenOf(node.id).length)) zone = 'after';
+        }
+        const parentId = zone === 'into' ? dropParentFor(node) : (node.parentId || null);
+        if (dragIds.includes(node.id)) return null;
+        if (dragIds.some((id) => (nodes[id] || {}).type === 'folder' && insideSubtree(parentId, id))) return null;
+        return { zone, parentId };
+    }
+
+    // Put the dragged items just before or after `target`, among its
+    // siblings, keeping their own on-screen order. One reorder call: the
+    // folder's whole new child list in a single write.
+    async function placeNodes(ids, target, zone) {
+        const parentId = target.parentId || null;
+        const onScreen = visibleRows().map((r) => r.node.id);
+        const rank = (id) => { const i = onScreen.indexOf(id); return i < 0 ? Infinity : i; };
+        const moving = outermost(ids).sort((a, b) => rank(a) - rank(b));
+        const list = childrenOf(parentId).map((n) => n.id).filter((id) => !moving.includes(id));
+        let at = list.indexOf(target.id);
+        if (at < 0) return;
+        if (zone === 'after') at++;
+        list.splice(at, 0, ...moving);
+        try {
+            await rsterm.invoke('rs:tree.reorder', { parentId, ids: list });
+        } catch (err) {
+            window.Forms.showBanner('error', 'Could not move that: ' + String((err && err.message) || err));
+        }
+        if (parentId) expanded.add(parentId);
+    }
+
+    // Sort a folder's contents (or the top level's) A to Z: folders still
+    // above sessions, numbers in names compared as numbers, so sw2 comes
+    // before sw10. One reorder per folder sorted.
+    async function sortFolder(folderId, deep) {
+        const byName = (a, b) => String(a.name || '').localeCompare(String(b.name || ''),
+            undefined, { numeric: true, sensitivity: 'base' });
+        const kids = childrenOf(folderId);
+        const folders = kids.filter((n) => n.type === 'folder').sort(byName);
+        const sessions = kids.filter((n) => n.type !== 'folder').sort(byName);
+        await rsterm.invoke('rs:tree.reorder', {
+            parentId: folderId, ids: [...folders, ...sessions].map((n) => n.id),
+        });
+        if (deep) for (const f of folders) await sortFolder(f.id, true);
+    }
+
+    function sortDialog(folderId) {
+        const kids = childrenOf(folderId);
+        const hasFolders = kids.some((n) => n.type === 'folder');
+        const body = document.createElement('div');
+        const info = document.createElement('p');
+        info.style.marginBottom = '10px';
+        const where = folderId ? `"${(nodes[folderId] || {}).name || 'this folder'}"` : 'the top level';
+        info.textContent = `Sort the ${kids.length} item${kids.length === 1 ? '' : 's'} in ${where} ` +
+            'from A to Z? Folders stay above sessions. This replaces the order you have ' +
+            'set by hand; you can still drag items afterwards.';
+        body.appendChild(info);
+        let deep = null;
+        if (hasFolders) {
+            deep = window.Modals.select([
+                { value: 'no', label: 'Only this level - folders inside keep their own order' },
+                { value: 'yes', label: 'This level and every folder inside it' },
+            ], 'no');
+            body.appendChild(window.Modals.row('Folders inside', deep));
+        }
+        window.Modals.open('Sort A to Z', body, [
+            { label: 'Cancel' },
+            {
+                label: 'Sort', primary: true,
+                onClick: () => {
+                    sortFolder(folderId, !!deep && deep.value === 'yes').catch((err) =>
+                        window.Forms.showBanner('error', 'Could not sort: ' + String((err && err.message) || err)));
+                    if (folderId) expanded.add(folderId);
+                },
+            },
+        ]);
+    }
+
     function armRowDrag(el, node) {
         el.draggable = true;
         el.addEventListener('dragstart', (e) => {
@@ -422,32 +517,36 @@ ${describeAge(ageDays)}.` + NOT_PROBED;
             clearDropMarks();
         });
         el.addEventListener('dragover', (e) => {
-            if (!dragIds) return;
-            const parentId = dropParentFor(node);
-            if (dragIds.some((id) => id === node.id ||
-                ((nodes[id] || {}).type === 'folder' && insideSubtree(parentId, id)))) return;
+            const plan = dropPlan(e, el, node);
+            if (!plan) return;
             e.preventDefault();
             e.dataTransfer.dropEffect = 'move';
-            if (el !== lastDropMark) {
+            const mark = plan.zone === 'into' ? 'drop-target' : `drop-${plan.zone}`;
+            if (el !== lastDropMark || !el.classList.contains(mark)) {
                 clearDropMarks();
-                el.classList.add('drop-target');
+                el.classList.add(mark);
                 lastDropMark = el;
             }
         });
         el.addEventListener('drop', (e) => {
-            if (!dragIds) return;
+            const plan = dropPlan(e, el, node);
+            if (!plan) return;
             e.preventDefault();
             e.stopPropagation();
             const ids = dragIds;
             dragIds = null;
             clearDropMarks();
-            moveNodes(ids, dropParentFor(node));
+            if (plan.zone === 'into') moveNodes(ids, plan.parentId);
+            else placeNodes(ids, node, plan.zone);
         });
     }
 
     let lastDropMark = null;
     function clearDropMarks() {
-        if (lastDropMark) { lastDropMark.classList.remove('drop-target'); lastDropMark = null; }
+        if (lastDropMark) {
+            lastDropMark.classList.remove('drop-target', 'drop-before', 'drop-after');
+            lastDropMark = null;
+        }
         document.getElementById('tree').classList.remove('drop-root');
     }
 
@@ -659,7 +758,9 @@ ${describeAge(ageDays)}.` + NOT_PROBED;
             items.push(null,
                 { label: 'New Session Here', onClick: () => window.Forms.editSession(null, node.id) },
                 { label: 'New Folder Here', onClick: () => window.Forms.editFolder(null, node.id) },
-                { label: 'Audit This Folder', onClick: auditDevices });
+                { label: 'Audit This Folder', onClick: auditDevices },
+                { label: 'Sort A to Z...', disabled: childrenOf(node.id).length < 2,
+                    onClick: () => sortDialog(node.id) });
         }
         items.push(null, { label: multi ? `Delete ${selected.size} items...` : 'Delete...', onClick: deleteSelection });
         window.Modals.menu(e.clientX, e.clientY, items);
@@ -697,6 +798,11 @@ ${describeAge(ageDays)}.` + NOT_PROBED;
             {
                 label: 'Collapse All Folders',
                 onClick: () => { expanded.clear(); render(); },
+            },
+            {
+                label: 'Sort Top Level A to Z...',
+                disabled: childrenOf(null).length < 2,
+                onClick: () => sortDialog(null),
             },
         ]);
     }
