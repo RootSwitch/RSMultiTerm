@@ -37,9 +37,12 @@
 
 (function () {
     const FPS_CAP = 30;
+    // The low frame rate: where Chromium has no GPU every frame is painted and
+    // composited by the processor, and halving the frames halves that.
+    const LOW_FPS = 15;
     const CHECK_EVERY_MS = 5000;
 
-    let settings = { style: 'off', minutes: 5, area: 'window' };
+    let settings = { style: 'off', minutes: 5, area: 'window', fps: 'auto' };
     let lastActivity = Date.now();
     let running = null;       // {canvas, ctx, style, state, raf, lastFrame, env}
     let reducedMotion = false;
@@ -62,9 +65,32 @@
             // Minutes before "Surprise me" moves to another style. 0 = stay
             // on the one it picked.
             rotate: Math.max(0, Math.min(240, Number(i.rotateMinutes) || 0)),
+            // Frame rate: 'auto' (15 where there is no GPU, else 30), 'low'
+            // (always 15) or 'full' (always 30). See frameCap.
+            fps: ['low', 'full'].includes(i.fps) ? i.fps : 'auto',
         };
     };
     rsterm.invoke('rs:settings.get').then(applySettings);
+
+    // Whether Chromium is drawing without a GPU - a virtual machine, a Remote
+    // Desktop session without GPU passthrough. Then the processor paints and
+    // composites every frame: measured on a 4-vCPU VM over RDP, Rain cost 46%
+    // of a core at 32fps and 22% at 16fps, almost none of it the animation's
+    // own code. Asked again at every start, because a GPU process that
+    // crashes falls back to software mid-run.
+    let softwareRendering = false;
+    const checkRendering = () => rsterm.invoke('rs:app.rendering')
+        .then((r) => { softwareRendering = !!(r && r.software); }, () => {});
+    checkRendering();
+    function lowFrameRate() {
+        return settings.fps === 'low' || (settings.fps === 'auto' && softwareRendering);
+    }
+    // The frame rate the running style draws at. A game being PLAYED keeps the
+    // full rate whatever the setting: someone is at the keyboard, and at 15fps
+    // a Blocks rotation tapped faster than a frame would be missed.
+    function frameCap() {
+        return running && running.play ? FPS_CAP : (lowFrameRate() ? LOW_FPS : FPS_CAP);
+    }
     rsterm.on('rs:evt.settings-changed', applySettings);
 
     // --- activity -----------------------------------------------------------
@@ -252,6 +278,7 @@
         const id = styleId === 'random' || !STYLES[styleId]
             ? draw[Math.floor(Math.random() * draw.length)] : styleId;
         const style = STYLES[id];
+        checkRendering();   // for the next run: this one goes with what is known now
 
         const canvas = document.createElement('canvas');
         canvas.id = 'idle-overlay';
@@ -396,7 +423,8 @@
         // Wall-clock, not the rAF timestamp: this is a minutes-scale
         // deadline and the loop stops dead while the window is hidden.
         if (running.rotateAt && Date.now() >= running.rotateAt) { rotate(); return; }
-        // Draw on whichever display tick lands nearest the FPS_CAP deadline.
+        // Draw on whichever display tick lands nearest the frame deadline
+        // (frameCap: FPS_CAP, or LOW_FPS where there is no GPU or by choice).
         // The gate used to skip any tick that arrived even slightly early,
         // and where ticks come just under 33ms apart - an RDP session's 32Hz
         // display adapter - that was every other tick, so every style drew
@@ -406,7 +434,7 @@
         // second one, 144Hz every fifth. tools/test-idle.js pins the rates.
         const tick = running.lastTick ? now - running.lastTick : 0;
         running.lastTick = now;
-        if (running.lastFrame && now - running.lastFrame + tick / 2 < 1000 / FPS_CAP) return;
+        if (running.lastFrame && now - running.lastFrame + tick / 2 < 1000 / frameCap()) return;
         const dt = running.lastFrame ? Math.min(0.1, (now - running.lastFrame) / 1000) : 1 / FPS_CAP;
         running.lastFrame = now;
         const { ctx, region } = running;
@@ -481,6 +509,16 @@
             label: 'Full screen animation',
             checked: settings.area !== 'panes',
             onClick: (on) => rsterm.invoke('rs:settings.update', { idle: { area: on ? 'window' : 'panes' } }),
+        }, {
+            // The frame-rate knob, beside the other "how it plays" one. Checked
+            // is 15fps. Automatic shows what it chose (and says why when it
+            // chose low); a click makes the choice explicit - full speed even
+            // over RDP, if that is what someone wants - and Settings > Frame
+            // rate is the way back to automatic.
+            label: settings.fps === 'auto' && softwareRendering
+                ? 'Low frame rate (15 fps, no GPU found)' : 'Low frame rate (15 fps)',
+            checked: lowFrameRate(),
+            onClick: (on) => rsterm.invoke('rs:settings.update', { idle: { fps: on ? 'low' : 'full' } }),
         });
         window.Modals.menu(r.left, r.bottom + 2, items);
     }
@@ -2100,6 +2138,8 @@
         // The palette the running style was handed, for probes and tests that
         // check what it draws with.
         debugColors: () => (running ? running.env.colors : null),
+        // For Settings: whether automatic frame rate means 15fps here.
+        softwareRendering: () => softwareRendering,
         // Whether the OS is asking for reduced motion - shown in Settings,
         // never used to refuse an explicit opt-in.
         reducedMotion: () => reducedMotion,

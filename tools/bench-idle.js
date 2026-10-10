@@ -55,7 +55,9 @@ const probe = `(async () => {
     const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     const per = ${SECONDS * 1000};
     const out = { cores: navigator.hardwareConcurrency || null, rows: [] };
-    await rsterm.invoke('rs:settings.update', { idle: { area: 'window', minutes: 240 } });
+    // Full speed, always: the budget column assumes 30fps, and automatic would
+    // quietly halve the frames on a machine without a GPU.
+    await rsterm.invoke('rs:settings.update', { idle: { area: 'window', minutes: 240, fps: 'full' } });
     await sleep(400);
 
     const measure = async (id, label) => {

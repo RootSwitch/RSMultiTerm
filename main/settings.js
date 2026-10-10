@@ -79,7 +79,7 @@ const DEFAULTS = {
     // Idle animation: off unless asked for. 'random' picks a style each time.
     // picks: which styles "Surprise me" may choose; empty means all.
     // rotateMinutes: how long "Surprise me" stays on one style; 0 = forever.
-    idle: { style: 'off', minutes: 5, area: 'panes', picks: [], rotateMinutes: 0 },
+    idle: { style: 'off', minutes: 5, area: 'panes', picks: [], rotateMinutes: 0, fps: 'auto' },
     // Field tools remembers the folder you were serving and the ports you
     // set. Nothing here starts anything - it is only what the dialog opens
     // with, so you are not re-typing a path every time you push an image.
@@ -150,6 +150,11 @@ function sanitize(patch) {
                 name: g.name.trim().slice(0, 80),
                 nodeIds: g.nodeIds.filter((id) => typeof id === 'string').slice(0, 500),
             }));
+    }
+    // The idle frame rate is one of three words; anything else is automatic.
+    if (out.idle && typeof out.idle === 'object' && 'fps' in out.idle &&
+        !['auto', 'low', 'full'].includes(out.idle.fps)) {
+        out.idle = { ...out.idle, fps: 'auto' };
     }
     if (out.terminalColors && 'minContrast' in out.terminalColors) {
         // 1 is "off" and 21 is black on white; anything outside that is not

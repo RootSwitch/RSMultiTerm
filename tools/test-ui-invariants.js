@@ -772,9 +772,32 @@ assert.ok(!/\bteam\b/i.test(pkg.description),
         'style.css must draw the line a placed drop lands on');
 }
 
+// 38. The idle frame rate must be a real setting: the frame gate consults
+// frameCap(), automatic asks main whether Chromium is drawing in software
+// (rs:app.rendering, allowed by the preload), the Extras menu's checkbox
+// and Settings' Frame rate both write idle.fps, and Settings sends it.
+{
+    const fpsIdle = fs.readFileSync(path.join(PUBLIC, 'idle.js'), 'utf8');
+    const fpsUi = fs.readFileSync(path.join(PUBLIC, 'settings-ui.js'), 'utf8');
+    const fpsIpc = fs.readFileSync(path.join(__dirname, '..', 'main', 'ipc.js'), 'utf8');
+    const fpsPreload = fs.readFileSync(path.join(__dirname, '..', 'main', 'preload.js'), 'utf8');
+    assert.ok(fpsIdle.indexOf('now - running.lastFrame + tick / 2 < 1000 / frameCap()) return;') >= 0,
+        'the frame gate must use frameCap(), or the setting decides nothing');
+    assert.ok(fpsIdle.indexOf("rsterm.invoke('rs:app.rendering')") >= 0 &&
+        fpsIpc.indexOf("ipcMain.handle('rs:app.rendering'") >= 0 &&
+        fpsIpc.indexOf('app.getGPUFeatureStatus()') >= 0 &&
+        fpsPreload.indexOf("'rs:app.rendering',") >= 0,
+        'automatic must ask main whether Chromium is rendering in software');
+    assert.ok(fpsIdle.indexOf("onClick: (on) => rsterm.invoke('rs:settings.update', { idle: { fps: on ? 'low' : 'full' } }),") >= 0,
+        'the Extras menu must offer the frame-rate checkbox');
+    assert.ok(fpsUi.indexOf("const fpsRow = row('Frame rate', fIdleFps);") >= 0 &&
+        fpsUi.indexOf("rotateMinutes: Number(fIdleRotate.value) || 0, fps: fIdleFps.value },") >= 0,
+        'Settings must show Frame rate and save it');
+}
+
 console.log(`ok - ui invariants (hidden rule, outside-click menus, clipboard perms, ` +
     `no default menu, wheel zoom, remote-name sanitizing, gated dev hooks, idle overlay-only, ` +
     `exe metadata, shared menus, focus handback, contrast floor, broadcast truth, no orphan sessions, ` +
-    `armed-tab growth, focus trap, scp discipline, low-batch pins, shape guards, failure surfacing, kept-dark mode, tree reorder, ` +
+    `armed-tab growth, focus trap, scp discipline, low-batch pins, shape guards, failure surfacing, kept-dark mode, tree reorder, idle frame rate, ` +
     `${styleIds.length} idle styles mooded, unread badges, on-connect discipline, watch triggers, four-state dots, ` +
     `${scripts.length} scripts, ${wired.size} wired ids)`);

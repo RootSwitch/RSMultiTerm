@@ -151,6 +151,19 @@ function wireIpc(engineRef, getWindow, bootConfig) {
     secrets.onChange(() => forward('rs:evt.profiles-changed', {}));
 
     ipcMain.handle('rs:app.bootconfig', () => bootConfig);
+    // Whether Chromium is drawing without a GPU, for the idle animations'
+    // automatic frame rate. The feature status, not the device list: a GPU
+    // that is present but blocklisted, or whose process crashed, still leaves
+    // the processor doing the drawing.
+    ipcMain.handle('rs:app.rendering', () => {
+        const st = app.getGPUFeatureStatus() || {};
+        const soft = (v) => !String(v || '').startsWith('enabled');
+        return {
+            software: soft(st['2d_canvas']) || soft(st.gpu_compositing),
+            canvas2d: st['2d_canvas'] || null,
+            compositing: st.gpu_compositing || null,
+        };
+    });
 
     // --- session tree -----------------------------------------------------
     ipcMain.handle('rs:tree.get', () => sessionStore.nodes());

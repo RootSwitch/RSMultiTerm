@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- **Idle animations run at 15 fps where there is no GPU.** In a virtual
+  machine or a Remote Desktop session without GPU passthrough, the
+  processor paints every frame; measured on a 4-vCPU VM over RDP, Rain took
+  41% of a core at 32 fps and 19% at 16. The animations now notice when
+  Chromium is drawing in software and default to 15 fps there, 30 fps
+  everywhere else. The Extras menu has a "Low frame rate (15 fps)"
+  checkbox under "Full screen animation" - untick it to run at full speed
+  anyway - and Settings > Frame rate offers Automatic, Full or Low. Games
+  started with Play always run at full speed.
 - **Saved sessions can be put in any order.** Drag a session onto another
   session and it lands above or below it (top or bottom half of the row);
   drag a folder onto another folder's top or bottom edge to place it, or

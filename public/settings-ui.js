@@ -168,6 +168,20 @@
             { value: 'window', label: 'The whole window' },
             { value: 'panes', label: 'Terminal panes only - sidebar and tabs stay visible' },
         ], idle.area === 'window' ? 'window' : 'panes');
+        // Frame rate. Automatic is 15fps where Chromium has no GPU to draw with
+        // (a VM, most Remote Desktop sessions) and 30 elsewhere. The Extras
+        // menu's checkbox sets low or full outright; this is also the way
+        // back to automatic.
+        const noGpu = !!(window.Idle && window.Idle.softwareRendering && window.Idle.softwareRendering());
+        const fIdleFps = select([
+            { value: 'auto', label: noGpu ? 'Automatic - 15 fps here, no GPU found' : 'Automatic - 30 fps, a GPU is drawing' },
+            { value: 'full', label: 'Full - 30 fps' },
+            { value: 'low', label: 'Low - 15 fps, half the drawing work' },
+        ], ['low', 'full'].includes(idle.fps) ? idle.fps : 'auto');
+        const fpsRow = row('Frame rate', fIdleFps);
+        fpsRow.title = 'Without a GPU the processor draws every frame, so 15 fps roughly halves what ' +
+            'an animation costs - on a remote session, the compression too. Games started with ' +
+            'Play from the Extras menu always run at full speed.';
         // How long "Surprise me" stays on one style. Only meaningful for
         // "Surprise me", so it is disabled otherwise rather than hidden - a
         // field that vanishes is a field nobody finds again.
@@ -330,7 +344,7 @@
             row('Scrollback lines', fScrollback),
             logRow, row('Log timestamps', fTimestamps), editorRow,
             syncRow, syncHint, row('Check sync every (s)', fPoll),
-            styleRow, row('Start after (min)', fIdleMin), row('Play over', fIdleArea),
+            styleRow, row('Start after (min)', fIdleMin), row('Play over', fIdleArea), fpsRow,
             picksWrap, rotateRow, idleHint);
 
         const note = document.createElement('p');
@@ -344,7 +358,7 @@
             confirmations: { pasteMultiline: fPasteConfirm.value === 'yes' },
             idle: { style: fIdleStyle.value, minutes: Number(fIdleMin.value) || 5,
                 area: fIdleArea.value, picks: readPicks(),
-                rotateMinutes: Number(fIdleRotate.value) || 0 },
+                rotateMinutes: Number(fIdleRotate.value) || 0, fps: fIdleFps.value },
             autoOpenFileBrowser: fAutoFiles.value === 'yes',
             zoomModifier: fZoomMod.value,
             terminalColors: {

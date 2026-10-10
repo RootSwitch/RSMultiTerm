@@ -31,6 +31,11 @@
 //      segments, Blocks' self-player, soft drop and held-key repeat, and
 //      Blocks' game-over pause, which was counted in frames.
 //
+//   7. THE FRAME RATE FOLLOWS THE SETTING. Automatic is 15fps where Chromium
+//      reports software rendering (no GPU: the processor paints every frame)
+//      and 30 elsewhere; low and full override it either way; a game being
+//      played keeps full speed.
+//
 //   6. THE PALETTE READS ON WHAT IT IS DRAWN ON. A light theme "kept
 //      dark" (or under "Always dark") handed the animations its own dark
 //      colors on a near-black night: Mono's text at 1.3:1, so Aliens' ship,
@@ -60,7 +65,9 @@ function seeded(seed) {
     return () => { x = (x * 1664525 + 1013904223) >>> 0; return x / 4294967296; };
 }
 
-function load(style = 'aliens', opts = { area: 'window' }) {
+// env.settings is what rs:settings.get returns, env.rendering what
+// rs:app.rendering does.
+function load(style = 'aliens', opts = { area: 'window' }, env = {}) {
     let rafCb = null;
     let drawn = 0;
     const handlers = {};
@@ -93,7 +100,14 @@ function load(style = 'aliens', opts = { area: 'window' }) {
         getComputedStyle: () => ({ getPropertyValue: () => '' }),
         // Settings arrive before anything starts in the app; a thenable
         // that answers at once gives the same order here.
-        rsterm: { invoke: () => ({ then: (f) => f({}) }), on: noop },
+        rsterm: {
+            invoke: (ch) => {
+                const v = ch === 'rs:settings.get' ? (env.settings || {})
+                    : ch === 'rs:app.rendering' ? (env.rendering || {}) : {};
+                return { then: (f) => f(v) };
+            },
+            on: noop,
+        },
         requestAnimationFrame: (cb) => { rafCb = cb; return 1; },
         cancelAnimationFrame: () => { rafCb = null; },
         setInterval: () => 0, clearInterval: noop, setTimeout: () => 0, clearTimeout: noop,
@@ -597,6 +611,39 @@ console.log('animation palette against the terminal');
     const wrong = Object.keys(bodies).filter((id) => paints(id) !== /\bground: true\b/.test(bodies[id].split('\n')[1] || ''));
     check('the styles that paint the night are the ones flagged ground: true', wrong.length === 0,
         `mismatched: ${wrong.join(', ')}`);
+}
+
+// --- 7. the frame-rate setting -------------------------------------------
+function fpsWith(hz, env, opts = { area: 'window' }) {
+    const t = load('aliens', opts, env);
+    const rnd = seeded(hz * 101);
+    const period = 1000 / hz;
+    let now = 5000;
+    t.tick(now);
+    const before = t.drawn();
+    for (let i = 0; i < hz * 10; i++) { now += period + (rnd() - 0.5) * 0.5; t.tick(now); }
+    return (t.drawn() - before) / 10;
+}
+const NO_GPU = { software: true }, GPU = { software: false };
+const fpsSet = (fps) => ({ idle: { fps } });
+console.log('frame-rate setting');
+{
+    const cases = [
+        ['automatic without a GPU: 15fps (60Hz)', 60, { rendering: NO_GPU }, 14.5, 15.5],
+        ['automatic without a GPU over RDP: every other tick (32Hz)', 32, { rendering: NO_GPU }, 15.5, 16.5],
+        ['automatic without a GPU: 15fps (144Hz)', 144, { rendering: NO_GPU }, 13.5, 15.5],
+        ['automatic with a GPU: 30fps (60Hz)', 60, { rendering: GPU }, 29, 31],
+        ['low with a GPU: 15fps', 60, { rendering: GPU, settings: fpsSet('low') }, 14.5, 15.5],
+        ['full without a GPU: 30fps (60Hz)', 60, { rendering: NO_GPU, settings: fpsSet('full') }, 29, 31],
+        ['full without a GPU over RDP: every tick (32Hz)', 32, { rendering: NO_GPU, settings: fpsSet('full') }, 31.5, 32.5],
+        ['an unknown value is automatic', 60, { rendering: NO_GPU, settings: fpsSet('warp') }, 14.5, 15.5],
+    ];
+    for (const [name, hz, env, lo, hi] of cases) {
+        const fps = fpsWith(hz, env);
+        check(name, fps >= lo && fps <= hi, fps.toFixed(1) + 'fps');
+    }
+    const played = fpsWith(60, { rendering: NO_GPU, settings: fpsSet('low') }, { play: true, area: 'window' });
+    check('a game being played keeps full speed under low', played >= 29 && played <= 31, played.toFixed(1) + 'fps');
 }
 
 if (failures) {

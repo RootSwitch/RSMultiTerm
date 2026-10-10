@@ -298,6 +298,18 @@ try {
     assert.deepStrictEqual(kidsOf(rf.id), ['b', 'c', 'loose', 'a'], 'a refused reorder changes nothing');
     assert.strictEqual(sessions.get(rf.id).parentId, null, 'and moves nothing');
 
+    // The idle frame rate is one of three words; anything else is automatic,
+    // and setting it keeps the rest of the idle settings.
+    const idleBefore = { ...settings.get().idle };
+    settings.update({ idle: { fps: 'warp' } });
+    assert.strictEqual(settings.get().idle.fps, 'auto', 'an unknown frame rate is automatic');
+    settings.update({ idle: { fps: 'low' } });
+    assert.strictEqual(settings.get().idle.fps, 'low');
+    for (const k of ['style', 'minutes', 'area', 'rotateMinutes']) {
+        assert.deepStrictEqual(settings.get().idle[k], idleBefore[k],
+            `setting the frame rate keeps idle.${k}`);
+    }
+
     // A key that is not a setting is not stored, whatever it claims.
     settings.update({ notASetting: 'hello' });
     assert.strictEqual('notASetting' in settings.get(), false, 'unknown keys must be refused');

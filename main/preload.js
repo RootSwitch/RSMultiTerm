@@ -8,6 +8,7 @@ const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
 const INVOKE_ALLOW = new Set([
     'rs:app.bootconfig',
+    'rs:app.rendering',
     'rs:session.connect',
     'rs:session.openNodes',
     'rs:session.reconnect',
