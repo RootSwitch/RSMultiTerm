@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 1.0.8 - 2026-10-11
+
+Put saved sessions in any order, and idle animations that go easy on a
+machine with no GPU.
+
 - **Idle animations run at 15 fps where there is no GPU.** In a virtual
   machine or a Remote Desktop session without GPU passthrough, the
   processor paints every frame; measured on a 4-vCPU VM over RDP, Rain took
