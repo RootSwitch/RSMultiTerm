@@ -15,6 +15,21 @@
   key exchange algorithm" now lists the device's methods (and the same for
   host key, cipher and MAC mismatches), and points at the setting when
   turning it on would help.
+- **A MultiTerm can be split back into tabs.** "Split into Tabs" appears
+  beside "Merge into MultiTerm" whenever the tab in front has more than one
+  pane, and puts each pane back in a tab of its own. To take out just one,
+  "Move to New Tab" is on the pane's menu (Ctrl+right-click when
+  right-click pastes) and the tab's menu. Like a merge, nothing reconnects
+  and no scrollback is lost; the tab you were typing in stays in front, and
+  the split tabs keep the MultiTerm's color. A pane that leaves an armed
+  broadcast leaves the broadcast too, and splitting the whole MultiTerm
+  turns its broadcast off; a banner says so either way.
+- **Merge hands the keyboard back.** After "Merge into MultiTerm" the pane
+  you were typing in keeps the focus; before, the next keystroke went
+  nowhere until a pane was clicked.
+- **The connect bar fits a narrow window.** At the 900-pixel minimum width
+  the Extras button was pushed past the edge, out of reach; the host,
+  username and password fields now give up width first.
 
 ## 1.0.8 - 2026-10-11
 

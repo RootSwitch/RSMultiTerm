@@ -134,6 +134,15 @@ label { color: var(--se-txt-dim); }
 /* No [hidden] guards needed here any more - the global rule at the top of
    this file covers every element, which is where these two belonged. */
 #qc-net, #qc-serial { display: flex; gap: 8px; align-items: center; }
+/* When the window is narrow, the text fields give up width before the
+   buttons at the far end fall off it (the bar scrolls, but with no
+   scrollbar, so what is past the edge is out of reach). Their inline widths
+   are the size they grow back to; these are the floors, still wide enough
+   for the placeholder. */
+#qc-net { min-width: 292px; flex: 0 1 auto; }   /* the floors below + 3 gaps + port */
+#qc-net input { flex: 0 1 auto; }
+#qc-host { min-width: 80px; }
+#qc-user, #qc-pass { min-width: 68px; }
 
 .brand {
     display: flex;

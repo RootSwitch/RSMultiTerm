@@ -218,21 +218,82 @@
     // Collapse every open tab into one multi-pane tab, in strip order. The
     // sessions are not touched - only which tab holds them - so nothing
     // reconnects and no scrollback is lost.
+    // The pane you were typing in stays the focused one, and gets the
+    // keyboard back: re-parenting it into the merged grid used to drop focus
+    // to the page, and the next keystroke reached no terminal.
     function mergeAll() {
         if (tabs.length < 2) return;
         const target = tabs[0];
+        const was = active() && active().focusedSessionId;
         let moved = 0;
         for (const tab of tabs.slice(1)) {
             for (const sid of tab.sessionIds) { target.sessionIds.push(sid); moved++; }
             tab.sessionIds = [];
         }
         tabs.length = 1;
-        activeId = target.id;
-        fire();
+        if (was && target.sessionIds.includes(was)) target.focusedSessionId = was;
+        bringForward(target);
         // A merge pours every other tab's sessions into this one. If it was
         // armed, sessions deliberately kept in separate tabs just became
         // broadcast recipients - that disarms rather than warns.
         if (window.MultiExec) window.MultiExec.noteTabGrew(target.id, moved, { bulk: true });
+    }
+
+    // The way back out of a MultiTerm: sessions leave their multi-pane tab
+    // for tabs of their own, placed right after the one they left. Like a
+    // merge, the sessions themselves are not touched - only which tab holds
+    // them - so nothing reconnects and no scrollback is lost. The new tabs
+    // keep the old one's color: a pane from the red (production) tab is
+    // still production.
+    function splitOff(tab, sessionIds) {
+        const fresh = sessionIds.map((sid) => ({
+            id: nextId++, title: 'Session', sessionIds: [sid], focusedSessionId: sid,
+            color: tab.color || null,
+        }));
+        tab.sessionIds = tab.sessionIds.filter((sid) => !sessionIds.includes(sid));
+        if (!tab.sessionIds.includes(tab.focusedSessionId)) {
+            tab.focusedSessionId = tab.sessionIds[0] || null;
+        }
+        tabs.splice(tabs.indexOf(tab) + 1, 0, ...fresh);
+        return fresh;
+    }
+
+    // Bring a tab to the front after a split or a merge and hand the
+    // keyboard to its pane. The click came from a toolbar button or a menu,
+    // the button may have just hidden itself, and the grid re-parents the
+    // panes: left alone, focus sat on nothing and the next keystroke reached
+    // no terminal.
+    function bringForward(tab) {
+        activeId = tab.id;
+        markRead(tab);
+        fire();
+        const pane = window.TermPanes.panes.get(tab.focusedSessionId);
+        if (pane) requestAnimationFrame(() => pane.term.focus());
+    }
+
+    // One pane out into a tab of its own; the rest of the MultiTerm stays.
+    function moveToNewTab(sessionId) {
+        const tab = tabOf(sessionId);
+        if (!tab || tab.sessionIds.length < 2) return false;
+        const [fresh] = splitOff(tab, [sessionId]);
+        bringForward(fresh);
+        if (window.MultiExec) window.MultiExec.noteTabSplit(tab.id, [sessionId], { all: false });
+        return true;
+    }
+
+    // Every pane of a MultiTerm into a tab of its own, in grid order; the
+    // first stays in the original tab. The one you were typing in stays in
+    // front. A name typed for the group no longer describes what is left,
+    // so it goes back to automatic.
+    function splitTab(tab) {
+        if (!tab || tab.sessionIds.length < 2) return 0;
+        const focused = tab.focusedSessionId;
+        const moving = tab.sessionIds.slice(1);
+        splitOff(tab, moving);
+        tab.customTitle = null;
+        bringForward(tabOf(focused) || tab);
+        if (window.MultiExec) window.MultiExec.noteTabSplit(tab.id, moving, { all: true });
+        return moving.length;
     }
 
     async function renameTab(tab) {
@@ -320,6 +381,15 @@
                 disabled: tabs.length < 2,
                 onClick: mergeAll,
             },
+            {
+                label: 'Split into Tabs',
+                disabled: tab.sessionIds.length < 2,
+                onClick: () => splitTab(tab),
+            },
+            ...(focused && tab.sessionIds.length > 1 ? [{
+                label: `Move '${focused.title}' to a New Tab`,
+                onClick: () => moveToNewTab(focused.sessionId),
+            }] : []),
         ]);
     }
 
@@ -372,5 +442,6 @@
     window.Tabs = {
         onChange, newTab, addSession, removeSession, activate, setFocused,
         replaceSession, closeTab, tabOf, active, tabs, updateStatus, mergeAll, markAlert,
+        splitTab, moveToNewTab,
     };
 })();

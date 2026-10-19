@@ -307,6 +307,17 @@
         }
         window.Tabs.mergeAll();
     });
+    // The way back out, next to the way in, and only there when the tab in
+    // front has panes to split. Right-click-pastes users never see the pane
+    // menu's Move to New Tab, so this is the one everyone finds.
+    const splitBtn = document.getElementById('split-btn');
+    splitBtn.addEventListener('click', () => window.Tabs.splitTab(window.Tabs.active()));
+    const showSplitBtn = () => {
+        const tab = window.Tabs.active();
+        splitBtn.hidden = !(tab && tab.sessionIds.length > 1);
+    };
+    window.Tabs.onChange(showSplitBtn);
+    showSplitBtn();
     document.getElementById('settings-btn').addEventListener('click', () => {
         window.SettingsUI.openSettings();
     });

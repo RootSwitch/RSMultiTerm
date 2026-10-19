@@ -109,6 +109,14 @@
             { label: 'Save Output As...', onClick: () => window.TermPanes.saveOutput(pane.sessionId) },
             null,
         ];
+        // Out of a MultiTerm, for a pane that is in one.
+        const home = window.Tabs.tabOf(pane.sessionId);
+        if (home && home.sessionIds.length > 1) {
+            items.push(
+                { label: 'Move to New Tab', onClick: () => window.Tabs.moveToNewTab(pane.sessionId) },
+                { label: 'Split into Tabs', onClick: () => window.Tabs.splitTab(home) },
+                null);
+        }
         // Only for SSH: there is no shell to integrate with on a serial
         // console into a switch, and none on a telnet vty either.
         if (pane.transport === 'ssh') {

@@ -19,6 +19,14 @@
         { title: 'Hints: Copy from Screen', run: () => window.Hints.open() },
         { title: 'Compare Panes (Diff)', run: () => window.DiffUI.comparePanes() },
         { title: 'Merge All Tabs into One', run: () => window.Tabs.mergeAll() },
+        { title: 'Split into Tabs', run: () => window.Tabs.splitTab(window.Tabs.active()) },
+        {
+            title: 'Move This Pane to a New Tab',
+            run: () => {
+                const tab = window.Tabs.active();
+                if (tab && tab.focusedSessionId) window.Tabs.moveToNewTab(tab.focusedSessionId);
+            },
+        },
         {
             title: 'Reconnect All Disconnected Panes',
             detail: 'dials each dead pane in turn, paced by the auth guard',

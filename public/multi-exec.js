@@ -353,8 +353,26 @@
             [], { key: 'broadcast-grew' });
     }
 
+    // The reverse of a merge. Sessions that leave a tab leave its broadcast:
+    // their new tabs start unarmed, which is the safe direction, but someone
+    // who armed the MultiTerm should hear that the line-up changed. Splitting
+    // the whole MultiTerm apart ends its broadcast outright - the one pane
+    // left behind is not a line-up anyone chose.
+    function noteTabSplit(tabId, moved, opts) {
+        const s = state.get(tabId);
+        if (s) for (const sid of moved) s.excluded.delete(sid);
+        const wasArmed = !!(s && s.enabled);
+        if (wasArmed && opts && opts.all) s.enabled = false;
+        refreshChrome();
+        if (!wasArmed || !moved.length) return;
+        window.Forms.showBanner('info', opts && opts.all
+            ? `Broadcast turned off: the MultiTerm was split into ${moved.length + 1} tabs.`
+            : 'The moved session left the broadcast; keystrokes typed in the MultiTerm no longer reach it.',
+        [], { key: 'broadcast-grew' });
+    }
+
     window.MultiExec = {
-        routeInput, toggleBroadcast, toggleParticipant, pasteAll, refreshChrome, noteTabGrew,
+        routeInput, toggleBroadcast, toggleParticipant, pasteAll, refreshChrome, noteTabGrew, noteTabSplit,
         groupsMenu, armGroup,
         confirmBroadcastPaste: confirmPaste,
         wantsMultilineConfirm: () => confirmSingleMultiline,

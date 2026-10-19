@@ -310,8 +310,11 @@ assert.ok(/if \(!window\.Tabs\.addSession\(tab\.id, r\.sessionId\)\) \{[\s\S]{0,
 // keystroke recipients - and a single added pane warns with the new count.
 assert.ok(/function noteTabGrew\(/.test(multiExec),
     'multi-exec must keep noteTabGrew - armed tabs must not grow silently');
+// Sliced to noteTabGrew alone: noteTabSplit, after it, disarms too, and
+// must not stand in for this one.
 const bulkBody = multiExec.slice(multiExec.indexOf('function noteTabGrew('),
-    multiExec.indexOf('window.MultiExec = {'));
+    multiExec.indexOf('function noteTabSplit('));
+assert.ok(bulkBody.length > 100 && bulkBody.length < 3000, 'noteTabGrew must be found and sliced on its own');
 assert.ok(/s\.enabled = false;/.test(bulkBody),
     'a bulk merge into an armed tab must DISARM broadcast, not merely warn');
 assert.ok(/noteTabGrew\(target\.id, moved, \{ bulk: true \}\)/.test(tabsSrc),
@@ -828,9 +831,29 @@ assert.ok(!/\bteam\b/i.test(pkg.description),
         'the pane must print a connect notice the transport sends');
 }
 
+// 40. The way back out of a MultiTerm must be findable without the pane
+// menu (right-click pastes by default): a Split into Tabs button right
+// after Merge into MultiTerm, hidden unless the tab in front has more than
+// one pane, wired to Tabs.splitTab. The pane menu and the tab menu offer
+// it too. tools/test-tab-split.js holds what splitting DOES.
+{
+    const html = fs.readFileSync(path.join(PUBLIC, 'index.html'), 'utf8');
+    const ctxMenu = fs.readFileSync(path.join(PUBLIC, 'context-menu.js'), 'utf8');
+    assert.ok(/<button id="merge-btn"[^>]*>Merge into MultiTerm<\/button>\s*(<!--[^>]*-->\s*)?<button id="split-btn" hidden[^>]*>Split into Tabs<\/button>/
+        .test(html), 'Split into Tabs must sit right after Merge into MultiTerm, hidden until needed');
+    assert.ok(appSrc.indexOf("splitBtn.addEventListener('click', () => window.Tabs.splitTab(window.Tabs.active()));") >= 0 &&
+        appSrc.indexOf('splitBtn.hidden = !(tab && tab.sessionIds.length > 1);') >= 0 &&
+        appSrc.indexOf('window.Tabs.onChange(showSplitBtn);') >= 0,
+        'the split button must follow the tab in front and split it');
+    assert.ok(ctxMenu.indexOf("{ label: 'Move to New Tab', onClick: () => window.Tabs.moveToNewTab(pane.sessionId) },") >= 0,
+        'the pane menu must offer Move to New Tab');
+    assert.ok(tabsSrc.indexOf("label: 'Split into Tabs',") >= 0 && tabsSrc.indexOf('to a New Tab`,') >= 0,
+        'the tab menu must offer both');
+}
+
 console.log(`ok - ui invariants (hidden rule, outside-click menus, clipboard perms, ` +
     `no default menu, wheel zoom, remote-name sanitizing, gated dev hooks, idle overlay-only, ` +
     `exe metadata, shared menus, focus handback, contrast floor, broadcast truth, no orphan sessions, ` +
-    `armed-tab growth, focus trap, scp discipline, low-batch pins, shape guards, failure surfacing, kept-dark mode, tree reorder, idle frame rate, ssh key exchange, ` +
+    `armed-tab growth, focus trap, scp discipline, low-batch pins, shape guards, failure surfacing, kept-dark mode, tree reorder, idle frame rate, ssh key exchange, split into tabs, ` +
     `${styleIds.length} idle styles mooded, unread badges, on-connect discipline, watch triggers, four-state dots, ` +
     `${scripts.length} scripts, ${wired.size} wired ids)`);
