@@ -386,7 +386,7 @@
                     port.postMessage({ t: 'ack', seq: m.seq, bytes });
                 });
             } else if (m.t === 'status') {
-                setState(pane, m.state, m.detail);
+                setState(pane, m.state, m.detail, m.notice);
             }
         };
 
@@ -433,8 +433,11 @@
         return true;
     }
 
-    function setState(pane, state, detail) {
+    // notice: a line the transport wants printed once, dim, as the session
+    // comes up - an SSH device that only managed SHA-1 key exchange says so.
+    function setState(pane, state, detail, notice) {
         const wasDead = DEAD.has(pane.state);
+        const wasConnected = pane.state === 'connected';
         pane.state = state;
         if (pane.dot) pane.dot.className = 'status-dot ' + state;
         const status = document.getElementById('status-text');
@@ -452,6 +455,9 @@
             const why = detail
                 ? `\x1b[31m[${window.App.plainText(detail)}]\x1b[0m\r\n` : '';
             pane.term.write(`\r\n${why}\x1b[2m[disconnected - press R to reconnect]\x1b[0m\r\n`);
+        }
+        if (notice && state === 'connected' && !wasConnected) {
+            pane.term.write(`\x1b[2m[${window.App.plainText(notice)}]\x1b[0m\r\n`);
         }
         // And in the tab strip, so a background tab can show it too.
         if (window.Tabs) window.Tabs.updateStatus();

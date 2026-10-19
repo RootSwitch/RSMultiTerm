@@ -72,6 +72,11 @@ const DEFAULTS = {
     // exfiltration path (a password just copied) and is NEVER honored,
     // which is a code guarantee, not a setting.
     osc52: { allowWrite: true },
+    // SSH key exchange: offer diffie-hellman-group14-sha1 (and group-exchange
+    // -sha1) AFTER every modern method, the way PuTTY and SecureCRT do, so
+    // classic Cisco IOS (15.x, IOSv) connects at all. A device that speaks
+    // anything newer still gets that. Off = modern methods only.
+    ssh: { legacyKex: true },
     // Font-zoom modifier: 'ctrl' (Ctrl+Plus/Minus/0, the default) or
     // 'ctrl+shift'. Ctrl+Minus is also what xterm sends as C-_ - emacs
     // undo - so people who live in remote emacs can free the keystroke.
@@ -138,6 +143,9 @@ function sanitize(patch) {
     }
     if ('importOfferShown' in out) out.importOfferShown = !!out.importOfferShown;
     if ('logNoticeShown' in out) out.logNoticeShown = !!out.logNoticeShown;
+    if (out.ssh && typeof out.ssh === 'object' && 'legacyKex' in out.ssh) {
+        out.ssh = { ...out.ssh, legacyKex: out.ssh.legacyKex !== false };
+    }
     // Renderer-shaped structure that lands on disk and is iterated later:
     // hold it to exactly [{name, nodeIds:[...]}] and drop the rest.
     if ('broadcastGroups' in out) {

@@ -7,6 +7,7 @@ const fs = require('fs');
 const { Client, utils: { parseKey } } = require('ssh2');
 const { Transport } = require('./base');
 const hopPool = require('../hop-pool');
+const sshAlgorithms = require('../ssh-algorithms');
 
 class SshTransport extends Transport {
     constructor() {
@@ -159,6 +160,12 @@ class SshTransport extends Transport {
             });
         };
 
+        // The key exchange that was agreed, to say so when it is SHA-1, and
+        // the device's own lists, to say what it offered when nothing was.
+        const watch = sshAlgorithms.handshakeWatch();
+        this.kex = null;
+        client.on('handshake', (n) => { this.kex = n.kex; });
+
         return new Promise((resolve, reject) => {
             let settled = false;
             const fail = (err) => {
@@ -181,6 +188,7 @@ class SshTransport extends Transport {
             };
 
             client.on('error', (err) => {
+                err.message = watch.explain(err.message);
                 // After settle, fail() is a no-op - remember the reason so
                 // the close that follows can report it. A mid-session
                 // ECONNRESET must not be indistinguishable from a clean exit.
@@ -230,7 +238,19 @@ class SshTransport extends Transport {
                             stream.setWindow(this._size.rows, this._size.cols, 0, 0);
                         }
                         settled = true;
-                        this._status('connected', null);
+                        // Old gear connects, and says so: in the status line,
+                        // and once in the pane, dim, like the disconnect line.
+                        const legacy = [];
+                        if (sshAlgorithms.isLegacyKex(this.kex)) {
+                            legacy.push(`legacy key exchange: ${this.kex}, the device offers nothing newer`);
+                        }
+                        for (const h of this._hop ? this._hop.chainKex : []) {
+                            if (sshAlgorithms.isLegacyKex(h.kex)) {
+                                legacy.push(`legacy key exchange on jump host ${h.host}: ${h.kex}, it offers nothing newer`);
+                            }
+                        }
+                        this._status('connected', legacy.length ? 'legacy key exchange (SHA-1)' : null,
+                            legacy.length ? legacy.join('; ') : null);
                         resolve();
                     });
             });
@@ -250,6 +270,8 @@ class SshTransport extends Transport {
                 readyTimeout: descriptor.timeoutMs || 15000,
                 keepaliveInterval: 30000,
                 keepaliveCountMax: 3,
+                algorithms: sshAlgorithms.algorithms(),
+                debug: watch.debug,
             });
             this._status('authenticating', null);
         });

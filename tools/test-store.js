@@ -310,6 +310,14 @@ try {
             `setting the frame rate keeps idle.${k}`);
     }
 
+    // SHA-1 key exchange is on unless explicitly turned off; anything that
+    // is not false means on.
+    assert.strictEqual(settings.get().ssh.legacyKex, true, 'legacy key exchange is on by default');
+    settings.update({ ssh: { legacyKex: false } });
+    assert.strictEqual(settings.get().ssh.legacyKex, false);
+    settings.update({ ssh: { legacyKex: 'no' } });
+    assert.strictEqual(settings.get().ssh.legacyKex, true, 'only false turns it off');
+
     // A key that is not a setting is not stored, whatever it claims.
     settings.update({ notASetting: 'hello' });
     assert.strictEqual('notASetting' in settings.get(), false, 'unknown keys must be refused');

@@ -95,6 +95,10 @@ process.parentPort.on('message', (e) => {
             s.connect(m.auth, m.authByProfile);
             break;
         }
+        // SSH algorithm settings from main: at start and on every change.
+        case 'ssh-config':
+            require('./ssh-algorithms').configure(m);
+            break;
         case 'hostkey-answer': {
             const resolve = hostkeyWaiters.get(m.checkId);
             if (resolve) { hostkeyWaiters.delete(m.checkId); resolve(!!m.accept); }

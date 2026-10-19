@@ -75,6 +75,15 @@ function forkEngine() {
     });
 
     engineRef.proc = proc;
+    sendEngineConfig();
+}
+
+// Settings the engine applies itself. Sent at every fork (a restarted
+// engine starts from its defaults) and again whenever settings change;
+// either way it lands before any connect queued behind it.
+function sendEngineConfig() {
+    if (!engineRef.proc) return;
+    engineRef.proc.postMessage({ t: 'ssh-config', legacyKex: (settings.get().ssh || {}).legacyKex !== false });
 }
 
 // Windows groups taskbar buttons - and picks the icon for them - by
@@ -157,6 +166,7 @@ app.whenReady().then(() => {
             host: '127.0.0.1', port: 2323, transport: 'telnet',
         });
     }
+    settings.onChange(sendEngineConfig);
     forkEngine();
     win = createMainWindow();
     const wired = wireIpc(engineRef, () => win, bootConfig);

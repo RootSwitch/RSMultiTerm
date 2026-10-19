@@ -17,6 +17,7 @@
 // connection dying, or the chain build failing halfway up.
 
 const { Client } = require('ssh2');
+const sshAlgorithms = require('./ssh-algorithms');
 
 const pool = new Map();   // prefixKey -> entry
 
@@ -30,6 +31,12 @@ function makeHandle(entry) {
     let released = false;
     return {
         get client() { return entry.client; },
+        // The key exchange each gateway in the chain agreed, nearest first,
+        // so a session can say when one of them settled for SHA-1.
+        get chainKex() {
+            return [{ host: entry.host, kex: entry.kex },
+                ...(entry.prefixHandle ? entry.prefixHandle.chainKex : [])];
+        },
         release() {
             if (released) return;
             released = true;
@@ -78,7 +85,7 @@ async function acquire(chainPrefix, helpers) {
     const hop = chainPrefix[chainPrefix.length - 1];
     entry = {
         key, client: new Client(), refs: 1, ready: null,
-        prefixHandle: null, retired: false,
+        prefixHandle: null, retired: false, host: hop.host, kex: null,
     };
     pool.set(key, entry);
     const handle = makeHandle(entry);
@@ -92,12 +99,13 @@ async function acquire(chainPrefix, helpers) {
         }
         const auth = helpers.authFor(hop.credentialProfile);
         if (!auth) throw new Error(`no credentials for jump host '${hop.host}'`);
-        await connectClient(entry.client, {
+        const agreed = await connectClient(entry.client, {
             host: hop.host, port: hop.port, sock,
             username: auth.username, password: auth.password,
             keyPath: auth.keyPath, keyPassphrase: auth.keyPassphrase, agent: auth.agent,
             timeoutMs: hop.timeoutMs,
         }, helpers);
+        entry.kex = agreed && agreed.kex;
         entry.client.on('close', () => {
             // A dead gateway invalidates the slot regardless of refcount and
             // gives back the ref it held on its prefix; the sessions riding
@@ -127,12 +135,17 @@ function forwardOut(client, dstHost, dstPort) {
     });
 }
 
+// Resolves to {kex}: the key exchange the gateway agreed.
 function connectClient(client, opts, helpers) {
     return new Promise((resolve, reject) => {
         let settled = false;
         let kiError = null;
-        client.on('ready', () => { settled = true; resolve(); });
+        const watch = sshAlgorithms.handshakeWatch();
+        let kex = null;
+        client.on('handshake', (n) => { kex = n.kex; });
+        client.on('ready', () => { settled = true; resolve({ kex }); });
         client.on('error', (err) => {
+            err.message = watch.explain(err.message);
             if (!settled) {
                 settled = true;
                 const isAuth = /authentication/i.test(err.message) || err.level === 'client-authentication';
@@ -226,6 +239,8 @@ function connectClient(client, opts, helpers) {
             authHandler,
             readyTimeout: opts.timeoutMs || 15000,
             keepaliveInterval: 30000,
+            algorithms: sshAlgorithms.algorithms(),
+            debug: watch.debug,
             hostVerifier: (key, verify) => {
                 helpers.verifyHostkey(opts.host, opts.port, key)
                     .then(verify, () => verify(false));

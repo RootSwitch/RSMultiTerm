@@ -5,7 +5,7 @@
 //
 // Port protocol, engine -> renderer:
 //   {t:'data', seq, buf}       buf is a Uint8Array chunk
-//   {t:'status', state, detail}
+//   {t:'status', state, detail, notice?}
 // renderer -> engine:
 //   {t:'stdin', data}          keystrokes, string
 //   {t:'resize', cols, rows}
@@ -41,7 +41,7 @@ class Session {
             () => this.transport.resume && this.transport.resume());
 
         this.transport.on('status', (s) => {
-            this._post({ t: 'status', state: s.state, detail: s.detail });
+            this._post({ t: 'status', state: s.state, detail: s.detail, notice: s.notice || null });
             this.onEvent({ t: 'status', sessionId: this.id, state: s.state, detail: s.detail });
         });
         // Logging taps the raw transport stream BEFORE flow control, so a

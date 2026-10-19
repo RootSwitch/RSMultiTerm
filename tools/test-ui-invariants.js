@@ -795,9 +795,42 @@ assert.ok(!/\bteam\b/i.test(pkg.description),
         'Settings must show Frame rate and save it');
 }
 
+// 39. SSH key exchange must be a real setting end to end: Settings saves
+// ssh.legacyKex, main hands it to every engine it forks and again on every
+// change, the engine applies it, both connect sites (session and jump
+// host) offer the list, and the pane prints the transport's notice.
+{
+    const kexUi = fs.readFileSync(path.join(PUBLIC, 'settings-ui.js'), 'utf8');
+    const kexMain = fs.readFileSync(path.join(__dirname, '..', 'main', 'main.js'), 'utf8');
+    const kexEngine = fs.readFileSync(path.join(__dirname, '..', 'engine', 'engine.js'), 'utf8');
+    const kexSsh = fs.readFileSync(path.join(__dirname, '..', 'engine', 'transports', 'ssh.js'), 'utf8');
+    const kexHop = fs.readFileSync(path.join(__dirname, '..', 'engine', 'hop-pool.js'), 'utf8');
+    const kexPane = fs.readFileSync(path.join(PUBLIC, 'term-pane.js'), 'utf8');
+    const kexSession = fs.readFileSync(path.join(__dirname, '..', 'engine', 'session.js'), 'utf8');
+    assert.ok(kexUi.indexOf("ssh: { legacyKex: fLegacyKex.value === 'yes' },") >= 0 &&
+        kexUi.indexOf("row('SSH key exchange', fLegacyKex)") >= 0,
+        'Settings must show SSH key exchange and save it');
+    assert.ok(/engineRef\.proc = proc;\s*sendEngineConfig\(\);/.test(kexMain) &&
+        kexMain.indexOf('settings.onChange(sendEngineConfig);') >= 0 &&
+        kexMain.indexOf("postMessage({ t: 'ssh-config', legacyKex:") >= 0,
+        'main must send the SSH settings at every fork and on every change');
+    assert.ok(kexEngine.indexOf("require('./ssh-algorithms').configure(m);") >= 0,
+        'the engine must apply ssh-config');
+    for (const [name, src] of [['ssh.js', kexSsh], ['hop-pool.js', kexHop]]) {
+        assert.ok(src.indexOf('algorithms: sshAlgorithms.algorithms(),') >= 0 &&
+            src.indexOf('debug: watch.debug,') >= 0 &&
+            src.indexOf('err.message = watch.explain(err.message);') >= 0,
+            `${name} must offer the configured list and explain a mismatch`);
+    }
+    assert.ok(kexSession.indexOf('notice: s.notice || null') >= 0 &&
+        kexPane.indexOf('setState(pane, m.state, m.detail, m.notice);') >= 0 &&
+        kexPane.indexOf("if (notice && state === 'connected' && !wasConnected) {") >= 0,
+        'the pane must print a connect notice the transport sends');
+}
+
 console.log(`ok - ui invariants (hidden rule, outside-click menus, clipboard perms, ` +
     `no default menu, wheel zoom, remote-name sanitizing, gated dev hooks, idle overlay-only, ` +
     `exe metadata, shared menus, focus handback, contrast floor, broadcast truth, no orphan sessions, ` +
-    `armed-tab growth, focus trap, scp discipline, low-batch pins, shape guards, failure surfacing, kept-dark mode, tree reorder, idle frame rate, ` +
+    `armed-tab growth, focus trap, scp discipline, low-batch pins, shape guards, failure surfacing, kept-dark mode, tree reorder, idle frame rate, ssh key exchange, ` +
     `${styleIds.length} idle styles mooded, unread badges, on-connect discipline, watch triggers, four-state dots, ` +
     `${scripts.length} scripts, ${wired.size} wired ids)`);

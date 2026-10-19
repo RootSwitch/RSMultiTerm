@@ -331,6 +331,19 @@
         hostKeysLabel.textContent = 'SSH host keys';
         hostKeysRow.append(hostKeysLabel, hostKeysBtn);
 
+        // SHA-1 key exchange for classic Cisco IOS (15.x, IOSv), which
+        // offers nothing newer. Offered last, so it only ever decides a
+        // connection to a device that has no modern method.
+        const fLegacyKex = select([
+            { value: 'yes', label: 'Modern first, then SHA-1 for older gear' },
+            { value: 'no', label: 'Modern methods only' },
+        ], (s.ssh || {}).legacyKex === false ? 'no' : 'yes');
+        const kexHint = document.createElement('p');
+        kexHint.style.cssText = 'margin:2px 0 10px;color:var(--se-txt-dim);font-size:11px;';
+        kexHint.textContent = 'diffie-hellman-group14-sha1 is what Cisco IOS 15 offers. A device ' +
+            'with anything newer still gets that, and a session that used SHA-1 says so. ' +
+            'Applies to new connections.';
+
         body.append(
             row('Mouse mode', fMouse), hint,
             row('Middle click', fMiddle),
@@ -338,7 +351,7 @@
             termRow, row('Minimum contrast', fContrast), contrastHint,
             row('File browser', fAutoFiles),
             row('Remote clipboard', fOsc52), osc52Hint,
-            hostKeysRow,
+            hostKeysRow, row('SSH key exchange', fLegacyKex), kexHint,
             row('Font', fFontFamily), row('Font size', fFontSize),
             row('Font zoom keys', fZoomMod),
             row('Scrollback lines', fScrollback),
@@ -374,6 +387,7 @@
             editorCommand: fEditor.value.trim() || null,
             logTimestamps: fTimestamps.value === 'yes',
             osc52: { allowWrite: fOsc52.value === 'yes' },
+            ssh: { legacyKex: fLegacyKex.value === 'yes' },
             teamSync: {
                 filePath: fSyncPath.value.trim() || null,
                 pollSeconds: Number(fPoll.value) || 60,

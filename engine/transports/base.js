@@ -6,7 +6,8 @@
 //
 // Events:
 //   'data'   (Buffer)                       bytes from the remote side
-//   'status' ({state, detail})              lifecycle, states below
+//   'status' ({state, detail, notice?})     lifecycle, states below; notice
+//                                           is a line the pane prints once
 //   'close'  ({code, reason})               transport is gone, terminal state
 //   'hostkey'({host, port, keyType, fingerprint})  ssh only, first contact or mismatch
 //   'auth-prompt' ({prompts})               ssh keyboard-interactive relay
@@ -36,9 +37,9 @@ class Transport extends EventEmitter {
 
     get capabilities() { return { sftp: false, resize: true }; }
 
-    _status(state, detail) {
+    _status(state, detail, notice) {
         this.state = state;
-        this.emit('status', { state, detail: detail || null });
+        this.emit('status', { state, detail: detail || null, ...(notice ? { notice } : {}) });
     }
 }
 

@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+- **Classic Cisco IOS connects over SSH.** IOS 15.x - including the IOSv
+  and IOSvL2 images in Cisco Modeling Labs - offers only SHA-1 key
+  exchange, and the app offered none, so the device refused with
+  %SSH-3-NO_MATCH. The app now offers diffie-hellman-group14-sha1 (and
+  group-exchange-sha1) after every modern method, as PuTTY and SecureCRT
+  do: a device with anything newer still gets that, and a session that
+  used SHA-1 says so with a dim line in the pane and in the status bar.
+  Jump hosts get the same list. Settings > SSH key exchange turns it off.
+  group1-sha1 (a 1024-bit group) is never offered.
+- **A failed SSH handshake says what the device offered.** "No matching
+  key exchange algorithm" now lists the device's methods (and the same for
+  host key, cipher and MAC mismatches), and points at the setting when
+  turning it on would help.
+
 ## 1.0.8 - 2026-10-11
 
 Put saved sessions in any order, and idle animations that go easy on a
