@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 1.0.9 - 2026-10-18
+
+Classic Cisco IOS over SSH, and a way back out of a MultiTerm.
+
 - **Classic Cisco IOS connects over SSH.** IOS 15.x - including the IOSv
   and IOSvL2 images in Cisco Modeling Labs - offers only SHA-1 key
   exchange, and the app offered none, so the device refused with
