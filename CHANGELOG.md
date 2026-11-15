@@ -2,6 +2,35 @@
 
 ## Unreleased
 
+- **A file browser for SCP-only devices that have a shell.** OpenWrt/LEDE
+  gear (BusyBox and Dropbear - a QNAP switch running it, for one) offers
+  SCP but no SFTP, and the file panel was a type-the-path form there. It
+  now lists folders the way MobaXterm's SCP browser does, by reading `ls`
+  over the session's own connection: it opens in the account's home
+  folder, Up, Refresh, double-click and the path field navigate, a link to
+  a folder opens, and Download and Upload work on what is listed. The
+  header says "(SCP)".
+- **What that sends to a device, exactly.** `pwd` once per session, then
+  `LC_ALL=C ls -la '<folder>/'` for each folder opened, and the same with
+  `-L` when a folder holds symlinks (to tell which lead to folders).
+  Nothing else: SCP mode is read-only apart from the file an upload
+  writes. It never creates, renames or deletes on the device - New Folder
+  is greyed out there, and Rename, Delete, Edit Locally and folder
+  download stay SFTP-only. An upload over SCP still writes straight onto
+  the target name, as before; the overwrite prompt now has a listing to
+  check against.
+- **Which devices are asked.** A device whose SSH banner says Cisco is
+  never sent `pwd` or `ls` - IOS has no shell behind SSH, and an invalid
+  command there can be logged by command accounting. Any other SCP-only
+  device is sent `pwd` once per session; if the answer is not a single
+  absolute path, or the first `ls` is not a listing, it keeps the
+  type-the-path form and is not asked again that session. This one `pwd`
+  is new for SCP-only devices that are not Cisco and have no shell.
+- **File panel errors read plainly.** A folder that would not list or a
+  transfer that failed showed Electron's "Error invoking remote method
+  'rs:sftp.op': Error:" in front of the reason, over SFTP as well. Only
+  the reason is shown now.
+
 ## 1.0.9 - 2026-10-18
 
 Classic Cisco IOS over SSH, and a way back out of a MultiTerm.

@@ -16,7 +16,9 @@
 // failed" and "flash: is full".
 //
 // No directory recursion: one file each way is what the file panel needs,
-// and -r against a switch is a good way to fill a flash volume.
+// and -r against a switch is a good way to fill a flash volume. Listing a
+// folder is not SCP at all - where the device has a shell, engine/scp-list.js
+// reads one with ls.
 
 const fs = require('fs');
 const path = require('path');
@@ -283,4 +285,4 @@ function probe(client) {
     });
 }
 
-module.exports = { download, upload, probe };
+module.exports = { download, upload, probe, quote };

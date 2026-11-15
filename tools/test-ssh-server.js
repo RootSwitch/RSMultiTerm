@@ -46,7 +46,21 @@ const AUTH_KEY = (() => {
 const LINUX_HOME = process.env.RSMT_FIXTURE_LINUX_HOME || null;
 const keyInstall = require('../engine/key-install');
 
-const server = new Server({ hostKeys: [hostKey] }, (client) => {
+// RSMT_FIXTURE_SHELL=<home>: a BusyBox-style shell behind exec, the way
+// OpenWrt is - with RSMT_FIXTURE_NO_SFTP=1 this is the SCP-only device that
+// can still list folders. It answers `pwd` and the ls commands the SCP
+// listing sends, matched EXACTLY against the app's own strings, and
+// nothing else: a drifted or extra command is "Unknown command", not a
+// silently obliging fake.
+const SHELL_HOME = process.env.RSMT_FIXTURE_SHELL || null;
+const scpList = require('../engine/scp-list');
+// RSMT_FIXTURE_IDENT: the SSH software version to announce ("Cisco-1.25").
+const IDENT = process.env.RSMT_FIXTURE_IDENT || undefined;
+// RSMT_FIXTURE_EXECLOG=<file>: every exec command received, one per line -
+// how a test proves what was, and was not, sent to the device.
+const EXEC_LOG = process.env.RSMT_FIXTURE_EXECLOG || null;
+
+const server = new Server({ hostKeys: [hostKey], ...(IDENT ? { ident: IDENT } : {}) }, (client) => {
     client.on('authentication', (ctx) => {
         if (ctx.method === 'password' && ctx.username === 'nettest' && ctx.password === 'nettest') {
             return ctx.accept();
@@ -118,7 +132,19 @@ const server = new Server({ hostKeys: [hostKey] }, (client) => {
                 stream.on('close', () => client.end());
             });
             session.on('exec', (accept, reject, info) => {
+                if (EXEC_LOG) require('fs').appendFileSync(EXEC_LOG, info.command + '\n');
                 if (/^scp\s/.test(info.command)) return serveScp(accept(), info.command);
+                if (SHELL_HOME && info.command === scpList.PWD_CMD) {
+                    const s = accept();
+                    s.write(SHELL_HOME + '\n');
+                    s.exit(0);
+                    s.end();
+                    return;
+                }
+                // RSMT_FIXTURE_NO_LS=1: a device where pwd answers but ls is
+                // not there, to show the listing gives up cleanly.
+                if (SHELL_HOME && process.env.RSMT_FIXTURE_NO_LS !== '1' &&
+                    serveLs(info.command, accept)) return;
                 // RSMT_FIXTURE_LINUX_HOME: emulate the two exec commands the
                 // key installer sends, against a sandbox home directory -
                 // matched EXACTLY against the strings the app really sends,
@@ -416,6 +442,82 @@ function serveScp(stream, command) {
             return stream.end();
         }
     });
+}
+
+// --- ls, the way BusyBox prints it ------------------------------------------
+// The row layout is BusyBox 1.25's ls.c: "%-10s " mode, "%4lu " links,
+// "%-8.8s %-8.8s" owner and group, "%9llu " size, then "Mon DD HH:MM " for
+// the last six months or "Mon DD  YYYY " before that, then the name and,
+// for a link, " -> target". Windows has no owners or modes worth showing,
+// so those are plausible constants, as in the SFTP side above.
+//
+// One virtual symlink, /latest -> configs, because OpenWrt's /var -> /tmp is
+// the case that matters (a link you have to be able to open) and Windows
+// will not let a test create a real one without elevation.
+const VIRTUAL_LINKS = { '/latest': 'configs' };
+
+function busyboxDate(ms) {
+    const d = new Date(ms);
+    const mon = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][d.getMonth()];
+    const day = String(d.getDate()).padStart(2, ' ');
+    const age = Date.now() - ms;
+    const p2 = (n) => String(n).padStart(2, '0');
+    return age < 3600 * 24 * 365 / 2 * 1000 && age > -15 * 60 * 1000
+        ? `${mon} ${day} ${p2(d.getHours())}:${p2(d.getMinutes())}`
+        : `${mon} ${day}  ${d.getFullYear()}`;
+}
+
+function busyboxRow(perms, size, ms, name) {
+    return `${perms.padEnd(10)} ${String(1).padStart(4)} ${'root'.padEnd(8)} ${'root'.padEnd(8)}` +
+        `${String(size).padStart(9)} ${busyboxDate(ms)} ${name}`;
+}
+
+// Answers one of the SCP listing's ls commands; false when the command is
+// not exactly one of them.
+function serveLs(command, accept) {
+    const m = /^LC_ALL=C ls -la(L?) '(.*)'$/.exec(command);
+    if (!m) return false;
+    const follow = m[1] === 'L';
+    const dir = m[2].replace(/'\\''/g, "'");
+    let expected;
+    try { expected = scpList.lsCommand(dir, follow); } catch (_) { return false; }
+    if (expected !== command) return false;
+
+    const s = accept();
+    const fail = (why) => {
+        s.stderr.write(`ls: ${dir}: ${why}\n`);
+        s.exit(1);
+        s.end();
+    };
+    // The trailing slash means "what this names", so a link is followed.
+    let bare = dir.length > 1 ? dir.replace(/\/+$/, '') : dir;
+    if (VIRTUAL_LINKS[bare]) bare = '/' + VIRTUAL_LINKS[bare];
+    const st = fs.statSync(real(bare), { throwIfNoEntry: false });
+    if (!st) { fail('No such file or directory'); return true; }
+    if (!st.isDirectory()) { fail('Not a directory'); return true; }
+
+    const rows = [busyboxRow('drwxr-xr-x', 0, st.mtimeMs, '.'), busyboxRow('drwxr-xr-x', 0, st.mtimeMs, '..')];
+    const names = fs.readdirSync(real(bare));
+    const links = Object.keys(VIRTUAL_LINKS)
+        .filter((l) => path.posix.dirname(l) === bare).map((l) => path.posix.basename(l));
+    for (const name of [...names, ...links].sort()) {
+        if (links.includes(name)) {
+            const target = VIRTUAL_LINKS[path.posix.join(bare, name)];
+            const tst = fs.statSync(real(path.posix.join(bare, target)), { throwIfNoEntry: false });
+            rows.push(follow
+                ? busyboxRow(tst && tst.isDirectory() ? 'drwxr-xr-x' : '-rw-r--r--', 0, st.mtimeMs, name)
+                : busyboxRow('lrwxrwxrwx', target.length, st.mtimeMs, `${name} -> ${target}`));
+            continue;
+        }
+        const est = fs.statSync(path.join(real(bare), name));
+        rows.push(est.isDirectory()
+            ? busyboxRow('drwxr-xr-x', 0, est.mtimeMs, name)
+            : busyboxRow('-rw-r--r--', est.size, est.mtimeMs, name));
+    }
+    s.write(rows.join('\n') + '\n');
+    s.exit(0);
+    s.end();
+    return true;
 }
 
 server.listen(PORT, '127.0.0.1', () => {

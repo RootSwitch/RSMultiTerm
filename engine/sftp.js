@@ -8,6 +8,7 @@
 const fs = require('fs');
 const path = require('path');
 const scp = require('./scp');
+const scpList = require('./scp-list');
 
 // --- listing metadata -------------------------------------------------------
 // The file type nibble of a POSIX mode, as ls prints it.
@@ -89,15 +90,41 @@ function forSession(session) {
     return opening;
 }
 
+// sessionId -> Promise<{home, proven} | false>: whether an SCP-only device
+// also has a shell that can list folders (see engine/scp-list.js). The
+// PROMISE is cached, for the same reason as the SFTP channel above: the
+// panel's bind and its auto-open race, and each would otherwise send its
+// own pwd. false is remembered for the session - a device that is not a
+// shell is asked once, not on every refresh.
+const scpShell = new Map();
+
+function scpShellOf(session, client) {
+    const cached = scpShell.get(session.id);
+    if (cached) return cached;
+    const asking = (async () => {
+        // Gear that says it is Cisco is never sent a shell command.
+        if (!scpList.mayHaveShell(client._remoteVer)) return false;
+        try {
+            const home = await scpList.home(client);
+            return home ? { home, proven: false } : false;
+        } catch (_) {
+            return false;
+        }
+    })();
+    scpShell.set(session.id, asking);
+    return asking;
+}
+
 function drop(sessionId) {
     channels.delete(sessionId);
     mode.delete(sessionId);
+    scpShell.delete(sessionId);
 }
 
 // Which file protocol this device will actually do. SFTP is tried first
-// because it can list directories; SCP cannot, which is why it is a fallback
-// and not an equal - with SCP the panel becomes a transfer form, not a
-// browser.
+// because it can list directories and SCP cannot, which is why SCP is a
+// fallback and not an equal. An SCP device with a shell still gets a
+// read-only browser (ls over exec); one without gets a transfer form.
 async function resolveMode(session) {
     const cached = mode.get(session.id);
     if (cached) return cached;
@@ -141,20 +168,42 @@ async function run(session, req, onProgress) {
         switch (req.op) {
             case 'mode':
                 return { mode: 'scp' };
-            case 'realpath':
-                // SCP has no notion of a working directory, so the panel
-                // shows the path the user types and nothing else.
-                return { path: req.path === '.' ? '/' : req.path };
-            case 'list':
-                // Not a limitation worth hiding behind an empty list.
-                throw new Error('SCP cannot list directories - type a full path to download, or upload a file');
+            case 'realpath': {
+                // SCP has no notion of a working directory. A device with a
+                // shell has one all the same - where exec starts, its home -
+                // and that is where the browser opens. Without a shell the
+                // panel shows the path the user types and nothing else.
+                const shell = req.path === '.' ? await scpShellOf(session, client) : false;
+                return { path: shell ? shell.home : (req.path === '.' ? '/' : req.path) };
+            }
+            case 'list': {
+                // {unsupported} is an answer, not an error: this device has
+                // no listing and the panel should show its transfer form.
+                // An error is ls refusing THIS folder, on a device that
+                // lists others.
+                const shell = await scpShellOf(session, client);
+                if (!shell) return { unsupported: true };
+                try {
+                    const r = await scpList.list(client, req.path);
+                    shell.proven = true;
+                    return r;
+                } catch (err) {
+                    // pwd answered but the first ls was not ls: not a shell
+                    // this can browse after all. Remembered, so it is not
+                    // asked again.
+                    if (err.notAListing && !shell.proven) {
+                        scpShell.set(session.id, Promise.resolve(false));
+                        return { unsupported: true };
+                    }
+                    throw err;
+                }
+            }
             case 'download':
                 return scp.download(client, req.path, req.local, onProgress);
             case 'downloadTree':
-                // SCP here is the fallback for devices with no SFTP at all -
-                // switches, mostly - and it cannot even list a directory,
-                // let alone walk one.
-                throw new Error('SCP cannot download folders - it cannot list them');
+                // One file each way is all SCP mode does; walking a tree
+                // with ls is not built.
+                throw new Error('folder downloads need SFTP - open the folder and download its files');
             case 'upload':
                 return scp.upload(client, req.local, req.path, onProgress);
             case 'uploadTree':
@@ -313,4 +362,4 @@ function transfer(sftp, dir, req, onProgress) {
     });
 }
 
-module.exports = { run, forSession, drop, resolveMode, formatMode, ownerGroup, transfer };
+module.exports = { run, forSession, drop, resolveMode, formatMode, ownerGroup, transfer, scpShellOf };

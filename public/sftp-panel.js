@@ -14,6 +14,13 @@
     let bound = null;          // sessionId
     let cwd = '.';
     let transferMode = 'sftp';
+    // Whether the bound device can list folders. Always over SFTP. Over SCP
+    // only when the device has a shell to run ls in (OpenWrt does, IOS does
+    // not): true until the engine answers a listing with {unsupported}, and
+    // then the panel is the type-a-path transfer form. SCP mode is read-only
+    // either way - it lists and transfers, and never creates, renames or
+    // deletes anything on the device.
+    let browsable = true;
     // Multi-select over the listing: names, since paths change with cwd.
     // listOrder mirrors the rendered rows for shift-range selection.
     const selection = new Set();
@@ -36,8 +43,17 @@
 
     const el = (id) => document.getElementById(id);
 
+    // Electron hands a handler's failure back as "Error invoking remote method
+    // 'rs:sftp.op': Error: <message>". Only the message is for people - it is
+    // what the panel shows where a folder would not list or a transfer failed.
     async function op(req, sessionId) {
-        return rsterm.invoke('rs:sftp.op', { sessionId: sessionId || bound, req });
+        try {
+            return await rsterm.invoke('rs:sftp.op', { sessionId: sessionId || bound, req });
+        } catch (err) {
+            const text = String((err && err.message) || err)
+                .replace(/^Error invoking remote method '[^']*': (?:Error: )?/, '');
+            throw new Error(text);
+        }
     }
 
     // --- sidebar tab plumbing --------------------------------------------
@@ -110,6 +126,7 @@
         bound = null;
         cwd = '.';
         transferMode = 'sftp';
+        browsable = true;
         el('sftp-title').textContent = 'no session';
         el('sftp-path').value = '';
         el('sftp-status').textContent = '';
@@ -144,6 +161,7 @@
 
     async function openFor(sessionId, _title) {
         bound = sessionId;
+        browsable = true;
         showPaneQuiet();
         const pane = window.TermPanes.panes.get(sessionId);
         el('sftp-title').textContent = pane ? pane.title : 'session';
@@ -171,6 +189,18 @@
             return renderMessage(`${pane ? pane.title : 'This session'} is connecting...`);
         }
         transferMode = mode;
+        if (mode === 'scp') {
+            // Said in the header, as MobaXterm does: what follows is SCP's
+            // narrower set of things, not a broken SFTP browser.
+            el('sftp-title').textContent = `${pane ? pane.title : 'session'} (SCP)`;
+        }
+        // New folders are an SFTP operation; SCP mode changes nothing on a
+        // device beyond the file an upload writes.
+        const mk = el('sftp-mkdir');
+        mk.disabled = mode !== 'sftp';
+        mk.title = mode === 'scp'
+            ? 'Not on SCP devices: there the browser only lists folders and transfers files'
+            : 'New remote folder';
         if (mode === 'n/a') {
             setControlsEnabled(false);
             return renderMessage('File transfer is only available on SSH sessions.');
@@ -184,8 +214,9 @@
             // The probe was for THIS binding; focus can have moved during it.
             if (bound !== sessionId) return;
             cwd = r.path;
-            if (mode === 'scp') renderScpMode();
-            else await list();
+            // SCP too: list() falls back to the transfer form by itself when
+            // the device turns out to have no listing.
+            await list();
         } catch (err) {
             if (bound !== sessionId) return;
             renderMessage(err.message);
@@ -210,23 +241,39 @@
     let listSeq = 0;
 
     async function list() {
-        // SCP has no listing; Enter in the path field and Refresh both land
-        // here, and 'SCP cannot list directories' used to replace the panel
-        // body - taking the download button with it. In SCP mode the path
-        // IS the interface, so re-render that instead.
-        if (transferMode === 'scp') return renderScpMode();
+        // An SCP device with no listing: Enter in the path field and Refresh
+        // both land here, and an error used to replace the panel body -
+        // taking the download button with it. There the path IS the
+        // interface, so re-render that instead.
+        if (transferMode === 'scp' && !browsable) return renderScpMode();
         const seq = ++listSeq;
         const target = bound;
         el('sftp-path').value = cwd;
         let entries;
+        let skipped = 0;
         try {
-            entries = (await op({ op: 'list', path: cwd })).entries;
+            const r = await op({ op: 'list', path: cwd });
+            if (seq !== listSeq || bound !== target) return;
+            // The engine's answer for an SCP device without a shell: not an
+            // error, just nothing to browse.
+            if (r.unsupported) {
+                browsable = false;
+                return renderScpMode();
+            }
+            entries = r.entries;
+            skipped = r.skipped || 0;
         } catch (err) {
             if (seq !== listSeq || bound !== target) return;
             return renderMessage(err.message);
         }
         // Stale answer: a newer navigation started while this one was out.
         if (seq !== listSeq || bound !== target) return;
+        // Rows of the device's ls output that could not be read are never
+        // dropped without a word.
+        if (skipped) {
+            status(`${skipped} entr${skipped === 1 ? 'y' : 'ies'} in this folder could not be read and ` +
+                `${skipped === 1 ? 'is' : 'are'} not shown`);
+        }
         const box = el('sftp-list');
         box.replaceChildren();
         selection.clear();
@@ -260,7 +307,7 @@
             const name = document.createElement('span');
             name.className = 'sftp-name ' + (it.isDir ? 'dir' : 'file');
             name.textContent = it.name + (it.isLink ? ' ->' : '');
-            name.title = it.name;
+            name.title = it.target ? `${it.name} -> ${it.target}` : it.name;
             // Unix hides dotfiles for a reason; render them present but
             // quiet, the way MobaXterm fades them.
             if (it.name.startsWith('.')) row.classList.add('dotfile');
@@ -365,7 +412,6 @@
         // The listing controls cannot work without a listing; leaving them
         // clickable routed them into list(), whose error wiped this panel.
         for (const id of ['sftp-up', 'sftp-refresh', 'sftp-mkdir']) el(id).disabled = true;
-        el('sftp-title').textContent += ' (SCP)';
         const box = el('sftp-list');
         box.replaceChildren();
         const note = document.createElement('div');
@@ -473,6 +519,9 @@
         const items = [];
 
         const folders = targets.filter((t) => t.isDir);
+        // Everything past Download and Copy Path is SFTP's: SCP mode reads
+        // and transfers, and has no rename, delete, or stat to sync edits by.
+        const sftp = transferMode === 'sftp';
         if (files.length) {
             items.push({
                 label: many ? `Download ${files.length} file${files.length === 1 ? '' : 's'}...`
@@ -480,7 +529,7 @@
                 onClick: () => (many ? downloadMany(files) : download(files[0])),
             });
         }
-        if (folders.length) {
+        if (folders.length && sftp) {
             items.push({
                 label: folders.length === 1
                     ? `Download folder ${folders[0].name}...`
@@ -488,7 +537,7 @@
                 onClick: () => downloadTree(folders),
             });
         }
-        if (!many && !it.isDir) {
+        if (!many && !it.isDir && sftp) {
             items.push({
                 label: 'Edit Locally',
                 onClick: async () => {
@@ -501,7 +550,7 @@
                 },
             });
         }
-        if (!many) {
+        if (!many && sftp) {
             items.push({
                 label: 'Rename',
                 onClick: async () => {
@@ -523,10 +572,12 @@
                     .catch(() => status('clipboard write blocked'));
             },
         });
-        items.push(null, {
-            label: many ? `Delete ${targets.length} items...` : 'Delete...',
-            onClick: () => confirmDelete(targets),
-        });
+        if (sftp) {
+            items.push(null, {
+                label: many ? `Delete ${targets.length} items...` : 'Delete...',
+                onClick: () => confirmDelete(targets),
+            });
+        }
         window.Modals.menu(e.clientX, e.clientY, items);
     }
 
@@ -572,7 +623,7 @@
     // and then say honestly what happened, including what was refused.
     async function downloadTree(targets) {
         if (transferMode !== 'sftp') {
-            return status('this device offers only SCP, which cannot list folders');
+            return status('folder downloads need SFTP - open the folder and download its files');
         }
         const dir = await rsterm.invoke('rs:sftp.pickFolder');
         if (!dir) return;
@@ -800,7 +851,7 @@
         if (done === paths.length) {
             status(`uploaded ${done} file${done === 1 ? '' : 's'}`);
         }
-        if (transferMode !== 'scp') list();
+        if (browsable) list();
         return done;
     }
 
@@ -954,9 +1005,10 @@
         });
         el('sftp-path').addEventListener('keydown', (e) => {
             if (e.key !== 'Enter') return;
-            // SCP: the typed path is a file to fetch, not a directory to
-            // list - Enter does what the button under it says.
-            if (transferMode === 'scp') {
+            // An SCP device with no listing: the typed path is a file to
+            // fetch, not a directory to list - Enter does what the button
+            // under it says.
+            if (transferMode === 'scp' && !browsable) {
                 const remote = e.target.value.trim();
                 if (remote) download({ name: remote.split('/').pop(), isDir: false }, remote);
                 return;

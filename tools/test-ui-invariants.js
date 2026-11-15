@@ -345,8 +345,11 @@ assert.ok(/stream\.pause\(\);\s*[\s\S]{0,80}out\.once\('drain'/.test(scpSrc),
 // a failed file instead of abandoning the rest.
 assert.ok(/\+\+listSeq/.test(sftp) && /seq !== listSeq/.test(sftp),
     'sftp-panel list() must carry a sequence token so stale listings cannot paint');
-assert.ok(/transferMode === 'scp'\) return renderScpMode\(\)/.test(sftp),
-    'list() must re-render SCP mode, not throw the SCP error over the panel');
+// (An SCP device with a shell now lists; the form is for the ones without,
+// reached both from the remembered answer and from the engine's first one.)
+assert.ok(sftp.indexOf("if (transferMode === 'scp' && !browsable) return renderScpMode();") >= 0 &&
+    /if \(r\.unsupported\) \{\s*browsable = false;\s*return renderScpMode\(\);/.test(sftp),
+    'list() must re-render the SCP transfer form for a device with no listing, not throw an error over the panel');
 assert.ok(/failed\.push/.test(sftp),
     'downloadMany must continue past a failed file, collecting failures');
 // confirmPaste must ride Modals.open (Escape stack, focus trap, handback)
@@ -851,9 +854,48 @@ assert.ok(!/\bteam\b/i.test(pkg.description),
         'the tab menu must offer both');
 }
 
+// 41. SCP mode is READ-ONLY, and says so in code. The listing module sends
+// exactly pwd and ls (three call sites, nothing else reaches a device); the
+// panel's write operations - new folder, rename, delete, edit-and-sync,
+// folder download - are offered over SFTP only; and the engine refuses them
+// in SCP mode rather than growing a shell command for each.
+// tools/test-scp-list.js holds the behavior, against a log of what the
+// fixture device actually received.
+{
+    const lsSrc = fs.readFileSync(path.join(__dirname, '..', 'engine', 'scp-list.js'), 'utf8');
+    const engineFiles = fs.readFileSync(path.join(__dirname, '..', 'engine', 'sftp.js'), 'utf8');
+    // run() is the one way to the device: its definition plus three calls,
+    // each with one of the two known commands, and it is not exported.
+    const uses = lsSrc.match(/\brun\(client, /g) || [];
+    const known = lsSrc.match(/await run\(client, (?:PWD_CMD|lsCommand\(dir, (?:true|false)\))\)/g) || [];
+    assert.ok(uses.length === 4 && known.length === 3,
+        'engine/scp-list.js must send a device nothing but pwd and ls');
+    assert.ok((lsSrc.match(/client\.exec\(/g) || []).length === 1 &&
+        lsSrc.indexOf('module.exports = { list, home, parse, mayHaveShell, lsCommand, dirArg, PWD_CMD };') >= 0,
+        'engine/scp-list.js must reach the device through run() alone, and keep run() to itself');
+    assert.ok(lsSrc.indexOf("const PWD_CMD = 'pwd';") >= 0 &&
+        lsSrc.indexOf("return `LC_ALL=C ls -la${follow ? 'L' : ''} ${quote(dirArg(dir))}`;") >= 0,
+        'the two commands must stay pwd and a quoted ls -la');
+    const scpBranch = engineFiles.slice(engineFiles.indexOf("if (how === 'scp') {"),
+        engineFiles.indexOf('const sftp = await forSession(session);'));
+    assert.ok(scpBranch.length > 200 && !/mkdir|rmdir|unlink|rename|chmod|setstat/.test(
+        scpBranch.replace(/\/\/[^\n]*/g, '')),
+        'the SCP branch of the op dispatch must not implement any write operation');
+    assert.ok(scpBranch.indexOf("throw new Error(`SCP cannot ${req.op}`);") >= 0,
+        'unknown operations in SCP mode must be refused');
+    assert.ok(sftp.indexOf("mk.disabled = mode !== 'sftp';") >= 0,
+        'New Folder must be SFTP-only');
+    assert.ok(sftp.indexOf("const sftp = transferMode === 'sftp';") >= 0 &&
+        sftp.indexOf('if (folders.length && sftp) {') >= 0 &&
+        sftp.indexOf('if (!many && !it.isDir && sftp) {') >= 0 &&
+        sftp.indexOf('if (!many && sftp) {') >= 0 &&
+        /if \(sftp\) \{\s*items\.push\(null, \{\s*label: many \? `Delete/.test(sftp),
+        'folder download, Edit Locally, Rename and Delete must be offered over SFTP only');
+}
+
 console.log(`ok - ui invariants (hidden rule, outside-click menus, clipboard perms, ` +
     `no default menu, wheel zoom, remote-name sanitizing, gated dev hooks, idle overlay-only, ` +
     `exe metadata, shared menus, focus handback, contrast floor, broadcast truth, no orphan sessions, ` +
-    `armed-tab growth, focus trap, scp discipline, low-batch pins, shape guards, failure surfacing, kept-dark mode, tree reorder, idle frame rate, ssh key exchange, split into tabs, ` +
+    `armed-tab growth, focus trap, scp discipline, low-batch pins, shape guards, failure surfacing, kept-dark mode, tree reorder, idle frame rate, ssh key exchange, split into tabs, read-only scp browser, ` +
     `${styleIds.length} idle styles mooded, unread badges, on-connect discipline, watch triggers, four-state dots, ` +
     `${scripts.length} scripts, ${wired.size} wired ids)`);
