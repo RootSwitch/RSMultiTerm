@@ -240,8 +240,13 @@
     // save the new profile is added to the list and selected, on cancel the
     // dropdown is back where it was. The select never rests on the sentinel
     // itself, so a form saved mid-flow cannot store '__new__' as a profile.
+    //
+    // opts.onCreated(name): for a dialog whose other fields depend on the
+    // choice - setting a select's value from code fires no change event, so
+    // the dialog is told. opts.defaults: what the editor opens with ({name}),
+    // for a caller that already knows what the profile should be called.
     const NEW_PROFILE = '__new__';
-    function offerNewProfile(sel) {
+    function offerNewProfile(sel, opts = {}) {
         const o = document.createElement('option');
         o.value = NEW_PROFILE;
         o.textContent = 'Create a New Profile...';
@@ -260,7 +265,8 @@
                 }
                 sel.value = created.name;
                 previous = created.name;
-            });
+                if (opts.onCreated) opts.onCreated(created.name);
+            }, opts.defaults);
         });
     }
 
@@ -316,7 +322,10 @@
         ]);
     }
 
-    async function editProfile(prof, done) {
+    // defaults ({name}): what a NEW profile's editor opens with. The connect
+    // dialog passes the name a session already refers to, so creating it
+    // fixes every session that names it; the field stays editable.
+    async function editProfile(prof, done, defaults) {
         const isNew = !prof;
         // What this machine can offer decides the default: a lab box with
         // a key in ~/.ssh should not be asked to invent a password.
@@ -331,7 +340,10 @@
         const defaultMethod = isNew
             ? (env.agent.available ? 'agent' : (env.keys.length ? 'key' : 'password'))
             : null;
-        prof = prof || { name: '', username: '', storage: 'prompt', authMethod: defaultMethod };
+        prof = prof || {
+            name: String((defaults && defaults.name) || ''),
+            username: '', storage: 'prompt', authMethod: defaultMethod,
+        };
         const body = document.createElement('div');
         // A fixed width, or the dialog resizes itself every time a hint
         // paragraph changes length - it visibly jumped when the scope note
@@ -554,7 +566,9 @@
                 },
             },
         ]);
-        (isNew ? fName : fUser).focus();
+        // A new profile starts at its name - unless the caller supplied one,
+        // and then the next thing to type is the username.
+        (isNew && !fName.value ? fName : fUser).focus();
     }
 
     // --- install a key on the device --------------------------------------
@@ -924,13 +938,31 @@
             : `${req.title || req.host} has no credential profile.`;
         body.appendChild(info);
 
-        // Pick a profile, or type credentials for just this connect.
+        // Pick a profile, make one, or type credentials for just this connect.
         const options = profiles.map((p) => ({
             value: p.name,
             label: p.username ? `${p.name} (${p.username})` : p.name,
         }));
         options.push({ value: '__oneoff__', label: 'Enter credentials for this connect only...' });
         const pick = select(options, profiles.length ? profiles[0].name : '__oneoff__');
+        // "Create a New Profile...", as on every other credentials dropdown:
+        // this is the moment someone finds out a session has no profile, and
+        // sending them off to Profiles and back to reconnect was the long way
+        // round. The new profile comes back selected, and Remember (below)
+        // puts it on the session. A session that names a profile this
+        // machine lacks opens the editor with that name already filled in.
+        // Registered BEFORE this dialog's own change listener, so by the time
+        // sync() runs the select is back off the sentinel.
+        offerNewProfile(pick, {
+            onCreated: () => sync(),
+            defaults: req.missing ? { name: req.missing } : null,
+        });
+        // Order: the profiles, then making one, then the one-time way out.
+        // Moving an option can move the selection with it, so the choice is
+        // put back by hand.
+        const chosen = pick.value;
+        pick.appendChild(pick.querySelector('option[value="__oneoff__"]'));
+        pick.value = chosen;
         body.appendChild(row('Credentials', pick));
 
         const fUser = input('', 'username');
@@ -971,6 +1003,10 @@
             {
                 label: 'Connect', primary: true,
                 onClick: () => {
+                    // Never a connect with the menu entry itself as the
+                    // "profile": the select is not meant to rest on it, and
+                    // if it ever does this is not the place to find out.
+                    if (pick.value === NEW_PROFILE) return false;
                     if (pick.value === '__oneoff__') {
                         if (!fUser.value.trim()) { fUser.focus(); return false; }
                         answer({ username: fUser.value.trim(), password: fPass.value });

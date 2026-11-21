@@ -893,9 +893,47 @@ assert.ok(!/\bteam\b/i.test(pkg.description),
         'folder download, Edit Locally, Rename and Delete must be offered over SFTP only');
 }
 
+// 42. The connect dialog for a session with no usable credential profile
+// must offer "Create a New Profile..." - the same affordance as every other
+// credentials dropdown - and get the four things right that make it safe:
+// the new profile comes back SELECTED with the dialog's rows resynced (a
+// value set from code fires no change event); the affordance is registered
+// before the dialog's own change listener, so sync() never sees the menu
+// entry as the choice; Connect refuses the menu entry itself as a profile;
+// and a session naming a profile this machine lacks opens the editor with
+// that name. Behavior was driven live through the real dialog; this holds
+// the structure.
+{
+    const forms = fs.readFileSync(path.join(PUBLIC, 'connect-forms.js'), 'utf8');
+    const dlg = forms.slice(forms.indexOf('async function nextProfileDialog() {'),
+        forms.indexOf('// --- host key dialogs'));
+    assert.ok(dlg.length > 1500 && dlg.length < 8000, 'nextProfileDialog must be found');
+    const offered = dlg.indexOf('offerNewProfile(pick, {');
+    const listens = dlg.indexOf("pick.addEventListener('change', sync);");
+    assert.ok(offered > 0 && listens > offered,
+        'the connect dialog must offer Create a New Profile, registered before its own change listener');
+    assert.ok(dlg.indexOf('onCreated: () => sync(),') > 0,
+        'the connect dialog must resync its rows when the new profile comes back selected');
+    assert.ok(dlg.indexOf('defaults: req.missing ? { name: req.missing } : null,') > 0,
+        'a missing profile must open the editor with its name');
+    assert.ok(dlg.indexOf('if (pick.value === NEW_PROFILE) return false;') > 0,
+        'Connect must refuse the menu entry itself as a profile');
+    assert.ok(/const chosen = pick\.value;\s*pick\.appendChild\(pick\.querySelector\('option\[value="__oneoff__"\]'\)\);\s*pick\.value = chosen;/
+        .test(dlg), 'moving the one-time option last must not move the selection');
+    const offer = forms.slice(forms.indexOf('function offerNewProfile(sel, opts = {}) {'),
+        forms.indexOf('// --- credential profile manager'));
+    assert.ok(offer.length > 300 && offer.indexOf('sel.value = previous;') > 0 &&
+        offer.indexOf('if (opts.onCreated) opts.onCreated(created.name);') > 0 &&
+        offer.indexOf('}, opts.defaults);') > 0,
+        'offerNewProfile must come off the sentinel, report the created profile, and pass defaults on');
+    assert.ok(forms.indexOf('async function editProfile(prof, done, defaults) {') > 0 &&
+        forms.indexOf("name: String((defaults && defaults.name) || ''),") > 0,
+        'the profile editor must accept a starting name for a new profile');
+}
+
 console.log(`ok - ui invariants (hidden rule, outside-click menus, clipboard perms, ` +
     `no default menu, wheel zoom, remote-name sanitizing, gated dev hooks, idle overlay-only, ` +
     `exe metadata, shared menus, focus handback, contrast floor, broadcast truth, no orphan sessions, ` +
-    `armed-tab growth, focus trap, scp discipline, low-batch pins, shape guards, failure surfacing, kept-dark mode, tree reorder, idle frame rate, ssh key exchange, split into tabs, read-only scp browser, ` +
+    `armed-tab growth, focus trap, scp discipline, low-batch pins, shape guards, failure surfacing, kept-dark mode, tree reorder, idle frame rate, ssh key exchange, split into tabs, read-only scp browser, new profile at connect, ` +
     `${styleIds.length} idle styles mooded, unread badges, on-connect discipline, watch triggers, four-state dots, ` +
     `${scripts.length} scripts, ${wired.size} wired ids)`);

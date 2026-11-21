@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+- **Create a credential profile from the connect dialog.** Opening a saved
+  session that has no credential profile asks which credentials to use;
+  that dialog offered the existing profiles or a one-time username and
+  password, and making a profile meant cancelling, opening Profiles, and
+  connecting again. Its Credentials list now has "Create a New Profile...",
+  as the other credential lists do: the profile editor opens on top, and on
+  Save the new profile is selected, ready to connect with. "Remember this
+  profile on the session" is ticked for a saved session, so it connects
+  without asking next time. Backing out of the editor leaves the dialog as
+  it was. For a session that names a profile this machine does not have,
+  the editor opens with that name filled in, so creating it also fixes
+  every other session that refers to it.
 - **A file browser for SCP-only devices that have a shell.** OpenWrt/LEDE
   gear (BusyBox and Dropbear - a QNAP switch running it, for one) offers
   SCP but no SFTP, and the file panel was a type-the-path form there. It
