@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 1.0.10 - 2026-11-22
+
+A file browser for SCP-only devices that have a shell, and a credential
+profile made right from the connect dialog.
+
 - **Create a credential profile from the connect dialog.** Opening a saved
   session that has no credential profile asks which credentials to use;
   that dialog offered the existing profiles or a one-time username and

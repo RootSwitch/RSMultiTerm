@@ -46,7 +46,8 @@ command palette (Ctrl+Shift+P), snippets with `{{param}}` placeholders,
 output diffing between panes, TOFU host keys with a hard block on
 mismatch, quick-connects that save into the session tree with one click,
 a MobaXTerm `.mxtsessions` import wizard that converts baked-in usernames
-to credential profiles, and both mouse modes
+to credential profiles, a read-only file browser for gear that has SCP and
+a shell but no SFTP (OpenWrt, for one), and both mouse modes
 (select-copies/right-click-pastes and right-click-menu -
 Ctrl+right-click always does the other one).
 
@@ -148,6 +149,11 @@ against their npm originals by `npm test`.
   log is the worst surprise) and the sidebar says so, with the folder.
   Per-session and per-folder off switches in the editor; the folder is
   configurable in Settings.
+- The file browser adds nothing to a device over SFTP's own protocol. On a
+  device with SCP but no SFTP, it lists folders by running `pwd` once and
+  `ls` per folder on the device, over the session you already opened -
+  those two commands and nothing else, and never on gear that identifies
+  itself as Cisco. It does not create, rename, or delete there.
 - The security posture, threat model, and accepted risks are written up in
   [docs/security-review-2026-08.md](docs/security-review-2026-08.md) - kept
   current with the code, including what is deliberately accepted and why.
